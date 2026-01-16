@@ -1,0 +1,52 @@
+// =============================================================================
+// SERV.O v7.0 - STATS CARDS COMPONENT
+// =============================================================================
+
+import React from 'react';
+
+const StatCard = ({ icon, label, value, color = 'slate' }) => {
+  const colorClasses = {
+    blue: 'bg-blue-100',
+    emerald: 'bg-emerald-100',
+    yellow: 'bg-yellow-100',
+    green: 'bg-green-100',
+    slate: 'bg-slate-100',
+    red: 'bg-red-100'
+  };
+
+  const textClasses = {
+    blue: 'text-slate-800',
+    emerald: 'text-emerald-600',
+    yellow: 'text-yellow-600',
+    green: 'text-green-600',
+    slate: 'text-slate-500',
+    red: 'text-red-600'
+  };
+
+  return (
+    <div className="bg-white p-4 rounded-xl border border-slate-200">
+      <div className="flex items-center gap-3">
+        <div className={`w-10 h-10 ${colorClasses[color]} rounded-lg flex items-center justify-center`}>
+          {icon}
+        </div>
+        <div>
+          <p className="text-xs text-slate-600 font-medium">{label}</p>
+          <p className={`text-xl font-bold ${textClasses[color]}`}>{value}</p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default function StatsCards({ stats }) {
+  return (
+    <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+      <StatCard icon="📋" label="Ordini" value={stats.ordini} color="blue" />
+      <StatCard icon="✅" label="Confermati" value={stats.confermati} color="emerald" />
+      <StatCard icon="🔄" label="Parz. Evaso" value={stats.parzEvaso} color="yellow" />
+      <StatCard icon="✓" label="Evaso" value={stats.evaso} color="green" />
+      <StatCard icon="🗄️" label="Archiviati" value={stats.archiviati} color="slate" />
+      <StatCard icon="⚠️" label="Anomalie Aperte" value={stats.anomalie_aperte} color="red" />
+    </div>
+  );
+}

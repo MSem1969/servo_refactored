@@ -1,0 +1,27 @@
+Field Name,FieldType,LenghtField,Mandatory,Formato,Descrizione
+Vendor,String,10,Y,,
+VendorOrderNumber,String,30,Y,,
+CustomerTraceabilityCode,String,20,Y,,TipoTracciatura+CodiceTracciatura (destinazione merce)
+VAT code,String,16,Y,,
+CustomerName1,String,50,Y,,
+CustomerName2,String,50,N ,,
+Address,String,50,N ,,
+CodeCity,String,10,N ,,
+City,String,50,N ,,
+Province,String,3,N ,,
+OrderDate,Date,10,Y,GG/MM/AAAA,Contiene la data dell’ordine
+EstDeliveryDate,Date,10,Y,GG/MM/AAAA,Contiene la data di prevista consegna dell’ordine
+AgentName,String,50,N,,
+PaymentDate1,Date,10,N,GG/MM/AAAA,
+DelayPaymentDays,Integer,3,N,3 integer,
+PaymentDate2,Date,10,N,GG/MM/AAAA,
+PaymentAmmount2,Float,"7,2",N,7 integer & 2 decimal,
+DelayPaymentDays2,Float,3,N,3 integer,
+PaymentDate3,Date,10,N,GG/MM/AAAA,
+PaymentAmmount3,Float,"7,2",N,7 integer & 2 decimal,
+DelayPaymentDays3,Integer,3,N,3 integer,
+OfferCodeCustomer,String,20,N,,Codice cliente dell’offerta di riferimento. E’ in alternativa al CodOffertaRiferimentoMylan.
+OfferCodeVendor,String,20,N,,Codice Mylan dell’offerta di riferimento. E’ in alternativa al  campo CodOffertaRiferimentoCliente
+ForceCheck,String,1,N,S/N,S= forza controllo dell’importazione oppure N. Indica se è necessario forzare il controllo manuale
+OrderAnnotation,String,200,Y,,Contiene note sull’ordine
+BOT_Annotation,String,200,Y,,Contiene note da stampare sul DDT
