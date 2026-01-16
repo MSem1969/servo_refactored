@@ -546,7 +546,10 @@ def _insert_order(
     # =========================================================================
     # Cerca righe con q_venduta > 0 e prezzo_netto = 0/NULL
     # Crea supervisione_listino per ogni riga (unificato con anomalie listino)
-    # Escludi righe che hanno già anomalia LST-A01 (create dall'arricchimento listino)
+    # v10.3: Escludi anche:
+    # - Righe SC.MERCE/omaggi (q_sconto_merce > 0 o q_omaggio > 0)
+    # - Parent espositori (is_espositore = TRUE)
+    # - Righe con tipo_riga SC.MERCE o omaggio
     righe_senza_prezzo = db.execute("""
         SELECT od.id_dettaglio, od.n_riga, od.codice_aic, od.descrizione, od.q_venduta, od.prezzo_netto
         FROM ordini_dettaglio od
@@ -554,6 +557,10 @@ def _insert_order(
           AND COALESCE(od.q_venduta, 0) > 0
           AND COALESCE(od.prezzo_netto, 0) = 0
           AND COALESCE(od.is_child, FALSE) = FALSE  -- Escludi child espositori
+          AND COALESCE(od.is_espositore, FALSE) = FALSE  -- v10.3: Escludi parent espositori
+          AND COALESCE(od.q_sconto_merce, 0) = 0  -- v10.3: Escludi righe sconto merce
+          AND COALESCE(od.q_omaggio, 0) = 0  -- v10.3: Escludi righe omaggio
+          AND COALESCE(od.tipo_riga, '') NOT IN ('SCONTO_MERCE', 'MATERIALE_POP', 'PARENT_ESPOSITORE', 'CHILD_ESPOSITORE')
           AND NOT EXISTS (
               SELECT 1 FROM anomalie a
               WHERE a.id_dettaglio = od.id_dettaglio
