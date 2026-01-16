@@ -643,6 +643,30 @@ def arricchisci_riga_con_listino(
     if not codice_aic:
         return riga, None
 
+    # v10.2: Escludi righe SC.MERCE, P.O.P. e omaggi dalla verifica listino
+    # Queste righe hanno correttamente prezzo = 0 e non devono generare anomalia
+    tipo_posizione = (riga.get('tipo_posizione') or '').upper()
+    tipo_riga = (riga.get('tipo_riga') or '').upper()
+
+    # Escludi per tipo_posizione (dall'estrattore)
+    if tipo_posizione in ('SC.MERCE', 'SCMERCE', 'P.O.P.', 'P.O.P', 'POP'):
+        riga['fonte_prezzi'] = 'OMAGGIO'
+        return riga, None
+
+    # Escludi per tipo_riga (dall'elaborazione espositore)
+    if tipo_riga in ('SCONTO_MERCE', 'MATERIALE_POP'):
+        riga['fonte_prezzi'] = 'OMAGGIO'
+        return riga, None
+
+    # Escludi se q_venduta = 0 e (q_sconto_merce > 0 o q_omaggio > 0)
+    q_venduta = riga.get('q_venduta', 0) or 0
+    q_sconto_merce = riga.get('q_sconto_merce', 0) or 0
+    q_omaggio = riga.get('q_omaggio', 0) or 0
+
+    if q_venduta == 0 and (q_sconto_merce > 0 or q_omaggio > 0):
+        riga['fonte_prezzi'] = 'OMAGGIO'
+        return riga, None
+
     # v10.0: Se la riga ha già un prezzo valido estratto dal PDF, non sovrascrivere
     prezzo_esistente = riga.get('prezzo_netto')
     if prezzo_esistente is not None and prezzo_esistente > 0:

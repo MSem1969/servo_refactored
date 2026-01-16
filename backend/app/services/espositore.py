@@ -317,8 +317,7 @@ def elabora_righe_ordine(righe_raw: List[Dict], vendor: str = 'ANGELINI') -> Con
                     ctx.espositore_attivo, ctx.contatore_righe, 'NUOVO_PARENT', ctx.vendor
                 )
                 ctx.righe_output.append(riga_out)
-                # v9.2: NON aggiungere righe child all'output - rimangono solo nei metadata
-                # ctx.righe_output.extend(righe_child)
+                ctx.righe_output.extend(righe_child)  # v10.2: Ripristinato per salvataggio child nel DB
                 if anomalia:
                     ctx.anomalie.append(anomalia)
                 ctx.chiusure_forzate += 1
@@ -366,8 +365,7 @@ def elabora_righe_ordine(righe_raw: List[Dict], vendor: str = 'ANGELINI') -> Con
                     ctx.espositore_attivo, ctx.contatore_righe, 'RIGA_NON_CHILD', ctx.vendor
                 )
                 ctx.righe_output.append(riga_out)
-                # v9.2: NON aggiungere righe child all'output
-                # ctx.righe_output.extend(righe_child)
+                ctx.righe_output.extend(righe_child)  # v10.2: Ripristinato per salvataggio child nel DB
                 if anomalia:
                     ctx.anomalie.append(anomalia)
                 ctx.chiusure_forzate += 1
@@ -440,8 +438,7 @@ def elabora_righe_ordine(righe_raw: List[Dict], vendor: str = 'ANGELINI') -> Con
                         ctx.espositore_attivo, ctx.contatore_righe, ctx.vendor
                     )
                     ctx.righe_output.append(riga_out)
-                    # v9.2: NON aggiungere righe child all'output - rimangono solo nei metadata
-                    # ctx.righe_output.extend(righe_child)
+                    ctx.righe_output.extend(righe_child)  # v10.2: Ripristinato per salvataggio child nel DB
                     if anomalia:
                         ctx.anomalie.append(anomalia)
                     ctx.espositore_attivo = None
@@ -463,8 +460,7 @@ def elabora_righe_ordine(righe_raw: List[Dict], vendor: str = 'ANGELINI') -> Con
             ctx.espositore_attivo, ctx.contatore_righe, motivo, ctx.vendor
         )
         ctx.righe_output.append(riga_out)
-        # v9.2: NON aggiungere righe child all'output - rimangono solo nei metadata
-        # ctx.righe_output.extend(righe_child)
+        ctx.righe_output.extend(righe_child)  # v10.2: Ripristinato per salvataggio child nel DB
         if anomalia:
             ctx.anomalie.append(anomalia)
         ctx.chiusure_forzate += 1

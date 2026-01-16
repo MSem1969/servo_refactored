@@ -98,7 +98,7 @@ def extract_angelini(text: str, lines: List[str], pdf_path: str = None) -> List[
         r'(\d+)\s+'                          # Quantità
         r'PZ\s+'                             # UM
         r'([\d,]+)\s+'                       # Prezzo listino
-        r'([\d,]+)\s+'                       # % Sconto
+        r'([\d,]+(?:\+[\d,]+)*)\s+'          # % Sconto cascata (es: 33,35+1)
         r'([\d,]+)\s+'                       # Prezzo netto
         r'(\d+)\s+'                          # % IVA
         r'([\d.,]+)'                         # Valore netto
@@ -136,11 +136,12 @@ def extract_angelini(text: str, lines: List[str], pdf_path: str = None) -> List[
         re.I
     )
 
-    # Pattern per espositore parent con BANCO (senza XXPZ nella descrizione)
+    # Pattern per espositore parent con keyword espositore (senza XXPZ nella descrizione)
     # Il numero pezzi può essere in una riga orfana successiva concatenata
+    # Keywords espositore: BANCO, DBOX, FSTAND, EXPO, DISPLAY, ESPOSITORE, CESTA
     pattern_parent_banco = re.compile(
         r'^(\d{6})\s+'                       # Codice 6 cifre
-        r'(.+?BANCO.*?)\s+'                  # Descrizione con BANCO
+        r'(.+?(?:BANCO|DBOX|FSTAND|EXPO|DISPLAY|ESPOSITORE|CESTA).*?)\s+'  # Descrizione con keyword espositore
         r'(\d{6})\s+'                        # Codice Materiale
         r'(\d+)\s+'                          # Quantità
         r'PZ'                                # UM
@@ -321,6 +322,15 @@ def extract_angelini(text: str, lines: List[str], pdf_path: str = None) -> List[
         m = pattern_vendita.match(line)
         if m:
             aic_norm = normalize_aic_simple(m.group(1))
+
+            # Parse sconto cascata (es: "33,35+1" -> sconto1=33.35, sconto2=1)
+            sconto_raw = m.group(6)
+            sconti_split = sconto_raw.split('+')
+            sconto1 = parse_decimal(sconti_split[0]) if len(sconti_split) > 0 else 0
+            sconto2 = parse_decimal(sconti_split[1]) if len(sconti_split) > 1 else 0
+            sconto3 = parse_decimal(sconti_split[2]) if len(sconti_split) > 2 else 0
+            sconto4 = parse_decimal(sconti_split[3]) if len(sconti_split) > 3 else 0
+
             righe_raw.append({
                 'codice_aic': aic_norm,
                 'codice_originale': m.group(1),
@@ -329,7 +339,10 @@ def extract_angelini(text: str, lines: List[str], pdf_path: str = None) -> List[
                 'tipo_posizione': '',
                 'quantita': parse_int(m.group(4)),
                 'prezzo_listino': parse_decimal(m.group(5)),
-                'sconto_pct': parse_decimal(m.group(6)),
+                'sconto1': sconto1,
+                'sconto2': sconto2,
+                'sconto3': sconto3,
+                'sconto4': sconto4,
                 'prezzo_netto': parse_decimal(m.group(7)),
                 'aliquota_iva': parse_decimal(m.group(8)),
                 'valore_netto': parse_decimal(m.group(9)),
