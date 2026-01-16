@@ -1,11 +1,11 @@
 #!/bin/bash
 # =============================================================================
-# TO_EXTRACTOR - Setup iniziale Codespaces
+# SERV.O - Setup iniziale Codespaces
 # Eseguire SOLO la prima volta o dopo rebuild container
 # =============================================================================
 
 echo "=========================================="
-echo "  TO_EXTRACTOR - Setup Codespaces"
+echo "  SERV.O - Setup Codespaces"
 echo "=========================================="
 
 # 1. Installa PostgreSQL
@@ -20,21 +20,21 @@ sleep 3
 
 # 3. Configura database
 echo "[3/6] Configurazione database..."
-sudo -u postgres psql -c "CREATE USER to_extractor_user WITH PASSWORD 'to_extractor_pwd';" 2>/dev/null || true
-sudo -u postgres psql -c "CREATE DATABASE to_extractor OWNER to_extractor_user;" 2>/dev/null || true
-sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE to_extractor TO to_extractor_user;" 2>/dev/null || true
+sudo -u postgres psql -c "CREATE USER servo_user WITH PASSWORD 'servo_pwd';" 2>/dev/null || true
+sudo -u postgres psql -c "CREATE DATABASE servo OWNER servo_user;" 2>/dev/null || true
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE servo TO servo_user;" 2>/dev/null || true
 
 # 4. Importa database
 echo "[4/6] Import database..."
-sudo -u postgres psql -d to_extractor -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;" 2>/dev/null
-sudo -u postgres pg_restore -d to_extractor /workspaces/extractor_v2/database_export.dump 2>/dev/null || true
-sudo -u postgres psql -d to_extractor -c "GRANT ALL ON SCHEMA public TO to_extractor_user;" 2>/dev/null
-sudo -u postgres psql -d to_extractor -c "GRANT ALL ON ALL TABLES IN SCHEMA public TO to_extractor_user;" 2>/dev/null
-sudo -u postgres psql -d to_extractor -c "GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO to_extractor_user;" 2>/dev/null
+sudo -u postgres psql -d servo -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;" 2>/dev/null
+sudo -u postgres pg_restore -d servo /workspaces/servo_refactored/database_export.dump 2>/dev/null || true
+sudo -u postgres psql -d servo -c "GRANT ALL ON SCHEMA public TO servo_user;" 2>/dev/null
+sudo -u postgres psql -d servo -c "GRANT ALL ON ALL TABLES IN SCHEMA public TO servo_user;" 2>/dev/null
+sudo -u postgres psql -d servo -c "GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO servo_user;" 2>/dev/null
 
 # 5. Setup Backend
 echo "[5/6] Setup Backend..."
-cd /workspaces/extractor_v2/backend
+cd /workspaces/servo_refactored/backend
 python -m venv venv
 source venv/bin/activate
 pip install --upgrade pip -q
@@ -44,28 +44,28 @@ pip install -r requirements.txt -q
 cat > .env << 'ENVEOF'
 PG_HOST=localhost
 PG_PORT=5432
-PG_DATABASE=to_extractor
-PG_USER=to_extractor_user
-PG_PASSWORD=to_extractor_pwd
+PG_DATABASE=servo
+PG_USER=servo_user
+PG_PASSWORD=servo_pwd
 SECRET_KEY=dev-secret-key-for-codespaces
 DEBUG=true
 ENVEOF
 
 # 6. Setup Frontend
 echo "[6/6] Setup Frontend..."
-cd /workspaces/extractor_v2/frontend
+cd /workspaces/servo_refactored/frontend
 npm install -q
 
 # Reset password admin
 echo ""
 echo "[*] Reset password admin..."
-cd /workspaces/extractor_v2/backend
+cd /workspaces/servo_refactored/backend
 source venv/bin/activate
 python3 -c "
 import bcrypt
 import psycopg2
 h = bcrypt.hashpw(b'admin123', bcrypt.gensalt()).decode()
-c = psycopg2.connect(host='127.0.0.1', database='to_extractor', user='to_extractor_user', password='to_extractor_pwd')
+c = psycopg2.connect(host='127.0.0.1', database='servo', user='servo_user', password='servo_pwd')
 cur = c.cursor()
 cur.execute(\"UPDATE operatori SET password_hash=%s WHERE username='admin'\", (h,))
 c.commit()

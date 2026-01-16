@@ -17,7 +17,7 @@ sleep 2
 
 # 2. Verifica database
 echo "[2/4] Verifica database..."
-PGPASSWORD=to_extractor_pwd psql -h 127.0.0.1 -U to_extractor_user -d to_extractor -c "SELECT COUNT(*) FROM operatori;" > /dev/null 2>&1
+PGPASSWORD=servo_pwd psql -h 127.0.0.1 -U servo_user -d servo -c "SELECT COUNT(*) FROM operatori;" > /dev/null 2>&1
 if [ $? -ne 0 ]; then
     echo "  ⚠ Database non configurato. Esegui prima setup_codespaces.sh"
     exit 1

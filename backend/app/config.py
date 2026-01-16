@@ -24,8 +24,8 @@ class Settings:
     # Database PostgreSQL
     PG_HOST: str = os.getenv("PG_HOST", "localhost")
     PG_PORT: int = int(os.getenv("PG_PORT", "5432"))
-    PG_DATABASE: str = os.getenv("PG_DATABASE", "to_extractor")
-    PG_USER: str = os.getenv("PG_USER", "to_extractor_user")
+    PG_DATABASE: str = os.getenv("PG_DATABASE", "servo")
+    PG_USER: str = os.getenv("PG_USER", "servo_user")
     PG_PASSWORD: str = os.getenv("PG_PASSWORD", "")
 
     # SQLite (mantenuto per compatibilita/migrazione)
