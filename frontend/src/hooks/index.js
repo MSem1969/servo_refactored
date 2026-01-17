@@ -1,9 +1,25 @@
 // =============================================================================
-// SERV.O v7.0 - HOOKS INDEX
+// SERV.O v10.1 - HOOKS INDEX
 // =============================================================================
 
-// Session tracking (esistente)
+// Session tracking
 export { default as useSessionTracking } from './useSessionTracking';
+
+// Base Hooks (v10.1)
+export { useTableSelection } from './useTableSelection';
+export { useMultiModal, useModal } from './useMultiModal';
+export { useFilterState, createFilterHandler } from './useFilterState';
+
+// Utilities (v10.1)
+export {
+  buildQueryParams,
+  filtersToQueryString,
+  parseQueryParams,
+  mergeFilters,
+  createMutation,
+  createSimpleMutation,
+  createIdMutation,
+} from './utils';
 
 // Ordini hooks
 export {
