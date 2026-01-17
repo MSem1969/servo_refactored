@@ -342,20 +342,35 @@ def _insert_order(
         cod_min = para_row['codice_sito'] if para_row else ''
     
     chiave_univoca = generate_order_key(vendor, order_data.get('numero_ordine', 'ND'), cod_min)
-    
+
     # Verifica ordine duplicato
     existing_order = db.execute(
-        "SELECT id_testata FROM ORDINI_TESTATA WHERE chiave_univoca_ordine = ?",
+        "SELECT id_testata, numero_ordine_vendor, ragione_sociale_1, stato FROM ORDINI_TESTATA WHERE chiave_univoca_ordine = %s",
         (chiave_univoca,)
     ).fetchone()
-    
-    is_ordine_dup = True if existing_order else False
-    id_testata_orig = existing_order['id_testata'] if existing_order else None
+
+    # v10.4: Se duplicato, BLOCCA l'inserimento (non creare con suffisso)
+    if existing_order:
+        info_dup = f"Ordine {existing_order['numero_ordine_vendor']} ({vendor}) - {existing_order['ragione_sociale_1']} - Stato: {existing_order['stato']}"
+        result['anomalie'].append(
+            f"ORDINE DUPLICATO BLOCCATO: {order_data.get('numero_ordine')} - Esiste già: {info_dup}"
+        )
+        # Inserisci anomalia nell'acquisizione (non nell'ordine perché non viene creato)
+        db.execute("""
+            INSERT INTO ANOMALIE (id_acquisizione, tipo_anomalia, livello, codice_anomalia, descrizione, valore_anomalo)
+            VALUES (%s, 'DUPLICATO_ORDINE', 'ATTENZIONE', 'DUP-A01', %s, %s)
+        """, (
+            id_acquisizione,
+            f"Ordine duplicato bloccato - stesso vendor, numero ordine e cliente già presente",
+            f"Chiave: {chiave_univoca}, Originale ID: {existing_order['id_testata']}"
+        ))
+        db.commit()
+        return result  # Non creare l'ordine, ritorna subito
+
+    # Se arriviamo qui, l'ordine non è duplicato
+    is_ordine_dup = False
+    id_testata_orig = None
     stato = 'ANOMALIA' if lookup_method == 'NESSUNO' else 'ESTRATTO'
-    
-    # Se duplicato, aggiungi suffisso alla chiave
-    if is_ordine_dup:
-        chiave_univoca = f"{chiave_univoca}_DUP{id_acquisizione}"
     
     # Prepara valori estratti (immutabili)
     ragione_sociale_val = order_data.get('ragione_sociale', '')[:50] if order_data.get('ragione_sociale') else ''
@@ -513,13 +528,6 @@ def _insert_order(
             f"Ordine {order_data.get('numero_ordine')}: lookup score medio ({lookup_score}%) - verifica consigliata"
         )
 
-    if is_ordine_dup:
-        db.execute("""
-            INSERT INTO ANOMALIE (id_testata, tipo_anomalia, livello, descrizione)
-            VALUES (%s, 'DUPLICATO_ORDINE', 'ATTENZIONE', 'Ordine già presente nel sistema')
-        """, (id_testata,))
-        result['anomalie'].append(f"Ordine {order_data.get('numero_ordine')}: duplicato")
-    
     # Inserisci righe dettaglio (con gestione parent-child espositori)
     current_parent_id = None
     for riga in order_data.get('righe', []):

@@ -43,6 +43,13 @@ from .fulfillment import (
     fix_stati_righe,
 )
 
+# Upload functions
+from .uploads import (
+    get_recent_uploads,
+    get_upload_stats,
+    get_vendors,
+)
+
 
 __all__ = [
     # Queries
@@ -70,4 +77,8 @@ __all__ = [
     'ripristina_ordine',
     'crea_o_recupera_supervisione',
     'fix_stati_righe',
+    # Uploads
+    'get_recent_uploads',
+    'get_upload_stats',
+    'get_vendors',
 ]

@@ -46,7 +46,7 @@ export default function OrdineHeader({ ordine, onBack, onShowPdf }) {
         </div>
         <div>
           <span className="text-slate-500">Cliente:</span>
-          <span className="ml-2 font-medium">{ordine?.ragione_sociale || '-'}</span>
+          <span className="ml-2 font-medium">{ordine?.ragione_sociale?.toUpperCase() || '-'}</span>
         </div>
         <div>
           <span className="text-slate-500">Deposito:</span>
@@ -59,7 +59,7 @@ export default function OrdineHeader({ ordine, onBack, onShowPdf }) {
         <div>
           <span className="text-slate-500">Citta:</span>
           <span className="ml-2 font-medium">
-            {ordine?.citta && ordine?.provincia ? `${ordine.citta} (${ordine.provincia})` : '-'}
+            {ordine?.citta && ordine?.provincia ? `${ordine.citta.toUpperCase()} (${ordine.provincia.toUpperCase()})` : '-'}
           </span>
         </div>
         <div>

@@ -602,11 +602,11 @@ function LookupSection({
           </div>
           <div className="col-span-2">
             <span className="text-slate-500">Ragione Sociale:</span>{' '}
-            <span>{ordineData?.ragione_sociale || '-'}</span>
+            <span>{ordineData?.ragione_sociale?.toUpperCase() || '-'}</span>
           </div>
           <div className="col-span-2">
             <span className="text-slate-500">Indirizzo:</span>{' '}
-            <span>{ordineData?.indirizzo || '-'}</span>
+            <span>{ordineData?.indirizzo?.toUpperCase() || '-'}</span>
           </div>
           <div>
             <span className="text-slate-500">CAP:</span>{' '}
@@ -614,11 +614,11 @@ function LookupSection({
           </div>
           <div>
             <span className="text-slate-500">Citta:</span>{' '}
-            <span>{ordineData?.citta || '-'}</span>
+            <span>{ordineData?.citta?.toUpperCase() || '-'}</span>
           </div>
           <div>
             <span className="text-slate-500">Provincia:</span>{' '}
-            <span>{ordineData?.provincia || '-'}</span>
+            <span>{ordineData?.provincia?.toUpperCase() || '-'}</span>
           </div>
         </div>
       </div>
@@ -697,7 +697,7 @@ function LookupSection({
                               <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700">
                                 FARMACIA
                               </span>
-                              <span className="font-medium">{farm.ragione_sociale}</span>
+                              <span className="font-medium">{farm.ragione_sociale?.toUpperCase()}</span>
                               {farm.is_selected && (
                                 <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
                                   Attuale
@@ -750,7 +750,7 @@ function LookupSection({
                               <span className="text-xs px-2 py-0.5 rounded bg-purple-100 text-purple-700">
                                 PARAFARMACIA
                               </span>
-                              <span className="font-medium">{para.ragione_sociale || para.sito_logistico}</span>
+                              <span className="font-medium">{(para.ragione_sociale || para.sito_logistico)?.toUpperCase()}</span>
                               {para.is_selected && (
                                 <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
                                   Attuale
@@ -795,7 +795,7 @@ function LookupSection({
               <div className="flex items-center justify-between">
                 <div>
                   <span className="text-sm font-medium text-green-800">Selezionato:</span>
-                  <span className="ml-2">{selectedResult.ragione_sociale || selectedResult.sito_logistico}</span>
+                  <span className="ml-2">{(selectedResult.ragione_sociale || selectedResult.sito_logistico)?.toUpperCase()}</span>
                   <span className="ml-2 text-xs text-slate-500">
                     ({selectedResult.tipo === 'FARMACIA' ? selectedResult.min_id : selectedResult.codice_sito})
                   </span>
@@ -859,7 +859,7 @@ function LookupSection({
                         }`}>
                           {result.tipo}
                         </span>
-                        <span className="ml-2 font-medium">{result.ragione_sociale}</span>
+                        <span className="ml-2 font-medium">{result.ragione_sociale?.toUpperCase()}</span>
                       </div>
                       <span className="text-xs font-mono text-slate-500">{codice}</span>
                     </div>
@@ -888,7 +888,7 @@ function LookupSection({
               <div className="flex items-center justify-between">
                 <div>
                   <span className="text-sm font-medium text-green-800">Selezionato:</span>
-                  <span className="ml-2">{selectedResult.ragione_sociale}</span>
+                  <span className="ml-2">{selectedResult.ragione_sociale?.toUpperCase()}</span>
                   <span className="ml-2 text-xs text-slate-500">
                     ({selectedResult.tipo === 'FARMACIA' ? selectedResult.min_id : selectedResult.codice_sito})
                   </span>

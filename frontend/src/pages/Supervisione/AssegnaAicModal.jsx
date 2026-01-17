@@ -294,7 +294,7 @@ const AssegnaAicModal = ({
                       <div>
                         <span className="text-slate-500">Cliente:</span>
                         <span className="ml-2 font-medium">
-                          {detail?.ragione_sociale_1 || supervisione?.ragione_sociale || 'N/A'}
+                          {(detail?.ragione_sociale_1 || supervisione?.ragione_sociale)?.toUpperCase() || 'N/A'}
                         </span>
                       </div>
                       <div>

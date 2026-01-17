@@ -89,7 +89,7 @@ export default function DatabasePage({ currentUser, onOpenOrdine }) {
       `ARCHIVIAZIONE DEFINITIVA\n\n` +
       `Vuoi archiviare definitivamente l'ordine?\n\n` +
       `Ordine: ${ordine.numero_ordine_vendor || '-'}\n` +
-      `Cliente: ${ordine.ragione_sociale || '-'}\n` +
+      `Cliente: ${ordine.ragione_sociale?.toUpperCase() || '-'}\n` +
       `Vendor: ${ordine.vendor || '-'}\n\n` +
       `Lo stato diventera EVASO e non sara piu modificabile.`
     );

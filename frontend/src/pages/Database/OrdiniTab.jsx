@@ -161,10 +161,10 @@ export default function OrdiniTab({
                   {ordine.deposito || '-'}
                 </td>
                 <td className="p-2 truncate max-w-[200px] text-xs">
-                  {ordine.ragione_sociale}
+                  {ordine.ragione_sociale?.toUpperCase() || '-'}
                 </td>
                 <td className="p-2 text-xs text-slate-500">
-                  {ordine.citta}
+                  {ordine.citta?.toUpperCase() || '-'}
                 </td>
                 <td className="p-2 text-center text-xs">
                   {ordine.righe_totali || ordine.num_righe || '-'}

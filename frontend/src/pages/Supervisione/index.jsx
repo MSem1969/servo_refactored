@@ -680,7 +680,7 @@ const SupervisioneCard = ({
         {/* Header */}
         <div className="flex items-center gap-3 mb-2">
           <h4 className="font-medium text-slate-800">
-            Ordine #{sup.numero_ordine} - {sup.ragione_sociale}
+            Ordine #{sup.numero_ordine} - {sup.ragione_sociale?.toUpperCase()}
           </h4>
           <VendorBadge vendor={vendorDisplay} size="xs" />
           {isPrezzo ? (
@@ -797,7 +797,7 @@ const SupervisioneDetails = ({ sup, isPrezzo, isListino, isLookup, isAic }) => {
     return (
       <div className="space-y-1">
         <p className="text-slate-600"><strong>Anomalia:</strong> {sup.codice_anomalia}</p>
-        <p className="text-slate-600"><strong>Farmacia estratta:</strong> {sup.ragione_sociale || 'N/A'}</p>
+        <p className="text-slate-600"><strong>Farmacia estratta:</strong> {sup.ragione_sociale?.toUpperCase() || 'N/A'}</p>
         {sup.piva && <p className="text-slate-600"><strong>P.IVA:</strong> {sup.piva}</p>}
         {sup.lookup_score !== undefined && <p className="text-slate-600"><strong>Score:</strong> {sup.lookup_score}%</p>}
       </div>

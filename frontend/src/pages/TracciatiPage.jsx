@@ -358,11 +358,11 @@ const TracciatiPage = () => {
                     </td>
                     <td className="p-3">
                       <div className="max-w-48">
-                        <div className="text-sm font-medium text-slate-800 truncate" title={item.cliente?.ragione_sociale}>
-                          {item.cliente?.ragione_sociale || '-'}
+                        <div className="text-sm font-medium text-slate-800 truncate" title={item.cliente?.ragione_sociale?.toUpperCase()}>
+                          {item.cliente?.ragione_sociale?.toUpperCase() || '-'}
                         </div>
                         <div className="text-xs text-slate-500">
-                          {item.cliente?.citta} {item.cliente?.provincia && `(${item.cliente.provincia})`}
+                          {item.cliente?.citta?.toUpperCase()} {item.cliente?.provincia && `(${item.cliente.provincia.toUpperCase()})`}
                         </div>
                         {item.cliente?.min_id && (
                           <div className="text-xs text-slate-400 font-mono">
