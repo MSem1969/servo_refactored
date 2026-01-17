@@ -20,13 +20,13 @@
 | **FASE 2** | 4.1 Service Layer | ✅ Completato | `9f5f1e7` |
 | | 4.2 Alembic Migrations | ✅ Completato | `285148f` |
 | | 4.3 Test Coverage | ⏳ Da fare | - |
-| | 4.4 Frontend Hooks | ⏳ Da fare | - |
+| | 4.4 Frontend Hooks | ✅ Completato | `1476e5b` |
 | | 4.5 Shared UI Components | ✅ Completato | `8bba9de` |
 | **FASE 3** | 5.1 Error Handling | ⏳ Da fare | - |
 | | 5.2 Logging Improvements | ⏳ Da fare | - |
 | | 5.3 Performance Optimization | ⏳ Da fare | - |
 
-**Progresso complessivo**: FASE 1 ✅ | FASE 2 (3/5) | FASE 3 (0/3)
+**Progresso complessivo**: FASE 1 ✅ | FASE 2 (4/5) | FASE 3 (0/3)
 
 ---
 
@@ -312,6 +312,17 @@ services/
 ├── espositori/         # ~800 LOC - constants, models, detection, processing
 ├── listini/            # ~700 LOC - parsing, queries, import_csv, enrichment
 └── registry.py         # ~270 LOC - ServiceRegistry + DI
+```
+
+### Nuovi Base Hooks Frontend (v10.1)
+```
+hooks/
+├── utils/
+│   ├── buildQueryParams.js  # URL param building utilities
+│   └── createMutation.js    # Mutation factory with auto-invalidation
+├── useTableSelection.js     # Bulk row selection for tables
+├── useMultiModal.js         # Multi-modal state management
+└── useFilterState.js        # Filter state with query params
 ```
 
 ---
