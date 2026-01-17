@@ -1,7 +1,7 @@
 # =============================================================================
-# SERV.O v6.0 - SERVICES PACKAGE
+# SERV.O v10.1 - SERVICES PACKAGE
 # =============================================================================
-# Export principali servizi
+# Export principali servizi con architettura modulare
 # =============================================================================
 
 from .pdf_processor import (
@@ -56,12 +56,32 @@ from .ordini import (
     get_dashboard_stats,
 )
 
+# v10.1: Service Registry with dependency injection
+from .registry import (
+    registry,
+    ServiceRegistry,
+    inject,
+    get_orders_service,
+    get_anomalies_service,
+    get_supervision_service,
+    get_extraction_service,
+    get_export_service,
+    get_lookup_service,
+    get_listini_service,
+    get_espositori_service,
+)
+
+# v10.1: Modular service packages
+from . import anomalies
+from . import espositori
+from . import listini
+
 __all__ = [
     # PDF Processor
     'process_pdf',
     'get_recent_uploads',
     'get_upload_stats',
-    
+
     # Lookup
     'lookup_farmacia',
     'run_lookup_batch',
@@ -71,7 +91,7 @@ __all__ = [
     'search_parafarmacie',
     'fuzzy_match_address',
     'fuzzy_match_full',
-    
+
     # Tracciati
     'generate_tracciati_per_ordine',
     'get_tracciato_preview',
@@ -80,7 +100,7 @@ __all__ = [
     'get_file_tracciato',
     'generate_to_t_line',
     'generate_to_d_line',
-    
+
     # Anagrafica
     'import_anagrafica_farmacie',
     'import_anagrafica_parafarmacie',
@@ -92,7 +112,7 @@ __all__ = [
     'get_farmacia_by_piva',
     'clear_anagrafica_farmacie',
     'clear_anagrafica_parafarmacie',
-    
+
     # Ordini
     'get_ordini',
     'get_ordine_detail',
@@ -103,4 +123,22 @@ __all__ = [
     'get_anomalie_by_ordine',
     'update_anomalia_stato',
     'get_dashboard_stats',
+
+    # Service Registry (v10.1)
+    'registry',
+    'ServiceRegistry',
+    'inject',
+    'get_orders_service',
+    'get_anomalies_service',
+    'get_supervision_service',
+    'get_extraction_service',
+    'get_export_service',
+    'get_lookup_service',
+    'get_listini_service',
+    'get_espositori_service',
+
+    # Modular packages (v10.1)
+    'anomalies',
+    'espositori',
+    'listini',
 ]
