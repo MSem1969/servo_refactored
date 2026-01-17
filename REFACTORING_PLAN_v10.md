@@ -4,6 +4,32 @@
 
 ---
 
+## 📊 STATO AVANZAMENTO
+
+**Ultimo aggiornamento**: 2026-01-17
+
+| Fase | Task | Stato | Commit |
+|------|------|-------|--------|
+| **FASE 1** | 3.1 Remove supervisione.py | ✅ Completato | `0a8bd5c` |
+| | 3.2 Split ml_pattern_matching | ✅ Completato | `0a8bd5c` |
+| | 3.3 Split pdf_processor | ✅ Completato | `0a8bd5c` |
+| | 3.4 Repository Layer | ✅ Completato | `0a8bd5c` |
+| | 3.5 Split Settings | ✅ Completato | `0a8bd5c` |
+| | 3.6 Split Supervisione | ✅ Completato | `0a8bd5c` |
+| | 3.7 Split api.js | ✅ Completato | `0a8bd5c` |
+| **FASE 2** | 4.1 Service Layer | ✅ Completato | `9f5f1e7` |
+| | 4.2 Alembic Migrations | ✅ Completato | `285148f` |
+| | 4.3 Test Coverage | ⏳ Da fare | - |
+| | 4.4 Frontend Hooks | ⏳ Da fare | - |
+| | 4.5 Shared UI Components | ✅ Completato | `8bba9de` |
+| **FASE 3** | 5.1 Error Handling | ⏳ Da fare | - |
+| | 5.2 Logging Improvements | ⏳ Da fare | - |
+| | 5.3 Performance Optimization | ⏳ Da fare | - |
+
+**Progresso complessivo**: FASE 1 ✅ | FASE 2 (3/5) | FASE 3 (0/3)
+
+---
+
 ## 1. RIEPILOGO ESECUTIVO
 
 ### Stato Attuale
@@ -264,10 +290,10 @@ FASE 3 (Optimization)
 ## 7. METRICHE DI SUCCESSO
 
 ### Code Quality
-- [ ] Nessun file backend > 600 righe
+- [x] Nessun file backend > 600 righe *(FASE 1 completata)*
 - [ ] Nessun file frontend > 400 righe
-- [ ] Zero import inutilizzati
-- [ ] Zero deprecation warnings
+- [x] Zero import inutilizzati *(supervisione.py rimosso)*
+- [x] Zero deprecation warnings *(supervisione.py rimosso)*
 
 ### Testing
 - [ ] Backend coverage > 60%
@@ -275,9 +301,18 @@ FASE 3 (Optimization)
 - [ ] Integration tests critical paths
 
 ### Architecture
-- [ ] Services isolati e testabili
-- [ ] Repository pattern completo
+- [x] Services isolati e testabili *(Service Layer v10.1)*
+- [x] Repository pattern completo *(persistence/repositories/)*
 - [ ] Error handling consistente
+
+### Nuovi Moduli Service Layer (v10.1)
+```
+services/
+├── anomalies/          # ~960 LOC - queries, commands, detection
+├── espositori/         # ~800 LOC - constants, models, detection, processing
+├── listini/            # ~700 LOC - parsing, queries, import_csv, enrichment
+└── registry.py         # ~270 LOC - ServiceRegistry + DI
+```
 
 ---
 
