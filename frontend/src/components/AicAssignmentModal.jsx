@@ -266,18 +266,19 @@ const AicAssignmentModal = ({
         );
       }
 
-      if (response.success) {
-        setResult(response.data || response);
+      if (response.success || response.approvata) {
+        setResult(response);
 
         // Costruisci messaggio di successo
+        // v11.0: response è già il data object (API fa .then(r => r.data))
         const successMessage = isBulk
           ? `AIC ${codiceAic} assegnato a ${response.supervisioni_approvate || 0} supervisioni. Righe: ${response.righe_aggiornate || 0}`
-          : `AIC ${codiceAic} assegnato. Righe aggiornate: ${response.data?.righe_aggiornate || response.righe_propagate || 0}`;
+          : `AIC ${codiceAic} assegnato. Righe aggiornate: ${response.righe_aggiornate || 0}`;
 
         // Attendi per mostrare il risultato
         setTimeout(() => {
           onSuccess?.({
-            ...(response.data || response),
+            ...response,
             codice_aic: codiceAic,
             message: successMessage,
           });

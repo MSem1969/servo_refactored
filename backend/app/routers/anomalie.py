@@ -381,6 +381,7 @@ async def dettaglio_anomalia(id_anomalia: int) -> Dict[str, Any]:
         db = get_db()
 
         # Recupera anomalia
+        # v11.0: Aggiunto descrizione_prodotto da ordini_dettaglio
         anomalia = db.execute("""
             SELECT
                 an.*,
@@ -388,11 +389,13 @@ async def dettaglio_anomalia(id_anomalia: int) -> Dict[str, Any]:
                 ot.numero_ordine_vendor AS numero_ordine,
                 ot.ragione_sociale_1 AS ragione_sociale,
                 ot.data_ordine,
-                a.nome_file_originale AS pdf_file
+                a.nome_file_originale AS pdf_file,
+                od.descrizione AS descrizione_prodotto
             FROM anomalie an
             LEFT JOIN ordini_testata ot ON an.id_testata = ot.id_testata
             LEFT JOIN vendor v ON ot.id_vendor = v.id_vendor
             LEFT JOIN acquisizioni a ON COALESCE(an.id_acquisizione, ot.id_acquisizione) = a.id_acquisizione
+            LEFT JOIN ordini_dettaglio od ON an.id_dettaglio = od.id_dettaglio
             WHERE an.id_anomalia = ?
         """, (id_anomalia,)).fetchone()
 

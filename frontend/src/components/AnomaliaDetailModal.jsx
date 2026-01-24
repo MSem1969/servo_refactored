@@ -226,6 +226,7 @@ export function AnomaliaDetailModal({
               {/* Info Anomalia */}
               <AnomaliaInfo
                 anomalia={anomaliaDetail.anomalia}
+                rigaParent={anomaliaDetail.riga_parent}
                 onOpenOrdine={onOpenOrdine}
                 onClose={handleClose}
               />
@@ -404,8 +405,14 @@ export function AnomaliaDetailModal({
 }
 
 // Sub-componente: Info Anomalia
-function AnomaliaInfo({ anomalia, onOpenOrdine, onClose }) {
+function AnomaliaInfo({ anomalia, rigaParent, onOpenOrdine, onClose }) {
   if (!anomalia) return null;
+
+  // v11.0: Usa livello corretto (livello > livello_anomalia > severita)
+  const severita = anomalia.livello || anomalia.livello_anomalia || anomalia.severita || 'INFO';
+
+  // v11.0: Descrizione prodotto da anomalia o da riga parent
+  const descrizioneProdotto = anomalia.descrizione_prodotto || rigaParent?.descrizione;
 
   return (
     <div className="bg-slate-50 rounded-lg p-4">
@@ -428,8 +435,15 @@ function AnomaliaInfo({ anomalia, onOpenOrdine, onClose }) {
         </div>
         <div>
           <span className="text-slate-500">Severita:</span>{' '}
-          <SeveritaBadge severita={anomalia.severita || 'INFO'} />
+          <SeveritaBadge severita={severita} />
         </div>
+        {/* v11.0: Descrizione prodotto separata */}
+        {descrizioneProdotto && (
+          <div className="col-span-2">
+            <span className="text-slate-500">Prodotto:</span>{' '}
+            <span className="font-medium uppercase">{descrizioneProdotto}</span>
+          </div>
+        )}
         <div className="col-span-2">
           <span className="text-slate-500">Descrizione:</span>{' '}
           <span>{anomalia.descrizione}</span>
