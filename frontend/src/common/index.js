@@ -30,5 +30,17 @@ export {
   Toggle,
 } from './FormField';
 
+// Riga Edit Form (v11.0 TIER 3.1)
+export {
+  default as RigaEditForm,
+  QuantitaSection,
+  PrezziSection,
+  IdentificazioneSection,
+  NoteSection,
+  FormInput,
+  FormTextarea,
+  FormDisplay,
+} from './RigaEditForm';
+
 // Anomalie Utils (condiviso)
 export * from './anomalieUtils';
