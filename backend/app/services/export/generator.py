@@ -569,6 +569,19 @@ def valida_e_genera_tracciato(
         # Nessuna riga evasa - mantieni stato precedente
         stato_ordine = ordine_dict.get('stato', 'ESTRATTO')
 
+    # v11.0: Chiudi anomalie INFO e ATTENZIONE quando ordine viene validato
+    # Le anomalie ERRORE e CRITICO devono essere risolte manualmente prima della validazione
+    db.execute("""
+        UPDATE anomalie
+        SET stato = 'RISOLTA',
+            risolto_da = %s,
+            data_risoluzione = %s,
+            note_risoluzione = COALESCE(note_risoluzione || ' | ', '') || 'Chiusa automaticamente con validazione ordine'
+        WHERE id_testata = %s
+          AND stato IN ('APERTA', 'IN_GESTIONE')
+          AND livello IN ('INFO', 'ATTENZIONE')
+    """, (operatore, now.isoformat(), id_testata))
+
     db.commit()
 
     log_operation('VALIDA_TRACCIATO', 'ORDINI_TESTATA', id_testata,
