@@ -96,18 +96,47 @@ SET session_replication_role = DEFAULT;
 -- =============================================================================
 -- 11. RESET SEQUENZE (ID ripartono da 1)
 -- =============================================================================
-ALTER SEQUENCE IF EXISTS anomalie_id_anomalia_seq RESTART WITH 1;
-ALTER SEQUENCE IF EXISTS ordini_testata_id_testata_seq RESTART WITH 1;
-ALTER SEQUENCE IF EXISTS ordini_dettaglio_id_dettaglio_seq RESTART WITH 1;
+-- Acquisizioni
 ALTER SEQUENCE IF EXISTS acquisizioni_id_acquisizione_seq RESTART WITH 1;
-ALTER SEQUENCE IF EXISTS tracciati_id_tracciato_seq RESTART WITH 1;
-ALTER SEQUENCE IF EXISTS esportazioni_id_esportazione_seq RESTART WITH 1;
-ALTER SEQUENCE IF EXISTS crm_tickets_id_ticket_seq RESTART WITH 1;
+
+-- Anomalie
+ALTER SEQUENCE IF EXISTS anomalie_id_anomalia_seq RESTART WITH 1;
+
+-- Audit e Log
+ALTER SEQUENCE IF EXISTS audit_modifiche_id_audit_seq RESTART WITH 1;
+ALTER SEQUENCE IF EXISTS log_criteri_applicati_id_log_seq RESTART WITH 1;
+ALTER SEQUENCE IF EXISTS log_operazioni_id_log_seq RESTART WITH 1;
+ALTER SEQUENCE IF EXISTS operatore_azioni_log_id_azione_seq RESTART WITH 1;
+
+-- CRM
+ALTER SEQUENCE IF EXISTS crm_allegati_id_allegato_seq RESTART WITH 1;
 ALTER SEQUENCE IF EXISTS crm_messaggi_id_messaggio_seq RESTART WITH 1;
+ALTER SEQUENCE IF EXISTS crm_tickets_id_ticket_seq RESTART WITH 1;
+
+-- Email
+ALTER SEQUENCE IF EXISTS email_acquisizioni_id_email_seq RESTART WITH 1;
+
+-- Esportazioni e Tracciati
+ALTER SEQUENCE IF EXISTS esportazioni_dettaglio_id_seq RESTART WITH 1;
+ALTER SEQUENCE IF EXISTS esportazioni_id_esportazione_seq RESTART WITH 1;
+ALTER SEQUENCE IF EXISTS tracciati_dettaglio_id_seq RESTART WITH 1;
+ALTER SEQUENCE IF EXISTS tracciati_id_tracciato_seq RESTART WITH 1;
+
+-- Ordini
+ALTER SEQUENCE IF EXISTS ordini_dettaglio_id_dettaglio_seq RESTART WITH 1;
+ALTER SEQUENCE IF EXISTS ordini_testata_id_testata_seq RESTART WITH 1;
+
+-- Sessioni
+ALTER SEQUENCE IF EXISTS sessione_attivita_id_seq RESTART WITH 1;
+ALTER SEQUENCE IF EXISTS user_sessions_id_session_seq RESTART WITH 1;
+
+-- Supervisione (tutti i tipi)
+ALTER SEQUENCE IF EXISTS supervisione_aic_id_supervisione_seq RESTART WITH 1;
 ALTER SEQUENCE IF EXISTS supervisione_espositore_id_supervisione_seq RESTART WITH 1;
 ALTER SEQUENCE IF EXISTS supervisione_listino_id_supervisione_seq RESTART WITH 1;
 ALTER SEQUENCE IF EXISTS supervisione_lookup_id_supervisione_seq RESTART WITH 1;
-ALTER SEQUENCE IF EXISTS supervisione_aic_id_supervisione_seq RESTART WITH 1;
+ALTER SEQUENCE IF EXISTS supervisione_prezzo_id_supervisione_seq RESTART WITH 1;
+ALTER SEQUENCE IF EXISTS supervisione_unificata_id_supervisione_seq RESTART WITH 1;
 
 -- =============================================================================
 -- VERIFICA RESET

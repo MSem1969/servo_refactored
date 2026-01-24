@@ -169,9 +169,9 @@ async def reset_sistema(
             # 8. Acquisizioni
             "email_acquisizioni",
             "acquisizioni",
-            # 9. Sessioni
+            # 9. Sessioni - NOTA: user_sessions NON viene svuotata per mantenere login attivo
             "sessione_attivita",
-            "user_sessions",
+            # "user_sessions",  # v11.0: Commentato per preservare sessioni attive dopo reset
         ]
 
         deleted_counts = {}
@@ -203,25 +203,48 @@ async def reset_sistema(
             print(f"❌ Errore DELETE: {e}")
             raise HTTPException(500, f"Errore DELETE: {str(e)}")
 
-        # v10.5: Reset sequenze (ID ripartono da 1)
+        # v11.0: Reset TUTTE le sequenze (ID ripartono da 1)
         sequences_to_reset = [
-            "anomalie_id_anomalia_seq",
-            "ordini_testata_id_testata_seq",
-            "ordini_dettaglio_id_dettaglio_seq",
+            # Acquisizioni
             "acquisizioni_id_acquisizione_seq",
-            "tracciati_id_tracciato_seq",
-            "esportazioni_id_esportazione_seq",
-            "crm_tickets_id_ticket_seq",
+            # Anomalie
+            "anomalie_id_anomalia_seq",
+            # Audit e Log
+            "audit_modifiche_id_audit_seq",
+            "log_criteri_applicati_id_log_seq",
+            "log_operazioni_id_log_seq",
+            "operatore_azioni_log_id_azione_seq",
+            # CRM
+            "crm_allegati_id_allegato_seq",
             "crm_messaggi_id_messaggio_seq",
+            "crm_tickets_id_ticket_seq",
+            # Email
+            "email_acquisizioni_id_email_seq",
+            # Esportazioni e Tracciati
+            "esportazioni_dettaglio_id_seq",
+            "esportazioni_id_esportazione_seq",
+            "tracciati_dettaglio_id_seq",
+            "tracciati_id_tracciato_seq",
+            # Ordini
+            "ordini_dettaglio_id_dettaglio_seq",
+            "ordini_testata_id_testata_seq",
+            # Sessioni - solo attività, non user_sessions per preservare login
+            "sessione_attivita_id_seq",
+            # "user_sessions_id_session_seq",  # v11.0: Preservato per mantenere sessioni
+            # Supervisione (tutti i tipi)
+            "supervisione_aic_id_supervisione_seq",
             "supervisione_espositore_id_supervisione_seq",
             "supervisione_listino_id_supervisione_seq",
             "supervisione_lookup_id_supervisione_seq",
-            "supervisione_aic_id_supervisione_seq",
+            "supervisione_prezzo_id_supervisione_seq",
+            "supervisione_unificata_id_supervisione_seq",
         ]
 
+        sequences_reset = 0
         for seq in sequences_to_reset:
             try:
                 db.execute(f"ALTER SEQUENCE IF EXISTS {seq} RESTART WITH 1")
+                sequences_reset += 1
             except Exception:
                 pass  # Ignora se sequenza non esiste
 
@@ -230,8 +253,9 @@ async def reset_sistema(
 
         return {
             "success": True,
-            "message": "Reset completato. Preservati: utenti, anagrafiche (farmacie, parafarmacie, clienti), listini, vendor, configurazioni. Sequenze resettate.",
-            "deleted": deleted_counts
+            "message": f"Reset completato. Preservati: utenti, anagrafiche, listini, vendor, configurazioni. {sequences_reset} sequenze resettate (ID ripartono da 1).",
+            "deleted": deleted_counts,
+            "sequences_reset": sequences_reset
         }
     except Exception as e:
         raise HTTPException(500, f"Errore reset: {str(e)}")
