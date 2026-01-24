@@ -101,7 +101,7 @@ async def get_supervisione_aic_detail(id_supervisione: int):
                ot.numero_ordine_vendor,
                ot.ragione_sociale_1,
                ot.data_ordine,
-               ot.min_id,
+               ot.codice_ministeriale_estratto as min_id,
                od.descrizione as descrizione_dettaglio,
                od.q_venduta,
                od.prezzo_netto

@@ -1,7 +1,8 @@
 # =============================================================================
-# SERV.O v8.1 - SUPERVISIONE ESPOSITORE
+# SERV.O v11.0 - SUPERVISIONE ESPOSITORE
 # =============================================================================
 # Endpoint per gestione supervisione espositori e workflow ordine
+# v11.0: Auto-detect supervision type per unified approval endpoint
 # =============================================================================
 
 from typing import Optional
@@ -14,10 +15,36 @@ from ...services.supervisione import (
     modifica_supervisione,
     get_supervisioni_per_ordine,
 )
+from ...services.supervision.lookup import approva_supervisione_lookup, rifiuta_supervisione_lookup
 from .schemas import DecisioneApprova, DecisioneRifiuta, DecisioneModifica
 
 
 router = APIRouter(tags=["Supervisione Espositore"])
+
+
+def detect_supervision_type(db, id_supervisione: int) -> Optional[str]:
+    """
+    Rileva il tipo di supervisione cercando in tutte le tabelle.
+    Ritorna: 'espositore', 'lookup', 'listino', 'prezzo', 'aic' o None
+    """
+    tables = [
+        ('supervisione_espositore', 'espositore'),
+        ('supervisione_lookup', 'lookup'),
+        ('supervisione_listino', 'listino'),
+        ('supervisione_prezzo', 'prezzo'),
+        ('supervisione_aic', 'aic'),
+    ]
+    for table, tipo in tables:
+        try:
+            result = db.execute(
+                f"SELECT 1 FROM {table} WHERE id_supervisione = %s",
+                (id_supervisione,)
+            ).fetchone()
+            if result:
+                return tipo
+        except Exception:
+            continue
+    return None
 
 
 # =============================================================================
@@ -68,7 +95,10 @@ async def get_supervisioni_ordine(id_testata: int):
 @router.post("/{id_supervisione}/approva", summary="Approva supervisione")
 async def approva(id_supervisione: int, decisione: DecisioneApprova):
     """
-    Approva una supervisione.
+    Approva una supervisione (auto-detect tipo).
+
+    v11.0: Rileva automaticamente il tipo di supervisione e chiama
+    l'handler corretto (espositore, lookup, listino, prezzo, aic).
 
     Effetti:
     - Stato -> APPROVED
@@ -76,18 +106,43 @@ async def approva(id_supervisione: int, decisione: DecisioneApprova):
     - Se pattern raggiunge soglia (5), diventa ordinario
     - Sblocca ordine se era l'ultima pending
     """
-    success = approva_supervisione(
-        id_supervisione,
-        decisione.operatore,
-        decisione.note
-    )
+    db = get_db()
+    tipo = detect_supervision_type(db, id_supervisione)
+
+    if not tipo:
+        raise HTTPException(status_code=404, detail="Supervisione non trovata")
+
+    success = False
+
+    if tipo == 'espositore':
+        success = approva_supervisione(
+            id_supervisione,
+            decisione.operatore,
+            decisione.note
+        )
+    elif tipo == 'lookup':
+        # Per lookup, approva con dati esistenti (farmacia già suggerita)
+        success = approva_supervisione_lookup(
+            id_supervisione,
+            decisione.operatore,
+            min_id=None,  # Usa quello già presente nell'ordine
+            id_farmacia=None,
+            note=decisione.note
+        )
+    elif tipo in ('listino', 'prezzo', 'aic'):
+        # Per altri tipi, usa endpoint specifici
+        raise HTTPException(
+            status_code=400,
+            detail=f"Usa endpoint specifico per supervisione {tipo}"
+        )
 
     if not success:
-        raise HTTPException(status_code=404, detail="Supervisione non trovata")
+        raise HTTPException(status_code=500, detail="Errore durante l'approvazione")
 
     return {
         "success": True,
         "id_supervisione": id_supervisione,
+        "tipo": tipo,
         "azione": "APPROVED",
         "operatore": decisione.operatore
     }

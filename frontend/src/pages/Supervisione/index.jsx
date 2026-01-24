@@ -483,15 +483,21 @@ const GroupedView = ({
                 </div>
                 <p className="text-sm text-slate-600 mb-2">
                   {/* v10.4: Mostra descrizione prodotto per LISTINO/AIC, altrimenti pattern */}
-                  {group.descrizione_prodotto
-                    ? `${group.codice_aic || ''} - ${group.descrizione_prodotto}`.trim()
-                    : (group.pattern_descrizione || `Pattern: ${group.pattern_signature?.substring(0, 12)}...`)}
+                  {/* v11.0: Per LOOKUP mostra ragione_sociale cliente per distinguere i pattern */}
+                  {group.tipo_supervisione === 'lookup'
+                    ? `Cliente: ${(group.descrizione_prodotto || 'N/A').toUpperCase()}`
+                    : group.descrizione_prodotto
+                      ? `${group.codice_aic || ''} - ${group.descrizione_prodotto}`.trim()
+                      : (group.pattern_descrizione || `Pattern: ${group.pattern_signature?.substring(0, 12)}...`)}
                 </p>
                 <div className="flex flex-wrap gap-4 text-sm text-slate-500">
                   <span><strong>{group.total_count}</strong> supervisioni</span>
                   <span><strong>{group.affected_order_ids?.length || 0}</strong> ordini</span>
-                  <span className="truncate max-w-md" title={group.affected_orders_preview}>
-                    Ordini: {group.affected_orders_preview || 'N/A'}
+                  <span className="truncate max-w-md" title={Array.isArray(group.affected_orders_preview) ? group.affected_orders_preview.join(' | ') : group.affected_orders_preview}>
+                    {/* v11.0: Separatore "|" tra ordini */}
+                    Ordini: {Array.isArray(group.affected_orders_preview)
+                      ? group.affected_orders_preview.join(' | ')
+                      : (group.affected_orders_preview || 'N/A').toString().replace(/,\s*/g, ' | ')}
                   </span>
                 </div>
               </div>

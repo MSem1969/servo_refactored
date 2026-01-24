@@ -36,11 +36,12 @@ export const supervisioneApi = {
   getCriteriOrdinari: () => api.get('/supervisione/criteri/ordinari').then(r => r.data),
   getCriteriTutti: () => api.get('/supervisione/criteri/tutti').then(r => r.data),
   getCriteriStats: () => api.get('/supervisione/criteri/stats').then(r => r.data),
-  getPattern: (signature) => api.get(`/supervisione/criteri/${signature}`).then(r => r.data),
+  // v11.0: URL encode signature per evitare problemi con caratteri speciali
+  getPattern: (signature) => api.get(`/supervisione/criteri/${encodeURIComponent(signature)}`).then(r => r.data),
   resetPattern: (signature, operatore) =>
-    api.post(`/supervisione/criteri/${signature}/reset?operatore=${encodeURIComponent(operatore)}`).then(r => r.data),
+    api.post(`/supervisione/criteri/${encodeURIComponent(signature)}/reset?operatore=${encodeURIComponent(operatore)}`).then(r => r.data),
   promuoviPattern: (signature, operatore) =>
-    api.post(`/supervisione/criteri/${signature}/promuovi?operatore=${encodeURIComponent(operatore)}`).then(r => r.data),
+    api.post(`/supervisione/criteri/${encodeURIComponent(signature)}/promuovi?operatore=${encodeURIComponent(operatore)}`).then(r => r.data),
 
   // === STORICO ===
   getStorico: (limit = 50) => api.get(`/supervisione/criteri/storico/applicazioni?limit=${limit}`).then(r => r.data),
