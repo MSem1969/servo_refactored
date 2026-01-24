@@ -1,15 +1,15 @@
 // =============================================================================
 // UTENTI API
 // =============================================================================
+// v11.0: TIER 3.2 - Usa buildQueryParams centralizzato
+// =============================================================================
 
 import api from './client';
+import { buildQueryParams } from '../hooks/utils';
 
 export const utentiApi = {
   getList: (params = {}) => {
-    const searchParams = new URLSearchParams();
-    Object.entries(params).forEach(([k, v]) => {
-      if (v !== undefined && v !== null && v !== '') searchParams.append(k, String(v));
-    });
+    const searchParams = buildQueryParams(params);
     return api.get(`/utenti?${searchParams}`).then(r => r.data);
   },
 
@@ -26,10 +26,7 @@ export const utentiApi = {
   enable: (id) => api.post(`/utenti/${id}/riabilita`).then(r => r.data),
 
   getLogs: (id, params = {}) => {
-    const searchParams = new URLSearchParams();
-    Object.entries(params).forEach(([k, v]) => {
-      if (v !== undefined && v !== null && v !== '') searchParams.append(k, String(v));
-    });
+    const searchParams = buildQueryParams(params);
     return api.get(`/utenti/${id}/logs?${searchParams}`).then(r => r.data);
   },
 

@@ -1,15 +1,15 @@
 // =============================================================================
 // ANOMALIE API - v8.2
 // =============================================================================
+// v11.0: TIER 3.2 - Usa buildQueryParams centralizzato
+// =============================================================================
 
 import api from './client';
+import { buildQueryParams } from '../hooks/utils';
 
 export const anomalieApi = {
   getList: (filters = {}) => {
-    const params = new URLSearchParams();
-    Object.entries(filters).forEach(([k, v]) => {
-      if (v !== undefined && v !== null && v !== '') params.append(k, String(v));
-    });
+    const params = buildQueryParams(filters);
     return api.get(`/anomalie?${params}`).then(r => r.data);
   },
 
@@ -26,8 +26,7 @@ export const anomalieApi = {
   modificaRiga: (id, data) => api.put(`/anomalie/dettaglio/${id}/riga`, data).then(r => r.data),
   // v10.6: note è query param, non body
   risolviDettaglio: (id, options = {}) => {
-    const params = new URLSearchParams();
-    if (options.note) params.append('note', options.note);
+    const params = buildQueryParams({ note: options.note });
     return api.post(`/anomalie/dettaglio/${id}/risolvi?${params}`).then(r => r.data);
   },
 

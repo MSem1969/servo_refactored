@@ -1,8 +1,11 @@
 // =============================================================================
 // EMAIL CONFIG API
 // =============================================================================
+// v11.0: TIER 3.2 - Usa buildQueryParams centralizzato
+// =============================================================================
 
 import api from './client';
+import { buildQueryParams } from '../hooks/utils';
 
 export const emailApi = {
   // Configurazione completa (senza password, solo flag se configurate)
@@ -26,10 +29,7 @@ export const emailApi = {
 
   // Log email inviate
   getLog: (params = {}) => {
-    const searchParams = new URLSearchParams();
-    Object.entries(params).forEach(([k, v]) => {
-      if (v !== undefined && v !== null && v !== '') searchParams.append(k, String(v));
-    });
+    const searchParams = buildQueryParams(params);
     return api.get(`/email/log?${searchParams}`).then(r => r.data);
   },
 

@@ -1,8 +1,11 @@
 // =============================================================================
 // BACKUP API
 // =============================================================================
+// v11.0: TIER 3.2 - Usa buildQueryParams centralizzato
+// =============================================================================
 
 import api from './client';
+import { buildQueryParams } from '../hooks/utils';
 
 export const backupApi = {
   // === MODULI ===
@@ -46,10 +49,7 @@ export const backupApi = {
 
   // Storico backup eseguiti
   getHistory: (params = {}) => {
-    const searchParams = new URLSearchParams();
-    Object.entries(params).forEach(([k, v]) => {
-      if (v !== undefined && v !== null && v !== '') searchParams.append(k, String(v));
-    });
+    const searchParams = buildQueryParams(params);
     return api.get(`/backup/history?${searchParams}`).then(r => r.data);
   },
 

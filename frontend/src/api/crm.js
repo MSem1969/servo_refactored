@@ -1,18 +1,18 @@
 // =============================================================================
 // CRM API
 // =============================================================================
+// v11.0: TIER 3.2 - Usa buildQueryParams centralizzato
+// =============================================================================
 
 import api from './client';
+import { buildQueryParams } from '../hooks/utils';
 
 export const crmApi = {
   // === TICKETS ===
 
   // Lista ticket (admin vede tutti, user solo propri)
   getTickets: (filters = {}) => {
-    const params = new URLSearchParams();
-    Object.entries(filters).forEach(([k, v]) => {
-      if (v !== undefined && v !== null && v !== '') params.append(k, String(v));
-    });
+    const params = buildQueryParams(filters);
     return api.get(`/crm/tickets?${params}`).then(r => r.data);
   },
 

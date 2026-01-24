@@ -1,8 +1,11 @@
 // =============================================================================
 // MAIL MONITOR API
 // =============================================================================
+// v11.0: TIER 3.2 - Usa buildQueryParams centralizzato
+// =============================================================================
 
 import api from './client';
+import { buildQueryParams } from '../hooks/utils';
 
 export const mailApi = {
   // Stato e configurazione Mail Monitor
@@ -13,10 +16,7 @@ export const mailApi = {
 
   // Lista email scaricate (con paginazione e filtri)
   getEmails: (params = {}) => {
-    const searchParams = new URLSearchParams();
-    Object.entries(params).forEach(([k, v]) => {
-      if (v !== undefined && v !== null && v !== '') searchParams.append(k, String(v));
-    });
+    const searchParams = buildQueryParams(params);
     return api.get(`/mail/emails?${searchParams}`).then(r => r.data);
   },
 

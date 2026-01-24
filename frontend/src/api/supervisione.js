@@ -1,8 +1,11 @@
 // =============================================================================
 // SUPERVISIONE API
 // =============================================================================
+// v11.0: TIER 3.2 - Usa buildQueryParams centralizzato
+// =============================================================================
 
 import api from './client';
+import { buildQueryParams } from '../hooks/utils';
 
 export const supervisioneApi = {
   // === SUPERVISIONI PENDING ===
@@ -80,8 +83,7 @@ export const supervisioneApi = {
   rifiutaAic: (id, operatore, note) =>
     api.post(`/supervisione/aic/${id}/rifiuta`, { operatore, note }).then(r => r.data),
   searchAic: (descrizione, vendor = null) => {
-    const params = new URLSearchParams({ descrizione });
-    if (vendor) params.append('vendor', vendor);
+    const params = buildQueryParams({ descrizione, vendor });
     return api.get(`/supervisione/aic/search-aic?${params}`).then(r => r.data);
   },
   getAicStats: () => api.get('/supervisione/aic/stats').then(r => r.data),
@@ -102,9 +104,7 @@ export const supervisioneApi = {
     }).then(r => r.data),
 
   getStoricoModificheAic: (codiceAic = null, limit = 50) => {
-    const params = new URLSearchParams();
-    if (codiceAic) params.append('codice_aic', codiceAic);
-    params.append('limit', limit);
+    const params = buildQueryParams({ codice_aic: codiceAic, limit });
     return api.get(`/supervisione/aic/storico-modifiche?${params}`).then(r => r.data);
   },
 };
