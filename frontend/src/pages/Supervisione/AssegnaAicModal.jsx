@@ -1,6 +1,11 @@
 // =============================================================================
 // SERV.O v9.0 - ASSEGNA AIC MODAL
 // =============================================================================
+// @deprecated v11.0 - Usa AicAssignmentModal da components/ invece
+// Questo file è mantenuto per retrocompatibilità ma non è più in uso.
+// Per nuove implementazioni usare:
+//   import { AicAssignmentModal, AIC_MODAL_MODES } from '../../components/AicAssignmentModal';
+// =============================================================================
 // Modale per assegnazione codice AIC a prodotti con anomalia AIC-A01
 // =============================================================================
 

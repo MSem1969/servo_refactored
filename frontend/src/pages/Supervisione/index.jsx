@@ -10,7 +10,8 @@ import { Button, StatusBadge, VendorBadge, Loading } from '../../common';
 import { useSupervisione } from './hooks/useSupervisione';
 import CorrezioneLisinoModal from './CorrezioneLisinoModal';
 import ArchiviazioneListinoModal from './ArchiviazioneListinoModal';
-import AssegnaAicModal from './AssegnaAicModal'; // v9.0
+// v11.0: Usa AicAssignmentModal unificato (TIER 2.1)
+import { AicAssignmentModal, AIC_MODAL_MODES } from '../../components/AicAssignmentModal';
 
 /**
  * Componente SupervisionePage
@@ -281,10 +282,11 @@ const SupervisionePage = ({
         onSuccess={handleListinoSuccess}
       />
 
-      {/* v9.0: Modale AIC */}
-      <AssegnaAicModal
+      {/* v11.0: AicAssignmentModal unificato (TIER 2.1) */}
+      <AicAssignmentModal
         isOpen={aicModal.isOpen}
         onClose={handleCloseAic}
+        mode={aicModal.supervisione?.is_bulk ? AIC_MODAL_MODES.SUPERVISIONE_BULK : AIC_MODAL_MODES.SUPERVISIONE_SINGOLA}
         supervisione={aicModal.supervisione}
         operatore={operatore}
         onSuccess={handleAicSuccess}

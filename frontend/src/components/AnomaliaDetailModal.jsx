@@ -1,9 +1,9 @@
 /**
- * AnomaliaDetailModal Component - v8.2 Refactoring
+ * AnomaliaDetailModal Component - v11.0 Refactoring
  * Modale dettaglio anomalia con gestione:
  * - ESPOSITORE: parent/child editing
  * - LOOKUP: ricerca farmacia/parafarmacia
- * - AIC: correzione codice AIC con propagazione (v8.2)
+ * - AIC: correzione codice AIC con propagazione (v11.0 - usa AicAssignmentModal unificato)
  * Usato da DatabasePage e OrdineDetailPage
  */
 import React, { useState, useEffect, useCallback } from 'react';
@@ -11,6 +11,8 @@ import { TipoAnomaliaBadge, StatoAnomaliaBadge, SeveritaBadge } from '../common/
 import { lookupApi, getApiBaseUrl } from '../api';
 // v8.2: Import diretto per evitare problemi con barrel export
 import { anomalieApi } from '../api/anomalie';
+// v11.0: Import AicAssignmentModal unificato (TIER 2.1)
+import { AicAssignmentModal, AIC_MODAL_MODES } from './AicAssignmentModal';
 
 export function AnomaliaDetailModal({
   isOpen,
@@ -31,6 +33,9 @@ export function AnomaliaDetailModal({
   const [searchResults, setSearchResults] = useState([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [selectedResult, setSelectedResult] = useState(null);
+
+  // v11.0: Stato per AIC modal unificato
+  const [isAicModalOpen, setIsAicModalOpen] = useState(false);
 
   // Determina tipo di anomalia
   const isLookupAnomalia = anomaliaDetail?.anomalia?.tipo_anomalia === 'LOOKUP' ||
@@ -224,18 +229,43 @@ export function AnomaliaDetailModal({
                 />
               )}
 
-              {/* v8.2: AIC ANOMALIA - Correzione codice AIC con propagazione */}
-              {isAicAnomalia && (
-                <AicCorrectionSection
-                  anomalia={anomaliaDetail.anomalia}
-                  rigaParent={anomaliaDetail.riga_parent}
-                  onSuccess={() => {
-                    onRisolvi?.();
-                    onClose();
-                  }}
-                  onClose={onClose}
-                />
+              {/* v11.0: AIC ANOMALIA - Usa AicAssignmentModal unificato (TIER 2.1) */}
+              {isAicAnomalia && anomaliaDetail.anomalia?.stato !== 'RISOLTA' && (
+                <div className="bg-purple-50 rounded-lg p-4">
+                  <h4 className="font-semibold text-purple-800 mb-3 flex items-center gap-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                    </svg>
+                    Correzione Codice AIC
+                  </h4>
+                  <p className="text-sm text-purple-700 mb-3">
+                    Questa anomalia richiede l'assegnazione di un codice AIC valido al prodotto.
+                  </p>
+                  <button
+                    onClick={() => setIsAicModalOpen(true)}
+                    className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium flex items-center justify-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    Assegna Codice AIC
+                  </button>
+                </div>
               )}
+
+              {/* v11.0: AIC Modal unificato */}
+              <AicAssignmentModal
+                isOpen={isAicModalOpen}
+                onClose={() => setIsAicModalOpen(false)}
+                mode={AIC_MODAL_MODES.ANOMALIA}
+                anomalia={anomaliaDetail?.anomalia}
+                rigaParent={anomaliaDetail?.riga_parent}
+                onSuccess={() => {
+                  setIsAicModalOpen(false);
+                  onRisolvi?.();
+                  onClose();
+                }}
+              />
 
               {/* ESPOSITORE ANOMALIA - Mostra UI parent/child */}
               {isEspositoreAnomalia && (
@@ -1556,264 +1586,6 @@ function EspositoreRisolviSection({ anomalia, onSuccess }) {
   );
 }
 
-// =============================================================================
-// v8.2: Sub-componente AIC Correction Section
-// =============================================================================
-
-function AicCorrectionSection({ anomalia, rigaParent, onSuccess, onClose }) {
-  const [codiceAic, setCodiceAic] = useState('');
-  const [livelloPropagazione, setLivelloPropagazione] = useState('ORDINE'); // Default ORDINE
-  const [note, setNote] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState(null);
-  const [result, setResult] = useState(null);
-
-  // Recupera operatore e ruolo dal localStorage
-  const { operatore, isSupervisor } = React.useMemo(() => {
-    try {
-      const user = JSON.parse(localStorage.getItem('servo_user') || '{}');
-      const ruolo = (user.ruolo || '').toLowerCase();
-      // Supervisore = admin o ruolo supervisore
-      const canGlobal = ruolo === 'admin' || ruolo === 'supervisore' || ruolo === 'supervisor';
-      return {
-        operatore: user.username || 'operatore',
-        isSupervisor: canGlobal
-      };
-    } catch {
-      return { operatore: 'operatore', isSupervisor: false };
-    }
-  }, []);
-
-  // Valida formato AIC (9 cifre)
-  const isValidAic = (aic) => /^\d{9}$/.test(aic);
-
-  const handleSubmit = async () => {
-    if (!isValidAic(codiceAic)) {
-      setError('Il codice AIC deve essere composto da 9 cifre');
-      return;
-    }
-
-    setSubmitting(true);
-    setError(null);
-
-    try {
-      const response = await anomalieApi.correggiAic(anomalia.id_anomalia, {
-        codice_aic: codiceAic,
-        livello_propagazione: livelloPropagazione,
-        operatore,
-        note: note || undefined
-      });
-
-      if (response.success) {
-        setResult(response.data);
-        // Attendi un momento per mostrare il risultato
-        setTimeout(() => {
-          onSuccess?.();
-        }, 1500);
-      } else {
-        setError(response.error || 'Errore durante correzione AIC');
-      }
-    } catch (err) {
-      setError(err.response?.data?.detail || err.message || 'Errore durante correzione AIC');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div className="bg-purple-50 rounded-lg p-4">
-      <h4 className="font-semibold text-purple-800 mb-3 flex items-center gap-2">
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
-        </svg>
-        Correzione Codice AIC
-      </h4>
-
-      {/* Info prodotto */}
-      {rigaParent && (
-        <div className="mb-4 p-3 bg-white border border-purple-200 rounded text-sm">
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <span className="text-slate-500">Riga:</span>
-              <span className="ml-2 font-medium">#{rigaParent.n_riga}</span>
-            </div>
-            <div>
-              <span className="text-slate-500">Codice attuale:</span>
-              <span className="ml-2 font-mono text-red-600">
-                {rigaParent.codice_aic || rigaParent.codice_originale || 'MANCANTE'}
-              </span>
-            </div>
-            <div className="col-span-2">
-              <span className="text-slate-500">Descrizione:</span>
-              <span className="ml-2 uppercase">{rigaParent.descrizione || '-'}</span>
-            </div>
-          </div>
-          {/* Quantità e Prezzo */}
-          <div className="grid grid-cols-4 gap-2 mt-3 pt-3 border-t border-purple-100">
-            <div>
-              <span className="text-slate-500">Q.Venduta:</span>
-              <span className="ml-1 font-medium">{rigaParent.q_venduta || 0}</span>
-            </div>
-            <div>
-              <span className="text-slate-500">Q.Omaggio:</span>
-              <span className="ml-1 font-medium text-green-600">{rigaParent.q_omaggio || 0}</span>
-            </div>
-            <div>
-              <span className="text-slate-500">Q.Sc.Merce:</span>
-              <span className="ml-1 font-medium text-amber-600">{rigaParent.q_sconto_merce || 0}</span>
-            </div>
-            <div>
-              <span className="text-slate-500">Prezzo:</span>
-              <span className="ml-1 font-medium">{parseFloat(rigaParent.prezzo_netto || 0).toFixed(2)}€</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Risultato successo */}
-      {result && (
-        <div className="mb-4 p-4 bg-green-100 border border-green-300 rounded">
-          <div className="flex items-center gap-2 text-green-800 font-medium mb-2">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-            </svg>
-            AIC Corretto con Successo
-          </div>
-          <div className="text-sm text-green-700">
-            <p>Codice AIC: <span className="font-mono font-bold">{result.codice_aic}</span></p>
-            <p>Righe aggiornate: <span className="font-bold">{result.righe_aggiornate}</span></p>
-            <p>Ordini coinvolti: <span className="font-bold">{result.ordini_coinvolti?.length || 0}</span></p>
-          </div>
-        </div>
-      )}
-
-      {/* Form correzione */}
-      {!result && (
-        <div className="space-y-4">
-          {/* Input AIC */}
-          <div>
-            <label className="block text-sm font-medium text-purple-800 mb-1">
-              Codice AIC Corretto *
-            </label>
-            <input
-              type="text"
-              value={codiceAic}
-              onChange={(e) => {
-                const val = e.target.value.replace(/\D/g, '').slice(0, 9);
-                setCodiceAic(val);
-                setError(null);
-              }}
-              placeholder="Inserisci 9 cifre (es: 012345678)"
-              className={`w-full px-3 py-2 border rounded font-mono text-lg tracking-wider focus:ring-2 focus:ring-purple-500 ${
-                codiceAic && !isValidAic(codiceAic)
-                  ? 'border-red-400 bg-red-50'
-                  : 'border-purple-300 bg-white'
-              }`}
-              maxLength={9}
-            />
-            <p className="text-xs text-slate-500 mt-1">
-              {codiceAic.length}/9 cifre
-              {codiceAic.length === 9 && isValidAic(codiceAic) && (
-                <span className="ml-2 text-green-600">✓ Formato valido</span>
-              )}
-            </p>
-          </div>
-
-          {/* Livello propagazione */}
-          <div>
-            <label className="block text-sm font-medium text-purple-800 mb-1">
-              Livello Propagazione
-            </label>
-            <div className="space-y-2">
-              {[
-                { value: 'ORDINE', label: 'Intero ordine', desc: 'Tutte le righe con stessa descrizione in questo ordine', supervisorOnly: false },
-                { value: 'GLOBALE', label: 'Globale (Supervisore)', desc: 'Tutte le righe nel database con stessa descrizione', supervisorOnly: true },
-              ]
-                .filter(opt => !opt.supervisorOnly || isSupervisor) // Mostra GLOBALE solo a supervisori
-                .map((opt) => (
-                <label
-                  key={opt.value}
-                  className={`flex items-start gap-3 p-3 rounded border cursor-pointer transition-colors ${
-                    livelloPropagazione === opt.value
-                      ? 'border-purple-500 bg-purple-100'
-                      : 'border-slate-200 bg-white hover:bg-slate-50'
-                  }`}
-                >
-                  <input
-                    type="radio"
-                    name="livello"
-                    value={opt.value}
-                    checked={livelloPropagazione === opt.value}
-                    onChange={(e) => setLivelloPropagazione(e.target.value)}
-                    className="mt-1"
-                  />
-                  <div>
-                    <div className="font-medium text-sm">{opt.label}</div>
-                    <div className="text-xs text-slate-500">{opt.desc}</div>
-                  </div>
-                </label>
-              ))}
-            </div>
-          </div>
-
-          {/* Note */}
-          <div>
-            <label className="block text-sm font-medium text-purple-800 mb-1">
-              Note (opzionale)
-            </label>
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              placeholder="Es: AIC verificato su listino vendor"
-              className="w-full px-3 py-2 border border-purple-300 rounded text-sm focus:ring-2 focus:ring-purple-500"
-              rows={2}
-            />
-          </div>
-
-          {/* Errore */}
-          {error && (
-            <div className="p-3 bg-red-100 border border-red-300 rounded text-red-700 text-sm">
-              {error}
-            </div>
-          )}
-
-          {/* Pulsanti */}
-          <div className="flex justify-end gap-3 pt-2">
-            <button
-              onClick={onClose}
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded font-medium"
-              disabled={submitting}
-            >
-              Annulla
-            </button>
-            <button
-              onClick={handleSubmit}
-              disabled={!isValidAic(codiceAic) || submitting}
-              className={`px-4 py-2 rounded font-medium flex items-center gap-2 ${
-                isValidAic(codiceAic) && !submitting
-                  ? 'bg-purple-600 hover:bg-purple-700 text-white'
-                  : 'bg-slate-300 text-slate-500 cursor-not-allowed'
-              }`}
-            >
-              {submitting ? (
-                <>
-                  <span className="animate-spin">⏳</span>
-                  Correzione in corso...
-                </>
-              ) : (
-                <>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                  </svg>
-                  Correggi AIC
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
+// v11.0: AicCorrectionSection rimosso - ora usa AicAssignmentModal unificato (TIER 2.1)
 
 export default AnomaliaDetailModal;
