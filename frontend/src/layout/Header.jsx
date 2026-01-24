@@ -35,17 +35,15 @@ const Header = ({
   title = 'Dashboard',
   subtitle,
   currentUser,
-  notifications = [],
-  onNotificationClick,
+  // v11.0: notifications e onNotificationClick rimossi - funzionalità non implementata
   onLogout,
   actions,
   showDate = true
 }) => {
 
-  const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
-  
+
   // Formatta data corrente in italiano
   const getCurrentDate = () => {
     return new Date().toLocaleDateString('it-IT', {
@@ -56,23 +54,12 @@ const Header = ({
     });
   };
 
-  // Conta notifiche non lette
-  const getUnreadCount = () => {
-    return notifications.filter(n => !n.read).length;
-  };
-
   // Genera iniziali utente
   const getUserInitials = (user) => {
     if (!user) return 'U';
     const firstName = user.nome?.charAt(0) || '';
     const lastName = user.cognome?.charAt(0) || '';
     return (firstName + lastName) || user.username?.charAt(0) || 'U';
-  };
-
-  // Handler click notifica
-  const handleNotificationClick = (notification) => {
-    onNotificationClick?.(notification);
-    setShowNotifications(false);
   };
 
   return (
@@ -107,33 +94,10 @@ const Header = ({
             </div>
           )}
 
-          {/* Right: Notifications & User */}
+          {/* Right: User Menu */}
           <div className="flex items-center gap-3">
-            {/* Notifications */}
-            <div className="relative">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowNotifications(!showNotifications)}
-                className="relative"
-              >
-                🔔
-                {getUnreadCount() > 0 && (
-                  <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center font-bold">
-                    {getUnreadCount() > 9 ? '9+' : getUnreadCount()}
-                  </span>
-                )}
-              </Button>
-
-              {/* Notifications Dropdown */}
-              {showNotifications && (
-                <NotificationDropdown
-                  notifications={notifications}
-                  onNotificationClick={handleNotificationClick}
-                  onClose={() => setShowNotifications(false)}
-                />
-              )}
-            </div>
+            {/* v11.0: Notifiche rimosse - funzionalità non implementata */}
+            {/* TODO: Implementare sistema notifiche reale con backend API */}
 
             {/* User Info - Clickable for menu */}
             <div className="relative">
@@ -181,14 +145,6 @@ const Header = ({
           </div>
         </div>
       </header>
-
-      {/* Overlay per chiudere notifiche */}
-      {showNotifications && (
-        <div
-          className="fixed inset-0 z-30"
-          onClick={() => setShowNotifications(false)}
-        />
-      )}
 
       {/* Overlay per chiudere user menu */}
       {showUserMenu && (

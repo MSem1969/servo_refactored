@@ -604,45 +604,8 @@ export default function App() {
     return 'upload';
   };
 
-  // Handler notifiche
-  const handleNotificationClick = (notification) => {
-    console.log("Notification clicked:", notification);
-
-    // Logica per gestire diversi tipi di notifica
-    switch (notification.type) {
-      case "anomaly":
-        navigateTo("supervisione");
-        break;
-      case "upload":
-        navigateTo("upload");
-        break;
-      case "order":
-        navigateTo("database");
-        break;
-      default:
-        console.log("Notifica:", notification.message);
-    }
-  };
-
-  // Mock notifications per demo
-  const [notifications] = useState([
-    {
-      id: 1,
-      type: "warning",
-      title: "Anomalie Rilevate",
-      message: "3 ordini richiedono supervisione",
-      timestamp: new Date().toISOString(),
-      read: false,
-    },
-    {
-      id: 2,
-      type: "success",
-      title: "Upload Completato",
-      message: "PDF ANGELINI processato con successo",
-      timestamp: new Date(Date.now() - 3600000).toISOString(),
-      read: true,
-    },
-  ]);
+  // v11.0: Sistema notifiche rimosso - non funzionante
+  // TODO: Implementare sistema notifiche reale con backend API
 
   // Verifica autenticazione all'avvio
   useEffect(() => {
@@ -805,8 +768,6 @@ export default function App() {
       activePage={page}
       onPageChange={navigateTo}
       pageTitle={getPageTitle()}
-      notifications={notifications}
-      onNotificationClick={handleNotificationClick}
       loading={globalLoading}
       error={globalError}
     >

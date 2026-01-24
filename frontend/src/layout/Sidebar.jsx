@@ -9,6 +9,7 @@ import React, { useState } from 'react';
 import { Button } from '../common';
 import Avatar from '../components/Avatar';
 import ProfiloModal from '../components/ProfiloModal';
+import { PasswordChangeModal } from './Header'; // v11.0: Cambio password dalla sidebar
 
 /**
  * Componente Sidebar per navigazione principale
@@ -44,8 +45,9 @@ const Sidebar = ({
   onUserUpdate
 }) => {
 
-  // State per modal profilo
+  // State per modal profilo e password
   const [showProfiloModal, setShowProfiloModal] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false); // v11.0
 
   // Handler logout con conferma opzionale
   const handleLogout = () => {
@@ -153,6 +155,15 @@ const Sidebar = ({
               👤
             </button>
 
+            {/* v11.0: Cambio Password */}
+            <button
+              onClick={() => setShowPasswordModal(true)}
+              className="flex-1 px-2 py-1.5 text-xs text-slate-300 hover:text-white hover:bg-slate-700 rounded-md transition-colors flex items-center justify-center gap-1"
+              title="Cambia password"
+            >
+              🔑
+            </button>
+
             {/* Settings - Navigazione a Impostazioni */}
             <button
               onClick={() => onPageChange?.('settings')}
@@ -181,6 +192,14 @@ const Sidebar = ({
         user={currentUser}
         onUpdate={handleProfiloUpdate}
       />
+
+      {/* v11.0: Modal Cambio Password */}
+      {showPasswordModal && (
+        <PasswordChangeModal
+          currentUser={currentUser}
+          onClose={() => setShowPasswordModal(false)}
+        />
+      )}
     </aside>
   );
 };
