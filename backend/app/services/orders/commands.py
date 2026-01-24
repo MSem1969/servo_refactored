@@ -1,16 +1,18 @@
 # =============================================================================
-# SERV.O v7.0 - ORDERS COMMANDS
+# SERV.O v11.0 - ORDERS COMMANDS
 # =============================================================================
 # Funzioni di modifica per ordini, righe e anomalie
 # Estratto da ordini.py per modularità
+# v11.0: Aggiunta archiviazione centralizzata
 # =============================================================================
 
 import json
 from typing import Dict, Any, Optional
 from datetime import datetime
 from decimal import Decimal
+from dataclasses import dataclass
 
-from ...database_pg import get_db, log_operation
+from ...database_pg import get_db, log_operation, log_modifica
 
 
 def _json_serializer(obj):
@@ -286,3 +288,246 @@ def create_anomalia(
 
     db.commit()
     return cursor.lastrowid
+
+
+# =============================================================================
+# v11.0 - ARCHIVIAZIONE CENTRALIZZATA
+# =============================================================================
+
+@dataclass
+class ArchiviazioneResult:
+    """Risultato di un'operazione di archiviazione."""
+    success: bool
+    id_testata: int = None
+    id_dettaglio: int = None
+    stato_ordine: str = None
+    stato_riga: str = None
+    righe_archiviate: int = 0
+    ordine_completato: bool = False
+    error: str = ''
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            'success': self.success,
+            'id_testata': self.id_testata,
+            'id_dettaglio': self.id_dettaglio,
+            'stato_ordine': self.stato_ordine,
+            'stato_riga': self.stato_riga,
+            'righe_archiviate': self.righe_archiviate,
+            'ordine_completato': self.ordine_completato,
+            'error': self.error
+        }
+
+
+def archivia_ordine(id_testata: int, operatore: str) -> ArchiviazioneResult:
+    """
+    Archivia un ordine impostando stato ARCHIVIATO.
+
+    COMPORTAMENTO:
+    - Ordine → ARCHIVIATO (freeze manuale)
+    - Tutte le righe non EVASO/ARCHIVIATO → ARCHIVIATO
+    - Può essere usato per ESTRATTO, CONFERMATO, PARZ_EVASO
+
+    STATI NON ARCHIVIABILI:
+    - ARCHIVIATO: già freezato
+    - EVASO: completato naturalmente
+
+    Args:
+        id_testata: ID ordine
+        operatore: Nome operatore che archivia
+
+    Returns:
+        ArchiviazioneResult con dettagli operazione
+    """
+    db = get_db()
+    now = datetime.now().isoformat()
+
+    # Verifica stato ordine
+    ordine = db.execute("""
+        SELECT stato FROM ORDINI_TESTATA WHERE id_testata = %s
+    """, (id_testata,)).fetchone()
+
+    if not ordine:
+        return ArchiviazioneResult(success=False, error="Ordine non trovato")
+
+    if ordine['stato'] == 'ARCHIVIATO':
+        return ArchiviazioneResult(success=False, error="Ordine già archiviato")
+
+    if ordine['stato'] == 'EVASO':
+        return ArchiviazioneResult(success=False, error="Ordine già evaso, non archiviabile")
+
+    # Conta righe da archiviare
+    righe_da_archiviare = db.execute("""
+        SELECT COUNT(*) FROM ORDINI_DETTAGLIO
+        WHERE id_testata = %s AND stato_riga NOT IN ('EVASO', 'ARCHIVIATO')
+    """, (id_testata,)).fetchone()[0]
+
+    # Aggiorna stato ordine a ARCHIVIATO
+    stato_precedente = ordine['stato']
+    db.execute("""
+        UPDATE ORDINI_TESTATA
+        SET stato = 'ARCHIVIATO',
+            data_validazione = %s,
+            validato_da = %s
+        WHERE id_testata = %s
+    """, (now, operatore, id_testata))
+
+    # Audit trail ordine
+    log_modifica(
+        entita='ORDINI_TESTATA',
+        id_entita=id_testata,
+        campo_modificato='stato',
+        valore_precedente=stato_precedente,
+        valore_nuovo='ARCHIVIATO',
+        fonte_modifica='ARCHIVIAZIONE_ORDINE',
+        id_testata=id_testata,
+        username_operatore=operatore
+    )
+
+    # Aggiorna tutte le righe non ancora EVASO/ARCHIVIATO a ARCHIVIATO
+    db.execute("""
+        UPDATE ORDINI_DETTAGLIO
+        SET stato_riga = 'ARCHIVIATO',
+            data_conferma = %s,
+            confermato_da = %s,
+            q_da_evadere = 0
+        WHERE id_testata = %s
+          AND stato_riga NOT IN ('EVASO', 'ARCHIVIATO')
+    """, (now, operatore, id_testata))
+
+    db.commit()
+
+    # Log operazione
+    log_operation(
+        'ARCHIVIA_ORDINE',
+        'ORDINI_TESTATA',
+        id_testata,
+        f"Ordine archiviato. Righe archiviate: {righe_da_archiviare}. Operatore: {operatore}"
+    )
+
+    return ArchiviazioneResult(
+        success=True,
+        id_testata=id_testata,
+        stato_ordine='ARCHIVIATO',
+        righe_archiviate=righe_da_archiviare
+    )
+
+
+def archivia_riga(id_testata: int, id_dettaglio: int, operatore: str) -> ArchiviazioneResult:
+    """
+    Archivia una singola riga impostando stato ARCHIVIATO.
+
+    COMPORTAMENTO:
+    - La riga viene "freezata": non è più modificabile
+    - Le quantità da evadere vengono azzerate
+    - Solo procedure di ripristino possono sbloccarla
+    - Può archiviare righe: ESTRATTO, CONFERMATO, PARZIALE
+
+    STATI NON ARCHIVIABILI:
+    - EVASO: già processata completamente
+    - ARCHIVIATO: già freezata
+
+    NOTA: Quando tutte le righe sono EVASO/ARCHIVIATO, l'ordine diventa EVASO.
+
+    Args:
+        id_testata: ID ordine
+        id_dettaglio: ID riga
+        operatore: Nome operatore che archivia
+
+    Returns:
+        ArchiviazioneResult con dettagli operazione
+    """
+    db = get_db()
+    now = datetime.now().isoformat()
+
+    # Verifica stato riga
+    riga = db.execute("""
+        SELECT stato_riga FROM ORDINI_DETTAGLIO
+        WHERE id_dettaglio = %s AND id_testata = %s
+    """, (id_dettaglio, id_testata)).fetchone()
+
+    if not riga:
+        return ArchiviazioneResult(success=False, error="Riga non trovata")
+
+    if riga['stato_riga'] == 'ARCHIVIATO':
+        return ArchiviazioneResult(success=False, error="Riga già archiviata")
+
+    if riga['stato_riga'] == 'EVASO':
+        return ArchiviazioneResult(success=False, error="Riga già evasa, non archiviabile")
+
+    stato_precedente = riga['stato_riga']
+
+    # Aggiorna stato riga a ARCHIVIATO (freeze)
+    db.execute("""
+        UPDATE ORDINI_DETTAGLIO
+        SET stato_riga = 'ARCHIVIATO',
+            data_conferma = %s,
+            confermato_da = %s,
+            q_da_evadere = 0
+        WHERE id_dettaglio = %s AND id_testata = %s
+    """, (now, operatore, id_dettaglio, id_testata))
+
+    # Audit trail riga
+    log_modifica(
+        entita='ORDINI_DETTAGLIO',
+        id_entita=id_dettaglio,
+        campo_modificato='stato_riga',
+        valore_precedente=stato_precedente,
+        valore_nuovo='ARCHIVIATO',
+        fonte_modifica='ARCHIVIAZIONE_RIGA',
+        id_testata=id_testata,
+        username_operatore=operatore
+    )
+
+    # Verifica se tutte le righe sono EVASO o ARCHIVIATO -> ordine diventa EVASO
+    righe_attive = db.execute("""
+        SELECT COUNT(*) FROM ORDINI_DETTAGLIO
+        WHERE id_testata = %s AND stato_riga NOT IN ('EVASO', 'ARCHIVIATO')
+    """, (id_testata,)).fetchone()[0]
+
+    ordine_completato = False
+    if righe_attive == 0:
+        # Tutte le righe sono EVASO o ARCHIVIATO → ordine EVASO (completato)
+        ordine_row = db.execute("""
+            SELECT stato FROM ORDINI_TESTATA WHERE id_testata = %s
+        """, (id_testata,)).fetchone()
+
+        if ordine_row and ordine_row['stato'] != 'EVASO':
+            stato_ordine_precedente = ordine_row['stato']
+            db.execute("""
+                UPDATE ORDINI_TESTATA
+                SET stato = 'EVASO',
+                    data_validazione = %s,
+                    validato_da = %s
+                WHERE id_testata = %s
+            """, (now, operatore, id_testata))
+
+            log_modifica(
+                entita='ORDINI_TESTATA',
+                id_entita=id_testata,
+                campo_modificato='stato',
+                valore_precedente=stato_ordine_precedente,
+                valore_nuovo='EVASO',
+                fonte_modifica='AUTO_COMPLETAMENTO',
+                id_testata=id_testata,
+                username_operatore=operatore
+            )
+            ordine_completato = True
+
+    db.commit()
+
+    # Log operazione
+    log_operation(
+        'ARCHIVIA_RIGA',
+        'ORDINI_DETTAGLIO',
+        id_dettaglio,
+        f"Riga archiviata. Ordine: {id_testata}. Operatore: {operatore}"
+    )
+
+    return ArchiviazioneResult(
+        success=True,
+        id_testata=id_testata,
+        id_dettaglio=id_dettaglio,
+        stato_riga='ARCHIVIATO',
+        ordine_completato=ordine_completato
+    )

@@ -1,7 +1,8 @@
 # =============================================================================
-# SERV.O v6.1 - ORDINI ROUTER
+# SERV.O v11.0 - ORDINI ROUTER
 # =============================================================================
 # Endpoint per gestione ordini e conferma righe
+# v11.0: Archiviazione tramite service layer
 # =============================================================================
 
 from fastapi import APIRouter, HTTPException, Query
@@ -33,6 +34,11 @@ from ..services.ordini import (
     fix_stati_righe,
 )
 from ..services.tracciati import valida_e_genera_tracciato
+# v11.0: Archiviazione centralizzata
+from ..services.orders.commands import (
+    archivia_ordine as service_archivia_ordine,
+    archivia_riga as service_archivia_riga,
+)
 
 # =============================================================================
 # HELPER: MAPPING CAMPI DB → FRONTEND
@@ -742,56 +748,18 @@ async def archivia_ordine(
         operatore: Nome operatore che archivia
     """
     try:
-        db = get_db()
-        now = datetime.now().isoformat()
+        # v11.0: Usa service layer invece di logica diretta
+        result = service_archivia_ordine(id_testata, operatore)
 
-        # Verifica stato ordine
-        ordine = db.execute("""
-            SELECT stato FROM ORDINI_TESTATA WHERE id_testata = ?
-        """, (id_testata,)).fetchone()
-
-        if not ordine:
-            raise HTTPException(status_code=404, detail="Ordine non trovato")
-
-        if ordine['stato'] == 'ARCHIVIATO':
-            raise HTTPException(status_code=400, detail="Ordine già archiviato")
-
-        if ordine['stato'] == 'EVASO':
-            raise HTTPException(status_code=400, detail="Ordine già evaso, non archiviabile")
-
-        # Conta righe da archiviare
-        righe_da_archiviare = db.execute("""
-            SELECT COUNT(*) FROM ORDINI_DETTAGLIO
-            WHERE id_testata = ? AND stato_riga NOT IN ('EVASO', 'ARCHIVIATO')
-        """, (id_testata,)).fetchone()[0]
-
-        # Aggiorna stato ordine a ARCHIVIATO
-        db.execute("""
-            UPDATE ORDINI_TESTATA
-            SET stato = 'ARCHIVIATO',
-                data_validazione = ?,
-                validato_da = ?
-            WHERE id_testata = ?
-        """, (now, operatore, id_testata))
-
-        # Aggiorna tutte le righe non ancora EVASO/ARCHIVIATO a ARCHIVIATO
-        db.execute("""
-            UPDATE ORDINI_DETTAGLIO
-            SET stato_riga = 'ARCHIVIATO',
-                data_conferma = ?,
-                confermato_da = ?,
-                q_da_evadere = 0
-            WHERE id_testata = ?
-              AND stato_riga NOT IN ('EVASO', 'ARCHIVIATO')
-        """, (now, operatore, id_testata))
-
-        db.commit()
+        if not result.success:
+            status_code = 404 if 'non trovato' in result.error.lower() else 400
+            raise HTTPException(status_code=status_code, detail=result.error)
 
         return {
             "success": True,
             "message": f"Ordine {id_testata} archiviato (frozen)",
-            "stato_ordine": "ARCHIVIATO",
-            "righe_archiviate": righe_da_archiviare
+            "stato_ordine": result.stato_ordine,
+            "righe_archiviate": result.righe_archiviate
         }
     except HTTPException:
         raise
@@ -826,60 +794,18 @@ async def archivia_riga(
         operatore: Nome operatore che archivia
     """
     try:
-        db = get_db()
-        now = datetime.now().isoformat()
+        # v11.0: Usa service layer invece di logica diretta
+        result = service_archivia_riga(id_testata, id_dettaglio, operatore)
 
-        # Verifica stato riga
-        riga = db.execute("""
-            SELECT stato_riga FROM ORDINI_DETTAGLIO
-            WHERE id_dettaglio = ? AND id_testata = ?
-        """, (id_dettaglio, id_testata)).fetchone()
-
-        if not riga:
-            raise HTTPException(status_code=404, detail="Riga non trovata")
-
-        if riga['stato_riga'] == 'ARCHIVIATO':
-            raise HTTPException(status_code=400, detail="Riga già archiviata")
-
-        if riga['stato_riga'] == 'EVASO':
-            raise HTTPException(status_code=400, detail="Riga già evasa, non archiviabile")
-
-        # Aggiorna stato riga a ARCHIVIATO (freeze)
-        db.execute("""
-            UPDATE ORDINI_DETTAGLIO
-            SET stato_riga = 'ARCHIVIATO',
-                data_conferma = ?,
-                confermato_da = ?,
-                q_da_evadere = 0
-            WHERE id_dettaglio = ? AND id_testata = ?
-        """, (now, operatore, id_dettaglio, id_testata))
-
-        # Verifica se tutte le righe sono EVASO o ARCHIVIATO -> ordine diventa EVASO
-        righe_attive = db.execute("""
-            SELECT COUNT(*) FROM ORDINI_DETTAGLIO
-            WHERE id_testata = ? AND stato_riga NOT IN ('EVASO', 'ARCHIVIATO')
-        """, (id_testata,)).fetchone()[0]
-
-        ordine_completato = False
-        if righe_attive == 0:
-            # Tutte le righe sono EVASO o ARCHIVIATO → ordine EVASO (completato)
-            db.execute("""
-                UPDATE ORDINI_TESTATA
-                SET stato = 'EVASO',
-                    data_validazione = ?,
-                    validato_da = ?
-                WHERE id_testata = ?
-                  AND stato != 'EVASO'
-            """, (now, operatore, id_testata))
-            ordine_completato = True
-
-        db.commit()
+        if not result.success:
+            status_code = 404 if 'non trovata' in result.error.lower() else 400
+            raise HTTPException(status_code=status_code, detail=result.error)
 
         return {
             "success": True,
             "message": f"Riga {id_dettaglio} archiviata (frozen)",
-            "stato_riga": "ARCHIVIATO",
-            "ordine_completato": ordine_completato
+            "stato_riga": result.stato_riga,
+            "ordine_completato": result.ordine_completato
         }
     except HTTPException:
         raise
