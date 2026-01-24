@@ -80,3 +80,46 @@ export {
   useGeneraTracciatoSingolo,
   useDeleteTracciatiFiles,
 } from './useTracciati';
+
+// Supervisione hooks (v11.0 - TIER 2.3)
+export {
+  supervisioneKeys,
+  // Query hooks
+  usePendingGrouped,
+  usePending,
+  usePendingCount,
+  useSupervisioneDetail,
+  useSupervisioneByOrdine,
+  useCriteriOrdinari,
+  useCriteriStats,
+  useStorico,
+  useAicDetail,
+  useAicPending,
+  useAicStats,
+  useLookupDetail,
+  useListinoDetail,
+  // Mutation hooks - base
+  useApprova,
+  useRifiuta,
+  useModifica,
+  // Mutation hooks - bulk
+  useApprovaBulk,
+  useRifiutaBulk,
+  // Mutation hooks - AIC
+  useRisolviAic,
+  useRifiutaAic,
+  useApprovaBulkAic,
+  useCorreggiErroreAic,
+  // Mutation hooks - Lookup
+  useRisolviLookup,
+  useRifiutaLookup,
+  // Mutation hooks - Listino
+  useCorreggiListino,
+  useArchiviaListino,
+  useRiapplicaListinoBulk,
+  // Mutation hooks - Pattern
+  usePromuoviPattern,
+  useResetPattern,
+  // Convenience hooks
+  useSupervisioneDashboard,
+} from './useSupervisione';
