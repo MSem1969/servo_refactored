@@ -11,8 +11,8 @@ export { default as VendorBadge } from './VendorBadge';
 export { default as Loading } from './Loading';
 export { default as ErrorBox } from './ErrorBox';
 
-// Modal
-export { default as ModalBase } from './ModalBase';
+// Modal (v11.0: both named and default export)
+export { default as ModalBase, ModalBase as Modal } from './ModalBase';
 
 // Table
 export { default as Table, TableCell } from './Table';

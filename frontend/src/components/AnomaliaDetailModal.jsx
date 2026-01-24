@@ -118,12 +118,39 @@ export function AnomaliaDetailModal({
     }
   };
 
+  // v11.0: ESC key handler e body scroll lock per coerenza con ModalBase (TIER 2.2)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && isOpen) {
+        handleCloseInternal();
+      }
+    };
+    if (isOpen) {
+      document.addEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = 'hidden';
+    }
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
-  const handleClose = () => {
+  const handleCloseInternal = () => {
     setIsEditingParent(false);
     setEditingRigaParent(null);
     onClose();
+  };
+
+  // v11.0: Alias per compatibilità con codice esistente
+  const handleClose = handleCloseInternal;
+
+  // v11.0: Overlay click handler
+  const handleOverlayClick = (e) => {
+    if (e.target === e.currentTarget) {
+      handleClose();
+    }
   };
 
   const handleSaveParent = async () => {
@@ -151,8 +178,14 @@ export function AnomaliaDetailModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-xl w-[90vw] max-w-4xl max-h-[90vh] flex flex-col">
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      onClick={handleOverlayClick}
+    >
+      <div
+        className="bg-white rounded-xl w-[90vw] max-w-4xl max-h-[90vh] flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-slate-200">
           <h3 className="text-lg font-semibold text-slate-800">

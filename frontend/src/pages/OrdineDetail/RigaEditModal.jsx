@@ -1,8 +1,11 @@
 // =============================================================================
-// SERV.O v7.0 - RIGA EDIT MODAL COMPONENT
+// SERV.O v11.0 - RIGA EDIT MODAL COMPONENT
+// =============================================================================
+// v11.0: Usa ModalBase per coerenza UI (TIER 2.2)
 // =============================================================================
 
 import React from 'react';
+import { ModalBase } from '../../common';
 
 export default function RigaEditModal({
   riga,
@@ -18,19 +21,19 @@ export default function RigaEditModal({
   const qResiduo = qTotale - qEvasa;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-4 border-b bg-blue-50">
-          <h3 className="text-lg font-semibold">Modifica Riga #{riga.n_riga}</h3>
-          <button
-            onClick={onClose}
-            className="px-3 py-1 bg-slate-100 text-slate-700 rounded hover:bg-slate-200 text-sm"
-          >
-            X
-          </button>
-        </div>
-
-        <div className="p-4 space-y-4">
+    <ModalBase
+      isOpen={!!riga}
+      onClose={onClose}
+      title={`Modifica Riga #${riga.n_riga}`}
+      size="md"
+      variant="primary"
+      actions={{
+        confirm: () => onSave(riga),
+        confirmText: 'Salva Modifiche',
+        confirmVariant: 'primary',
+      }}
+    >
+      <div className="space-y-4">
           {/* Codice AIC e Descrizione */}
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -173,23 +176,6 @@ export default function RigaEditModal({
             />
           </div>
         </div>
-
-        {/* Footer */}
-        <div className="flex justify-end gap-3 p-4 border-t bg-slate-50">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 bg-slate-100 text-slate-700 rounded-md hover:bg-slate-200 font-medium"
-          >
-            Annulla
-          </button>
-          <button
-            onClick={() => onSave(riga)}
-            className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 font-medium"
-          >
-            Salva Modifiche
-          </button>
-        </div>
-      </div>
-    </div>
+    </ModalBase>
   );
 }

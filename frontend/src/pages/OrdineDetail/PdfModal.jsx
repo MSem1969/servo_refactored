@@ -1,8 +1,11 @@
 // =============================================================================
-// SERV.O v8.1 - PDF MODAL COMPONENT (DRAGGABLE)
+// SERV.O v11.0 - PDF MODAL COMPONENT (DRAGGABLE)
+// =============================================================================
+// v11.0: Aggiunto supporto ESC key per coerenza UI (TIER 2.2)
+// Nota: Mantiene custom overlay per funzionalità drag unica
 // =============================================================================
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { getApiBaseUrl } from '../../api';
 
 export default function PdfModal({ pdfFile, onClose }) {
@@ -12,6 +15,25 @@ export default function PdfModal({ pdfFile, onClose }) {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const modalRef = useRef(null);
+
+  // Handle ESC key to close modal (v11.0: coerenza con ModalBase)
+  const handleKeyDown = useCallback((e) => {
+    if (e.key === 'Escape') {
+      onClose?.();
+    }
+  }, [onClose]);
+
+  // Register ESC key handler and prevent body scroll
+  useEffect(() => {
+    if (pdfFile) {
+      document.addEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = 'hidden';
+    }
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = '';
+    };
+  }, [pdfFile, handleKeyDown]);
 
   // Handle mouse down on header to start dragging
   const handleMouseDown = (e) => {
@@ -58,8 +80,18 @@ export default function PdfModal({ pdfFile, onClose }) {
 
   if (!pdfFile) return null;
 
+  // Handle overlay click to close (v11.0: coerenza con ModalBase)
+  const handleOverlayClick = (e) => {
+    if (e.target === e.currentTarget) {
+      onClose?.();
+    }
+  };
+
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+    <div
+      className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+      onClick={handleOverlayClick}
+    >
       <div
         ref={modalRef}
         className="bg-white rounded-lg w-full max-w-5xl h-[90vh] flex flex-col shadow-2xl"
