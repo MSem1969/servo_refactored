@@ -1,0 +1,57 @@
+# =============================================================================
+# SERV.O v10.4 - BACKEND REQUIREMENTS
+# =============================================================================
+# Aggiornato: 2026-01-20
+# =============================================================================
+
+# ===== Database PostgreSQL =====
+psycopg2-binary==2.9.9      # Driver PostgreSQL (binario precompilato)
+
+# ===== Framework Web =====
+fastapi==0.109.0            # Framework API REST
+uvicorn[standard]==0.27.0   # Server ASGI per FastAPI
+python-multipart==0.0.6     # Upload file (UploadFile)
+
+# ===== Validazione e Modelli =====
+pydantic==2.5.3             # Validazione dati e modelli
+pydantic-settings==2.1.0    # Gestione configurazioni
+email-validator==2.2.0      # Validazione email (pydantic EmailStr)
+
+# ===== Autenticazione e Sicurezza =====
+PyJWT==2.8.0                # Token JWT
+passlib[bcrypt]==1.7.4      # Hashing password (con backend bcrypt)
+
+# ===== PDF Processing =====
+pdfplumber==0.10.3          # Estrazione testo e tabelle da PDF
+ftfy==6.1.3                 # Fix text encoding issues (UTF-8 mojibake)
+
+# ===== Gmail Monitor Integration =====
+imapclient==2.3.1           # Connessione IMAP Gmail
+pyzmail36==1.0.5            # Parsing email e allegati
+
+# ===== Data Processing =====
+pandas==2.1.4               # Import/export CSV e manipolazione dati
+openpyxl==3.1.2             # Lettura/scrittura file Excel (.xlsx)
+
+# ===== Fuzzy Matching =====
+fuzzywuzzy==0.18.0          # Fuzzy string matching per lookup anagrafica
+python-Levenshtein==0.23.0  # Acceleratore C per fuzzywuzzy
+
+# ===== Utilities =====
+python-dotenv==1.0.0        # Gestione file .env
+python-json-logger==2.0.7   # Logging strutturato JSON
+requests==2.31.0            # HTTP client per API calls
+
+# ===== Scheduler =====
+APScheduler==3.10.4         # Job scheduling (mail monitor)
+
+# ===== Database Migrations =====
+alembic==1.13.1             # Database migration tool
+SQLAlchemy==2.0.25          # Required by Alembic (schema reflection only)
+
+# ===== Testing =====
+pytest>=9.0.0               # Test framework
+pytest-asyncio>=1.3.0       # Async test support
+httpx>=0.25,<0.28           # Async HTTP client per test FastAPI (compatible with starlette)
+pytest-cov==4.1.0           # Coverage reporting
+factory-boy==3.3.0          # Test data factories

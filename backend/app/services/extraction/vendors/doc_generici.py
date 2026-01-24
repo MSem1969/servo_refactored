@@ -1,0 +1,369 @@
+"""
+EXTRACTOR_TO - Estrattore DOC_GENERICI v1.0
+============================================
+Transfer Order DOC Generici (ordini via grossisti)
+
+Particolarità:
+- Doppio indirizzo (fiscale + consegna)
+- NO prezzi/sconti nel documento
+- Classe farmaco (A-A, C-C, I-I)
+- Supporto multipagina
+- Codici AIC anche non standard (integratori 9xx)
+- Lookup su indirizzo CONSEGNA (non fiscale)
+
+Regole: REGOLE_DOC_GENERICI.md
+"""
+
+import re
+from typing import Dict, List, Optional
+
+from ....utils import parse_date, parse_int
+
+
+# =============================================================================
+# FUNZIONE PRINCIPALE
+# =============================================================================
+
+def extract_doc_generici(text: str, lines: List[str], pdf_path: str = None) -> List[Dict]:
+    """
+    Estrattore per Transfer Order DOC GENERICI.
+
+    MULTI-ORDINE: Ogni PDF può contenere più ordini!
+    Ogni ordine inizia con "Num. XXXXXXXXXX DEL" e finisce con "Totale: NNN"
+
+    Applica regole:
+    - DOCGEN-H01..H11 (header)
+    - DOCGEN-T01..T07 (tabella prodotti)
+    - DOCGEN-A01..A10 (anomalie)
+
+    Args:
+        text: Testo completo PDF
+        lines: Righe separate del PDF
+        pdf_path: Percorso file (non usato per questo vendor)
+
+    Returns:
+        Lista di dict, uno per ogni ordine nel PDF
+    """
+    orders = []
+    current_order = None
+    current_lines = []  # Righe accumulate per l'ordine corrente
+
+    # Pattern per identificare inizio nuovo ordine
+    pattern_nuovo_ordine = re.compile(r'Num\.\s*(\d{10})\s+DEL\s+(\d{2}/\d{2}/\d{4})', re.I)
+
+    for i, line in enumerate(lines):
+        # Rileva inizio nuovo ordine
+        m = pattern_nuovo_ordine.search(line)
+        if m:
+            # Se c'è un ordine precedente, finalizzalo
+            if current_order and current_order.get('numero_ordine'):
+                _finalize_order(current_order, current_lines)
+                orders.append(current_order)
+
+            # Inizia nuovo ordine
+            current_order = _create_new_order()
+            current_order['numero_ordine'] = m.group(1)
+            current_order['data_ordine'] = parse_date(m.group(2))
+            current_lines = [line]
+            continue
+
+        # Accumula righe per l'ordine corrente
+        if current_order:
+            current_lines.append(line)
+
+            # Estrai header fields mentre scorre
+            _extract_header_fields(current_order, line, lines, i)
+
+    # Finalizza l'ultimo ordine
+    if current_order and current_order.get('numero_ordine'):
+        _finalize_order(current_order, current_lines)
+        orders.append(current_order)
+
+    return orders
+
+
+def _create_new_order() -> Dict:
+    """Crea struttura dati per nuovo ordine."""
+    return {
+        'vendor': 'DOC_GENERICI',
+        'numero_ordine': '',
+        'data_ordine': '',
+        'grossista': '',
+        'codice_agente': '',
+        'nome_agente': '',
+        'ragione_sociale': '',
+        'partita_iva': '',
+        'indirizzo_fiscale': '',
+        'cap_fiscale': '',
+        'citta_fiscale': '',
+        'provincia_fiscale': '',
+        'indirizzo': '',  # Indirizzo consegna (principale)
+        'cap': '',
+        'citta': '',
+        'provincia': '',
+        'telefono': '',
+        'fax': '',
+        'righe': [],
+        'anomalie_estrazione': [],
+    }
+
+
+def _extract_header_fields(data: Dict, line: str, lines: List[str], idx: int) -> None:
+    """Estrae campi header da una singola riga (DOCGEN-H03..H11)."""
+
+    # DOCGEN-H03: Grossista/Distributore
+    m = re.search(r'Grossista\s+([^\n]+)', line, re.I)
+    if m and not data.get('grossista'):
+        data['grossista'] = m.group(1).strip()[:80]
+
+    # DOCGEN-H04: Codice + Nome Agente
+    m = re.search(r'Agente\s+(\d{5})\s+([^\n]+)', line, re.I)
+    if m and not data.get('codice_agente'):
+        data['codice_agente'] = m.group(1)
+        data['nome_agente'] = m.group(2).strip()[:50]
+
+    # DOCGEN-H05: Ragione Sociale Farmacia
+    m = re.search(r'Farmacia\s+(.+?)\s+P\.?IVA', line, re.I)
+    if m and not data.get('ragione_sociale'):
+        data['ragione_sociale'] = m.group(1).strip()[:80]
+
+    # DOCGEN-H06: P.IVA (11 cifre)
+    m = re.search(r'P\.?IVA\s+(\d{11})', line, re.I)
+    if m and not data.get('partita_iva'):
+        data['partita_iva'] = m.group(1)
+
+    # DOCGEN-H07: Indirizzo Fiscale
+    m = re.search(r'Ind\.?\s*Fiscale\s+Via\s+([^\n]+)', line, re.I)
+    if m and not data.get('indirizzo_fiscale'):
+        data['indirizzo_fiscale'] = m.group(1).strip()[:60]
+
+    # DOCGEN-H09: Indirizzo Consegna Merce (CRITICO per lookup)
+    m = re.search(r'Ind\.?\s*Consegna\s+Merce\s+Via\s+([^\n]+)', line, re.I)
+    if m and not data.get('indirizzo'):
+        data['indirizzo'] = m.group(1).strip()[:60]
+
+    # DOCGEN-H08/H10: CAP, Città, Provincia
+    m = re.search(
+        r'CAP\s+(\d{5})\s+Citt[àa]\s+([A-Z][A-Z\s\']+?)\s+Prov\.\s*([A-Z]{2})',
+        line, re.I
+    )
+    if m:
+        # Prima occorrenza = fiscale, seconda = consegna
+        if not data.get('cap_fiscale'):
+            data['cap_fiscale'] = m.group(1)
+            data['citta_fiscale'] = m.group(2).strip()
+            data['provincia_fiscale'] = m.group(3).upper()
+        elif not data.get('cap'):
+            data['cap'] = m.group(1)
+            data['citta'] = m.group(2).strip()
+            data['provincia'] = m.group(3).upper()
+
+    # DOCGEN-H11: Telefono e Fax
+    m = re.search(r'Telefono\s+([\d/]+)', line, re.I)
+    if m and not data.get('telefono'):
+        data['telefono'] = m.group(1).strip()
+
+    m = re.search(r'Fax\s+([\d/]+)', line, re.I)
+    if m and not data.get('fax'):
+        data['fax'] = m.group(1).strip()
+
+
+def _finalize_order(data: Dict, order_lines: List[str]) -> None:
+    """Finalizza ordine: estrae righe prodotto, totale e anomalie."""
+
+    # Se manca indirizzo consegna, usa fiscale
+    if not data.get('cap') and data.get('cap_fiscale'):
+        data['cap'] = data['cap_fiscale']
+        data['citta'] = data.get('citta_fiscale', '')
+        data['provincia'] = data.get('provincia_fiscale', '')
+
+    # Estrai righe prodotto
+    order_text = '\n'.join(order_lines)
+    data['righe'] = _extract_product_lines(order_text, order_lines)
+
+    # Estrai totale footer per validazione
+    m = re.search(r'Totale:\s*(\d+)', order_text, re.I)
+    if m:
+        data['totale_pezzi_footer'] = parse_int(m.group(1))
+
+    # Valida e rileva anomalie
+    data['anomalie_estrazione'] = _validate_and_detect_anomalies(data)
+
+
+# =============================================================================
+# ESTRAZIONE RIGHE PRODOTTO
+# =============================================================================
+
+def _extract_product_lines(text: str, lines: List[str]) -> List[Dict]:
+    """
+    Estrae righe prodotto dalla tabella (DOCGEN-T01..T07).
+
+    Pattern riga:
+    [9 cifre AIC] [descrizione] [qty] [X-X classe] [ACCORDO TO]
+
+    Args:
+        text: Testo completo
+        lines: Righe separate
+
+    Returns:
+        Lista di dict con dati riga
+    """
+    righe = []
+    n_riga = 0
+    in_tabella = False
+
+    # Pattern per identificare inizio tabella
+    pattern_header = re.compile(r'COD\.\s*A\.I\.C\.\s+Prodotto', re.I)
+
+    # Pattern per riga prodotto completa
+    # AIC (9 cifre) + descrizione + qty + classe (X-X) + ACCORDO TO
+    pattern_riga = re.compile(
+        r'^(\d{9})\s+'           # Codice AIC (9 cifre)
+        r'(.+?)\s+'              # Descrizione (greedy ma non troppo)
+        r'(\d{1,4})\s+'          # Quantità (1-4 cifre)
+        r'([A-Z]-[A-Z])\s+'      # Classe farmaco (A-A, C-C, I-I)
+        r'ACCORDO\s+TO\s*$',     # Condizione (costante)
+        re.I
+    )
+
+    # Pattern alternativo più permissivo
+    pattern_riga_alt = re.compile(
+        r'^(\d{9})\s+'           # Codice AIC
+        r'(.+?)\s+'              # Descrizione
+        r'(\d{1,4})\s+'          # Quantità
+        r'([A-Z]-[A-Z])',        # Classe (senza ACCORDO TO obbligatorio)
+        re.I
+    )
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+
+        # Rileva inizio tabella
+        if pattern_header.search(line):
+            in_tabella = True
+            continue
+
+        # Stop se footer
+        if 'Totale:' in line or re.match(r'^Pagina\s+\d+\s+di\s+\d+', line, re.I):
+            continue
+
+        # Se in tabella, prova a parsare riga prodotto
+        if in_tabella:
+            # Prova pattern completo
+            m = pattern_riga.match(line)
+            if not m:
+                # Prova pattern alternativo
+                m = pattern_riga_alt.match(line)
+
+            if m:
+                n_riga += 1
+                codice_aic = m.group(1)
+                descrizione = m.group(2).strip()
+                quantita = parse_int(m.group(3))
+                classe_farmaco = m.group(4).upper()
+
+                # Validazione codice AIC (DOCGEN-A01: accetta anche 9xx)
+                if len(codice_aic) == 9 and codice_aic.isdigit():
+                    righe.append({
+                        'n_riga': n_riga,
+                        'codice_aic': codice_aic,
+                        'codice_originale': codice_aic,
+                        'descrizione': descrizione[:60],
+                        'q_venduta': quantita,
+                        'q_sconto_merce': 0,  # DOC_GENERICI non ha sconto merce
+                        'q_omaggio': 0,       # DOC_GENERICI non ha omaggio
+                        'classe_farmaco': classe_farmaco,
+                        'condizione': 'ACCORDO TO',
+                        # DOC_GENERICI NON ha prezzi (DOCGEN-A03)
+                        'prezzo_netto': None,
+                        'prezzo_pubblico': None,
+                        'sconto1': None,
+                        'sconto2': None,
+                        'sconto3': None,
+                        'sconto4': None,
+                        'valore_netto': None,
+                        'aliquota_iva': 10,  # Default IVA
+                    })
+
+    return righe
+
+
+# =============================================================================
+# VALIDAZIONE E ANOMALIE
+# =============================================================================
+
+def _validate_and_detect_anomalies(data: Dict) -> List[Dict]:
+    """
+    Valida dati estratti e rileva anomalie (DOCGEN-A01..A10).
+
+    Args:
+        data: Dict con dati estratti
+
+    Returns:
+        Lista di anomalie rilevate
+    """
+    anomalie = []
+    righe = data.get('righe', [])
+
+    # DOCGEN-A04: Totale Pezzi Non Coerente
+    totale_footer = data.get('totale_pezzi_footer')
+    if totale_footer is not None and righe:
+        totale_calcolato = sum(r.get('q_venduta', 0) for r in righe)
+        if totale_calcolato != totale_footer:
+            differenza = abs(totale_calcolato - totale_footer)
+            differenza_pct = (differenza / totale_footer * 100) if totale_footer > 0 else 0
+
+            # Determina livello
+            if differenza_pct > 5:
+                livello = 'ERRORE'
+                richiede_sup = True
+            else:
+                livello = 'ATTENZIONE'
+                richiede_sup = False
+
+            anomalie.append({
+                'tipo_anomalia': 'TOTALE_NON_COERENTE',
+                'codice_anomalia': 'DOCGEN-A04',
+                'livello': livello,
+                'descrizione': f'Totale pezzi non coerente: footer={totale_footer}, calcolato={totale_calcolato}',
+                'valore_anomalo': f'Differenza: {differenza} pezzi ({differenza_pct:.1f}%)',
+                'richiede_supervisione': richiede_sup,
+            })
+
+    # DOCGEN-A08: Quantità Anomala (qty=0 o qty>200)
+    for riga in righe:
+        qty = riga.get('q_venduta', 0)
+        if qty == 0:
+            anomalie.append({
+                'tipo_anomalia': 'QUANTITA_ANOMALA',
+                'codice_anomalia': 'DOCGEN-A08',
+                'livello': 'ERRORE',
+                'descrizione': f'Quantità zero per AIC {riga.get("codice_aic")}',
+                'valore_anomalo': f'qty=0',
+                'richiede_supervisione': True,
+            })
+        elif qty > 200:
+            anomalie.append({
+                'tipo_anomalia': 'QUANTITA_ANOMALA',
+                'codice_anomalia': 'DOCGEN-A08',
+                'livello': 'ATTENZIONE',
+                'descrizione': f'Quantità elevata per AIC {riga.get("codice_aic")}',
+                'valore_anomalo': f'qty={qty}',
+                'richiede_supervisione': False,
+            })
+
+    # DOCGEN-A10: Footer Mancante (se ordine multipagina)
+    # Nota: verificato a livello di processo, non qui
+
+    return anomalie
+
+
+# =============================================================================
+# WRAPPER
+# =============================================================================
+
+def extract(text: str, lines: List[str], pdf_path: str = None) -> List[Dict]:
+    """Wrapper per compatibilità."""
+    return extract_doc_generici(text, lines, pdf_path)

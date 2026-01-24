@@ -1,0 +1,18 @@
+FieldName,FieldType,FieldLenght,Mandatory,Format,Description
+VendorNumberOrder,String ,30,Y,,Fixed for  single vendor / supplier
+LineNumber,Integer,6,Y,,Progressive indication for each product line
+ProductCode,String,20,Y,,Codice AIC/Paraf di BDF del prodotto
+SalesQuantity,Integer,6,Y,,Order quantity for single item
+QuantityDiscountPieces,Integer,6,N ,,Pieces consigned for discount (free)
+QuantityFreePieces,Integer,6,N ,,Pieces consigned for free
+ExtDeliveryDate,Date,10,N ,GG/MM/AAAA,Ext Date of dispatch
+Discount1,Float,"3,2",Y,3 integer & 2 decimal,Discount Percentage1
+Discount2,Float,"3,2",Y,3 integer & 2 decimal,Discount Percentage2
+Discount3,Float,"3,2",Y,3 integer & 2 decimal,Discount Percentage3
+Discount4,Float,"3,2",Y,3 integer & 2 decimal,Discount Percentage4
+NetVendorPrice,Float,"7,2",Y,7 integer & 2 decimal,Net Vendor Price
+PriceToDiscount,Float,"7,2",Y,7 integer & 2 decimal,Selling Price for pubblic or Price to discount
+VAT,Float,"2,2",N,2 integer & 2 decimal,
+NetVATPrice,String,1,Y,S/N,"S Net Price, N=VAT included"
+PriceForFinalSale,Float,"7,2",Y,7 integer & 2 decimal,Price to discount
+NoteAllestimento,String,200,Y,,Indication for Fullfilment

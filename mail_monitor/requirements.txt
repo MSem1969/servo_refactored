@@ -1,0 +1,18 @@
+# =============================================================================
+# GMAIL MONITOR - REQUIREMENTS
+# =============================================================================
+# Aggiornato: 6 Gennaio 2026
+# =============================================================================
+
+# ===== Gmail/Email Processing =====
+imapclient==2.3.1           # Connessione IMAP Gmail
+pyzmail36==1.0.5            # Parsing email e allegati
+
+# ===== HTTP Client =====
+requests==2.31.0            # Upload PDF al backend
+
+# ===== Configuration =====
+python-dotenv==1.0.0        # Gestione file .env
+
+# ===== Logging =====
+python-json-logger==2.0.7   # Logging strutturato JSON

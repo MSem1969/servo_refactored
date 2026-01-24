@@ -1,0 +1,15 @@
+ANTHROPIC MATERIALS LICENSE
+
+Use of these materials is governed by your agreement with Anthropic, or if you do not have an agreement with Anthropic, Anthropic's Consumer or Commercial Terms of Service, as applicable.
+
+Unless otherwise set forth in a separate agreement with Anthropic, you may not:
+- Extract or retain copies outside the Services
+- Reproduce materials except temporary copies during authorized use
+- Create derivative works
+- Distribute or sublicense to third parties
+- Manufacture inventions based on the materials
+- Reverse engineer, decompile, or disassemble
+
+Anthropic retains all right, title, and interest in these materials, including all copyrights, patents, and other intellectual property rights.
+
+The materials grant no implied licenses beyond what is expressly stated in the agreement.

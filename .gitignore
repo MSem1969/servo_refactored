@@ -1,0 +1,80 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+ENV/
+.env
+*.egg-info/
+dist/
+build/
+
+# Node.js
+node_modules/
+npm-debug.log*
+.npm
+
+# Frontend build
+frontend/dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Database backups (keep structure, not data)
+backend/backups/*.dump
+backend/backups/wal/*
+backend/backups/full/*
+
+# Uploads (PDF files)
+backend/uploads/*.pdf
+
+# Cache
+.cache/
+*.pyc
+
+# Local config
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ========== CREDENZIALI - MAI COMMITTARE ==========
+# File .env con credenziali sensibili
+.env
+backend/.env
+*.env
+!.env.example
+!backend/.env.example
+
+# Eventuali file con credenziali
+credentials*.json
+secrets*.json
+*_credentials.json
+*_secrets.json
+
+# Output tracciati (file generati)
+backend/outputs/*.TXT
+backend/outputs/*.txt
+
+# Server output
+nohup.out
+backend/nohup.out
+
+# HTTP Archive files
+*.har
+
+# Local documentation (planning, internal docs)
+DOCS/

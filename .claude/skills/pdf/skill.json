@@ -1,0 +1,40 @@
+{
+  "name": "pdf",
+  "version": "1.0.0",
+  "description": "Comprehensive PDF manipulation capabilities including text/table extraction, form filling, document creation, and merging/splitting",
+  "author": "Anthropic",
+  "license": "Anthropic Materials License",
+  "main": "SKILL.md",
+  "scripts": {
+    "check_fillable_fields": "python scripts/check_fillable_fields.py",
+    "extract_form_field_info": "python scripts/extract_form_field_info.py",
+    "convert_pdf_to_images": "python scripts/convert_pdf_to_images.py",
+    "fill_fillable_fields": "python scripts/fill_fillable_fields.py",
+    "fill_pdf_form_with_annotations": "python scripts/fill_pdf_form_with_annotations.py",
+    "create_validation_image": "python scripts/create_validation_image.py",
+    "check_bounding_boxes": "python scripts/check_bounding_boxes.py"
+  },
+  "dependencies": {
+    "python": ">=3.11",
+    "packages": [
+      "pypdf",
+      "pdfplumber",
+      "reportlab",
+      "pdf2image",
+      "pytesseract",
+      "pillow"
+    ],
+    "system": [
+      "poppler-utils",
+      "qpdf"
+    ]
+  },
+  "keywords": [
+    "pdf",
+    "forms",
+    "extraction",
+    "document-processing",
+    "fillable-forms",
+    "pdf-manipulation"
+  ]
+}

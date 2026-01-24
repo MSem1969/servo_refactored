@@ -1,0 +1,75 @@
+# =============================================================================
+# SERV.O - Docker Compose per Coolify/Hetzner
+# =============================================================================
+
+services:
+  # ===========================================================================
+  # DATABASE - PostgreSQL
+  # ===========================================================================
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: servo
+      POSTGRES_USER: servo_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-ServoSecure2024!}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  # ===========================================================================
+  # BACKEND - FastAPI
+  # ===========================================================================
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      - DB_TYPE=postgresql
+      - PG_HOST=db
+      - PG_PORT=5432
+      - PG_DATABASE=servo
+      - PG_USER=servo_user
+      - PG_PASSWORD=${DB_PASSWORD:-ServoSecure2024!}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:-ChangeMeInProduction2024!}
+      - UPLOAD_DIR=/app/uploads
+      - OUTPUT_DIR=/app/outputs
+      # Email IMAP (ricezione)
+      - IMAP_USER=${IMAP_USER:-}
+      - IMAP_PASSWORD=${IMAP_PASSWORD:-}
+      # Email SMTP (invio)
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+    volumes:
+      - uploads_data:/app/uploads
+      - outputs_data:/app/outputs
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.servo-backend.rule=Host(`api-sofad.aiservo.net`)"
+      - "traefik.http.routers.servo-backend.entrypoints=http"
+      - "traefik.http.services.servo-backend.loadbalancer.server.port=8000"
+
+  # ===========================================================================
+  # FRONTEND - React + Nginx
+  # ===========================================================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=${API_URL:-https://api-sofad.aiservo.net}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.servo-frontend.rule=Host(`sofad.aiservo.net`)"
+      - "traefik.http.routers.servo-frontend.entrypoints=http"
+      - "traefik.http.services.servo-frontend.loadbalancer.server.port=80"
+
+volumes:
+  postgres_data:
+  uploads_data:
+  outputs_data:
