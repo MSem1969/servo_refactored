@@ -1,4 +1,4 @@
-# SERV.O v10.4 - Pharmaceutical Order Extractor
+# SERV.O v11.0 - Pharmaceutical Order Extractor
 
 Sistema di estrazione automatica ordini farmaceutici da PDF con generazione tracciati ministeriali TO_T/TO_D.
 

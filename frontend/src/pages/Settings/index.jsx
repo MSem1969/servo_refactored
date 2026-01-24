@@ -54,7 +54,7 @@ const SettingsPage = ({ currentUser }) => {
   });
 
   const [systemInfo, setSystemInfo] = useState({
-    version: "v8.1",
+    version: "v11.0",
     uptime: "0d 0h 0m",
     database_size: "0 MB",
     pdf_count: 0,
@@ -149,7 +149,7 @@ const SettingsPage = ({ currentUser }) => {
 
       // Simula info sistema (TODO: API reale)
       setSystemInfo({
-        version: "v8.1.0",
+        version: "v11.0",
         uptime: "2d 14h 23m",
         database_size: "245 MB",
         pdf_count: 1247,

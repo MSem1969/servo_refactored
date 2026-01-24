@@ -121,7 +121,7 @@ const LoginPage = ({ onLogin, initialResetToken }) => {
   // Forgot Password Success
   if (mode === 'forgot' && forgotSuccess) {
     return (
-      <SimpleLayout title="SERV.O" subtitle="Sistema Gestione Ordini v8.2">
+      <SimpleLayout title="SERV.O" subtitle="Sistema Gestione Ordini v11.0">
         <div className="bg-white rounded-xl shadow-lg p-8 border border-slate-200 text-center">
           <div className="text-4xl mb-4">📧</div>
           <h3 className="text-lg font-semibold text-slate-800 mb-2">
@@ -144,7 +144,7 @@ const LoginPage = ({ onLogin, initialResetToken }) => {
   // Reset Password Success
   if (mode === 'reset' && resetSuccess) {
     return (
-      <SimpleLayout title="SERV.O" subtitle="Sistema Gestione Ordini v8.2">
+      <SimpleLayout title="SERV.O" subtitle="Sistema Gestione Ordini v11.0">
         <div className="bg-white rounded-xl shadow-lg p-8 border border-slate-200 text-center">
           <div className="text-4xl mb-4">✅</div>
           <h3 className="text-lg font-semibold text-emerald-600 mb-2">
@@ -289,7 +289,7 @@ const LoginPage = ({ onLogin, initialResetToken }) => {
 
   // Login Form (default)
   return (
-    <SimpleLayout title="SERV.O" subtitle="Sistema Gestione Ordini v8.2">
+    <SimpleLayout title="SERV.O" subtitle="Sistema Gestione Ordini v11.0">
       <div className="bg-white rounded-xl shadow-lg p-8 border border-slate-200">
         <form onSubmit={handleLogin} className="space-y-6">
           <input
