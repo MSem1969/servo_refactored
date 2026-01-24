@@ -167,7 +167,7 @@ async def mail_emails(
     """
     db = get_db()
 
-    # Query base
+    # Query base - v11.0: aggiunto num_ordini, num_righe per uniformità con upload manuale
     query = """
         SELECT
             e.id_email,
@@ -184,7 +184,9 @@ async def mail_emails(
             e.id_acquisizione,
             e.created_at,
             v.codice_vendor AS vendor,
-            a.stato as stato_acquisizione
+            a.stato as stato_acquisizione,
+            a.num_ordini,
+            a.num_righe
         FROM EMAIL_ACQUISIZIONI e
         LEFT JOIN ACQUISIZIONI a ON e.id_acquisizione = a.id_acquisizione
         LEFT JOIN VENDOR v ON a.id_vendor = v.id_vendor

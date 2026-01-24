@@ -75,15 +75,43 @@ const UploadPage = () => {
   }, []);
 
   // Carica stato Mail Monitor
+  // v11.0: Log risultati sync come upload manuale
   useEffect(() => {
     const loadMailStatus = async () => {
       try {
         const res = await mailApi.getStatus();
         if (res.success) {
+          const wasSyncing = mailSyncing;
+          const isNowSyncing = res.sync_status?.is_running;
+
           setMailStatus(res);
+
           // Aggiorna stato sync se in corso
-          if (res.sync_status?.is_running) {
+          if (isNowSyncing) {
             setMailSyncing(true);
+          } else if (wasSyncing && !isNowSyncing) {
+            // Sync appena completato - carica e logga risultati
+            setMailSyncing(false);
+            const syncResult = res.sync_status?.last_result;
+            if (syncResult?.success) {
+              addLog("ok", `✅ Sincronizzazione completata`);
+              // Carica email recenti processate e logga dettagli
+              const recentEmails = await mailApi.getEmails({ limit: 20 });
+              if (recentEmails.success && recentEmails.emails) {
+                const processate = recentEmails.emails.filter(e => e.stato === 'PROCESSATA');
+                processate.slice(0, 10).forEach(email => {
+                  const vendor = email.vendor || 'Sconosciuto';
+                  const righe = email.num_righe || 0;
+                  const righeMsg = righe > 0 ? ` - ${righe} righe estratte` : '';
+                  addLog("ok", `✅ ${email.attachment_filename || 'Email'}: ${vendor}${righeMsg}`);
+                });
+                if (processate.length > 10) {
+                  addLog("info", `... e altre ${processate.length - 10} email processate`);
+                }
+              }
+            } else if (syncResult) {
+              addLog("error", `❌ Sync fallita: ${syncResult.error || 'Errore sconosciuto'}`);
+            }
           }
         }
       } catch (err) {
@@ -119,12 +147,25 @@ const UploadPage = () => {
   };
 
   // Carica email Mail (solo errori)
+  // v11.0: Mostra stesse info di upload manuale
   const loadMailEmails = async () => {
     try {
       const res = await mailApi.getEmails({ limit: 50, stato: 'ERRORE' });
       if (res.success) {
         setMailEmails(res.emails || []);
-        addLog("info", `Caricate ${res.emails?.length || 0} email con errore`);
+        const emails = res.emails || [];
+        addLog("info", `Caricate ${emails.length} email con errore`);
+        // Log dettagli per ogni email come upload manuale
+        emails.forEach(email => {
+          const vendor = email.vendor || 'Sconosciuto';
+          const righe = email.num_righe || 0;
+          const righeMsg = righe > 0 ? ` - ${righe} righe` : '';
+          const statoIcon = email.stato === 'ERRORE' ? '❌' : '📧';
+          addLog(
+            email.stato === 'ERRORE' ? 'error' : 'info',
+            `${statoIcon} ${email.attachment_filename || email.subject}: ${vendor}${righeMsg}`
+          );
+        });
       }
     } catch (err) {
       addLog("error", "Errore caricamento email");
@@ -529,6 +570,12 @@ const UploadPage = () => {
                         {email.attachment_filename && (
                           <p className="text-xs text-blue-600 truncate">
                             📎 {email.attachment_filename}
+                            {/* v11.0: Mostra righe estratte come upload manuale */}
+                            {email.num_righe > 0 && (
+                              <span className="text-emerald-600 ml-2">
+                                • {email.num_righe} righe estratte
+                              </span>
+                            )}
                           </p>
                         )}
                         {email.errore_messaggio && (
