@@ -45,7 +45,10 @@ _sync_status = {
     "last_sync": None,
     "last_result": None,
     "emails_processed": 0,
-    "emails_errors": 0
+    "emails_errors": 0,
+    "progress_messages": [],  # v11.0: Log progressivo
+    "current_phase": None,    # v11.0: Fase corrente
+    "emails_found": 0         # v11.0: Email trovate da processare
 }
 
 
@@ -95,7 +98,13 @@ async def mail_status() -> Dict[str, Any]:
         "sync_status": {
             "is_running": _sync_status["is_running"],
             "last_sync": _sync_status["last_sync"],
-            "last_result": _sync_status["last_result"]
+            "last_result": _sync_status["last_result"],
+            # v11.0: Progress info
+            "progress_messages": _sync_status.get("progress_messages", [])[-10:],  # Ultimi 10 messaggi
+            "current_phase": _sync_status.get("current_phase"),
+            "emails_found": _sync_status.get("emails_found", 0),
+            "emails_processed": _sync_status.get("emails_processed", 0),
+            "emails_errors": _sync_status.get("emails_errors", 0)
         },
         "scheduler": scheduler_status,
         "config": config_status,
@@ -403,34 +412,105 @@ def _get_mail_config() -> Dict[str, Any]:
 def _run_mail_sync():
     """
     Esegue la sincronizzazione Mail in background.
+    v11.0: Streaming output per progress real-time.
     """
     global _sync_status
+    import re
+
+    # Reset progress
+    _sync_status["progress_messages"] = []
+    _sync_status["current_phase"] = "Connessione al server mail..."
+    _sync_status["emails_found"] = 0
+    _sync_status["emails_processed"] = 0
+    _sync_status["emails_errors"] = 0
+
+    def add_progress(msg):
+        """Aggiunge messaggio di progresso con timestamp."""
+        _sync_status["progress_messages"].append({
+            "time": datetime.now().strftime("%H:%M:%S"),
+            "message": msg
+        })
+        # Mantieni solo ultimi 50 messaggi
+        if len(_sync_status["progress_messages"]) > 50:
+            _sync_status["progress_messages"] = _sync_status["progress_messages"][-50:]
+
+    add_progress("Avvio sincronizzazione mail...")
 
     try:
-        # Esegui mail_monitor.py come subprocess
-        result = subprocess.run(
+        # Esegui mail_monitor.py con streaming output
+        process = subprocess.Popen(
             [sys.executable, str(MAIL_MONITOR_PATH / "mail_monitor.py")],
-            capture_output=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
             text=True,
-            timeout=300,  # 5 minuti timeout
-            cwd=str(MAIL_MONITOR_PATH)
+            cwd=str(MAIL_MONITOR_PATH),
+            bufsize=1  # Line buffered
         )
 
+        stdout_lines = []
+        start_time = datetime.now()
+
+        # Leggi output line-by-line
+        for line in iter(process.stdout.readline, ''):
+            if not line:
+                break
+
+            line = line.strip()
+            stdout_lines.append(line)
+
+            # Parse progress da output
+            if "Email da processare:" in line:
+                match = re.search(r'Email da processare: (\d+)', line)
+                if match:
+                    count = int(match.group(1))
+                    _sync_status["emails_found"] = count
+                    _sync_status["current_phase"] = f"Trovate {count} email da processare"
+                    add_progress(f"Trovate {count} email da processare")
+
+            elif "Processo email UID" in line:
+                _sync_status["current_phase"] = "Elaborazione email..."
+                # Non loggiamo ogni UID per non riempire il log
+
+            elif line.startswith("OK -"):
+                _sync_status["emails_processed"] += 1
+                # Estrai ID acquisizione se presente
+                match = re.search(r'ID acquisizione: (\d+)', line)
+                if match:
+                    add_progress(f"Email elaborata (ID: {match.group(1)})")
+
+            elif "senza allegati PDF" in line.lower() or "già processata" in line.lower():
+                # Email skippate - non contiamo come errore
+                pass
+
+            elif "Errore" in line or "ERROR" in line:
+                _sync_status["emails_errors"] += 1
+                add_progress(f"Errore: {line[:100]}")
+
+            elif "RIEPILOGO:" in line:
+                _sync_status["current_phase"] = "Completato"
+                match = re.search(r'(\d+) processate, (\d+) errori', line)
+                if match:
+                    _sync_status["emails_processed"] = int(match.group(1))
+                    _sync_status["emails_errors"] = int(match.group(2))
+                add_progress(line)
+
+            # Timeout check
+            if (datetime.now() - start_time).seconds > 300:
+                process.kill()
+                raise subprocess.TimeoutExpired(cmd="mail_monitor.py", timeout=300)
+
+        process.wait()
+
         _sync_status["last_result"] = {
-            "success": result.returncode == 0,
-            "return_code": result.returncode,
-            "stdout": result.stdout[-2000:] if result.stdout else "",  # Ultimi 2000 char
-            "stderr": result.stderr[-1000:] if result.stderr else "",
-            "completed_at": datetime.now().isoformat()
+            "success": process.returncode == 0,
+            "return_code": process.returncode,
+            "stdout": "\n".join(stdout_lines[-50:]),  # Ultime 50 righe
+            "completed_at": datetime.now().isoformat(),
+            "emails_processed": _sync_status["emails_processed"],
+            "emails_errors": _sync_status["emails_errors"]
         }
 
-        # Conta email processate dal log
-        if "RIEPILOGO:" in result.stdout:
-            import re
-            match = re.search(r'(\d+) processate, (\d+) errori', result.stdout)
-            if match:
-                _sync_status["emails_processed"] = int(match.group(1))
-                _sync_status["emails_errors"] = int(match.group(2))
+        add_progress(f"Sincronizzazione completata: {_sync_status['emails_processed']} email elaborate")
 
     except subprocess.TimeoutExpired:
         _sync_status["last_result"] = {
@@ -438,11 +518,14 @@ def _run_mail_sync():
             "error": "Timeout: sincronizzazione interrotta dopo 5 minuti",
             "completed_at": datetime.now().isoformat()
         }
+        add_progress("Timeout - sincronizzazione interrotta")
     except Exception as e:
         _sync_status["last_result"] = {
             "success": False,
             "error": str(e),
             "completed_at": datetime.now().isoformat()
         }
+        add_progress(f"Errore: {str(e)}")
     finally:
         _sync_status["is_running"] = False
+        _sync_status["current_phase"] = None

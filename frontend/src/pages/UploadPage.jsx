@@ -74,8 +74,11 @@ const UploadPage = () => {
     loadStats();
   }, []);
 
+  // v11.0: Track ultimo messaggio di progresso visto
+  const [lastProgressIndex, setLastProgressIndex] = useState(0);
+
   // Carica stato Mail Monitor
-  // v11.0: Log risultati sync come upload manuale
+  // v11.0: Log risultati sync come upload manuale + progress real-time
   useEffect(() => {
     const loadMailStatus = async () => {
       try {
@@ -86,31 +89,62 @@ const UploadPage = () => {
 
           setMailStatus(res);
 
-          // Aggiorna stato sync se in corso
+          // v11.0: Mostra messaggi di progresso durante sync
           if (isNowSyncing) {
             setMailSyncing(true);
+
+            // Mostra nuovi messaggi di progresso
+            const progressMsgs = res.sync_status?.progress_messages || [];
+            if (progressMsgs.length > lastProgressIndex) {
+              const newMsgs = progressMsgs.slice(lastProgressIndex);
+              newMsgs.forEach(msg => {
+                const msgText = msg.message || msg;
+                if (msgText.includes('Errore')) {
+                  addLog("error", `[${msg.time}] ${msgText}`);
+                } else if (msgText.includes('elaborata') || msgText.includes('completata')) {
+                  addLog("ok", `[${msg.time}] ${msgText}`);
+                } else {
+                  addLog("info", `[${msg.time}] ${msgText}`);
+                }
+              });
+              setLastProgressIndex(progressMsgs.length);
+            }
+
+            // Mostra fase corrente se disponibile
+            const phase = res.sync_status?.current_phase;
+            if (phase && !progressMsgs.some(m => m.message?.includes(phase))) {
+              // La fase viene mostrata solo se non è già nei messaggi
+            }
           } else if (wasSyncing && !isNowSyncing) {
             // Sync appena completato - carica e logga risultati
             setMailSyncing(false);
+            setLastProgressIndex(0); // Reset per prossima sync
             const syncResult = res.sync_status?.last_result;
             if (syncResult?.success) {
-              addLog("ok", `✅ Sincronizzazione completata`);
+              const processed = syncResult.emails_processed || res.sync_status?.emails_processed || 0;
+              const errors = syncResult.emails_errors || res.sync_status?.emails_errors || 0;
+              addLog("ok", `✅ Sincronizzazione completata: ${processed} email elaborate, ${errors} errori`);
+
               // Carica email recenti processate e logga dettagli
-              const recentEmails = await mailApi.getEmails({ limit: 20 });
-              if (recentEmails.success && recentEmails.emails) {
-                const processate = recentEmails.emails.filter(e => e.stato === 'PROCESSATA');
-                processate.slice(0, 10).forEach(email => {
-                  const vendor = email.vendor || 'Sconosciuto';
-                  const righe = email.num_righe || 0;
-                  const righeMsg = righe > 0 ? ` - ${righe} righe estratte` : '';
-                  addLog("ok", `✅ ${email.attachment_filename || 'Email'}: ${vendor}${righeMsg}`);
-                });
-                if (processate.length > 10) {
-                  addLog("info", `... e altre ${processate.length - 10} email processate`);
+              if (processed > 0) {
+                const recentEmails = await mailApi.getEmails({ limit: 20 });
+                if (recentEmails.success && recentEmails.emails) {
+                  const processate = recentEmails.emails.filter(e => e.stato === 'PROCESSATA');
+                  processate.slice(0, 10).forEach(email => {
+                    const vendor = email.vendor || 'Sconosciuto';
+                    const righe = email.num_righe || 0;
+                    const righeMsg = righe > 0 ? ` - ${righe} righe estratte` : '';
+                    addLog("ok", `   ${email.attachment_filename || 'Email'}: ${vendor}${righeMsg}`);
+                  });
+                  if (processate.length > 10) {
+                    addLog("info", `   ... e altre ${processate.length - 10} email processate`);
+                  }
                 }
               }
+              addLog("info", "Monitoraggio mail completato");
             } else if (syncResult) {
               addLog("error", `❌ Sync fallita: ${syncResult.error || 'Errore sconosciuto'}`);
+              addLog("info", "Monitoraggio mail terminato con errori");
             }
           }
         }
@@ -122,22 +156,23 @@ const UploadPage = () => {
     };
 
     loadMailStatus();
-    // Polling ogni 10 secondi se sync in corso
+    // v11.0: Polling ogni 3 secondi se sync in corso (era 10)
     const interval = setInterval(() => {
       if (mailSyncing) loadMailStatus();
-    }, 10000);
+    }, 3000);
 
     return () => clearInterval(interval);
-  }, [mailSyncing]);
+  }, [mailSyncing, lastProgressIndex]);
 
   // Avvia sync Mail
   const handleMailSync = async () => {
     try {
       setMailSyncing(true);
+      setLastProgressIndex(0); // v11.0: Reset progress tracking
       addLog("info", "Avvio sincronizzazione Mail...");
       const res = await mailApi.sync();
       if (res.success) {
-        addLog("ok", "Sincronizzazione Mail avviata in background");
+        addLog("ok", "Connessione al server mail in corso...");
       }
     } catch (err) {
       const msg = err.response?.data?.detail || err.message;
