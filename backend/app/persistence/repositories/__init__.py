@@ -1,7 +1,8 @@
 # =============================================================================
-# SERV.O v8.1 - REPOSITORIES PACKAGE
+# SERV.O v11.0 - REPOSITORIES PACKAGE
 # =============================================================================
 # Repository pattern per accesso database
+# v11.0: TIER 3.3 - Unified criteri_ordinari repository
 #
 # Struttura:
 #   - base.py: BaseRepository con CRUD generici
@@ -9,6 +10,7 @@
 #   - supervisione.py: SupervisioneEspositoreRepository, etc.
 #   - anomalie.py: AnomalieRepository
 #   - lookup.py: FarmacieRepository, ParafarmacieRepository
+#   - criteri.py: CriteriOrdinariBase, CriteriOrdinariFactory (v11.0)
 # =============================================================================
 
 # Base
@@ -40,12 +42,26 @@ from .anomalie import (
 from .lookup import (
     FarmacieRepository,
     ParafarmacieRepository,
-    CriteriOrdinariRepository,
+    CriteriOrdinariRepository,  # v11.0: Alias for CriteriOrdinariBase
     farmacie_repository,
     parafarmacie_repository,
     criteri_espositore_repository,
     criteri_listino_repository,
     criteri_lookup_repository,
+)
+
+# Criteri Ordinari (v11.0 - unified)
+from .criteri import (
+    CriteriOrdinariBase,
+    CriteriOrdinariFactory,
+    CriteriEspositoreRepository,
+    CriteriListinoRepository,
+    CriteriLookupRepository,
+    CriteriAicRepository,
+    get_criteri_espositore_repo,
+    get_criteri_listino_repo,
+    get_criteri_lookup_repo,
+    get_criteri_aic_repo,
 )
 
 
@@ -68,10 +84,21 @@ __all__ = [
     # Lookup
     'FarmacieRepository',
     'ParafarmacieRepository',
-    'CriteriOrdinariRepository',
+    'CriteriOrdinariRepository',  # v11.0: Alias
     'farmacie_repository',
     'parafarmacie_repository',
     'criteri_espositore_repository',
     'criteri_listino_repository',
     'criteri_lookup_repository',
+    # Criteri (v11.0)
+    'CriteriOrdinariBase',
+    'CriteriOrdinariFactory',
+    'CriteriEspositoreRepository',
+    'CriteriListinoRepository',
+    'CriteriLookupRepository',
+    'CriteriAicRepository',
+    'get_criteri_espositore_repo',
+    'get_criteri_listino_repo',
+    'get_criteri_lookup_repo',
+    'get_criteri_aic_repo',
 ]

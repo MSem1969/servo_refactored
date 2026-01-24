@@ -1,12 +1,24 @@
 # =============================================================================
-# SERV.O v8.1 - LOOKUP REPOSITORY
+# SERV.O v11.0 - LOOKUP REPOSITORY
 # =============================================================================
 # Repository per anagrafica farmacie e parafarmacie
+# v11.0: TIER 3.3 - Criteri importati da criteri.py (unified)
 # =============================================================================
 
 from typing import Optional, List, Dict, Any
 
 from .base import BaseRepository
+# v11.0: Import criteri from dedicated module
+from .criteri import (
+    CriteriOrdinariBase,
+    CriteriEspositoreRepository,
+    CriteriListinoRepository,
+    CriteriLookupRepository,
+    CriteriOrdinariFactory,
+    get_criteri_espositore_repo,
+    get_criteri_listino_repo,
+    get_criteri_lookup_repo,
+)
 
 
 class FarmacieRepository(BaseRepository[Dict[str, Any]]):
@@ -181,92 +193,17 @@ class ParafarmacieRepository(BaseRepository[Dict[str, Any]]):
         """, (id_parafarmacia,))
 
 
-class CriteriOrdinariRepository(BaseRepository[Dict[str, Any]]):
-    """Repository per criteri_ordinari (pattern ML)."""
-
-    def __init__(self, table_suffix: str):
-        """
-        Args:
-            table_suffix: 'espositore', 'listino', o 'lookup'
-        """
-        super().__init__(f'criteri_ordinari_{table_suffix}', 'pattern_signature')
-        self.table_suffix = table_suffix
-
-    def get_by_signature(self, pattern_signature: str) -> Optional[Dict[str, Any]]:
-        """
-        Recupera criterio per pattern signature.
-
-        Args:
-            pattern_signature: Hash del pattern
-
-        Returns:
-            Criterio o None
-        """
-        return self._execute_one(f"""
-            SELECT *
-            FROM criteri_ordinari_{self.table_suffix}
-            WHERE pattern_signature = %s
-        """, (pattern_signature,))
-
-    def increment_approvazioni(self, pattern_signature: str) -> bool:
-        """
-        Incrementa contatore approvazioni.
-
-        Args:
-            pattern_signature: Hash del pattern
-
-        Returns:
-            True se aggiornato
-        """
-        db = self._get_db()
-        result = db.execute(f"""
-            UPDATE criteri_ordinari_{self.table_suffix}
-            SET count_approvazioni = count_approvazioni + 1,
-                ultima_approvazione = CURRENT_TIMESTAMP
-            WHERE pattern_signature = %s
-            RETURNING pattern_signature
-        """, (pattern_signature,)).fetchone()
-        db.commit()
-        return result is not None
-
-    def mark_as_ordinario(self, pattern_signature: str) -> bool:
-        """
-        Segna pattern come ordinario.
-
-        Args:
-            pattern_signature: Hash del pattern
-
-        Returns:
-            True se aggiornato
-        """
-        db = self._get_db()
-        result = db.execute(f"""
-            UPDATE criteri_ordinari_{self.table_suffix}
-            SET is_ordinario = TRUE
-            WHERE pattern_signature = %s
-            RETURNING pattern_signature
-        """, (pattern_signature,)).fetchone()
-        db.commit()
-        return result is not None
-
-    def get_ordinari(self) -> List[Dict[str, Any]]:
-        """
-        Recupera tutti i pattern ordinari.
-
-        Returns:
-            Lista pattern ordinari
-        """
-        return self._execute_query(f"""
-            SELECT *
-            FROM criteri_ordinari_{self.table_suffix}
-            WHERE is_ordinario = TRUE
-            ORDER BY count_approvazioni DESC
-        """)
-
+# v11.0: CriteriOrdinariRepository moved to criteri.py
+# Use CriteriOrdinariBase, CriteriEspositoreRepository, etc. from criteri.py
 
 # Singleton instances
 farmacie_repository = FarmacieRepository()
 parafarmacie_repository = ParafarmacieRepository()
-criteri_espositore_repository = CriteriOrdinariRepository('espositore')
-criteri_listino_repository = CriteriOrdinariRepository('listino')
-criteri_lookup_repository = CriteriOrdinariRepository('lookup')
+
+# v11.0: Use factory-managed instances from criteri.py
+criteri_espositore_repository = get_criteri_espositore_repo()
+criteri_listino_repository = get_criteri_listino_repo()
+criteri_lookup_repository = get_criteri_lookup_repo()
+
+# Re-export for backward compatibility
+CriteriOrdinariRepository = CriteriOrdinariBase  # Alias
