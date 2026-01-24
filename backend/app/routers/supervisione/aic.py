@@ -1,8 +1,9 @@
 # =============================================================================
-# SERV.O v8.2 - SUPERVISIONE AIC
+# SERV.O v11.0 - SUPERVISIONE AIC
 # =============================================================================
 # Endpoint per gestione supervisione codice AIC (AIC-A01)
 # Include correzione errori AIC
+# v11.0: Usa servizio AIC unificato
 # =============================================================================
 
 from typing import Optional
@@ -10,8 +11,16 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from ...database_pg import get_db
-from ...services.supervision.aic import (
+# v11.0: Importa dal servizio unificato
+from ...services.supervision.aic_unified import (
+    AICPropagator,
+    LivelloPropagazione,
     approva_supervisione_aic,
+    valida_codice_aic,
+    conta_supervisioni_aic_pending,
+)
+# Funzioni ancora nel vecchio modulo (da migrare in seguito)
+from ...services.supervision.aic import (
     rifiuta_supervisione_aic,
     search_aic_suggestions,
 )
@@ -148,30 +157,37 @@ async def risolvi_aic(id_supervisione: int, req: RisoluzioneAICRequest):
     Returns:
         Risultato con numero righe propagate
     """
-    # Valida formato AIC
-    if not req.codice_aic or len(req.codice_aic) != 9 or not req.codice_aic.isdigit():
-        raise HTTPException(
-            status_code=400,
-            detail="Codice AIC non valido. Deve essere composto da 9 cifre."
-        )
+    # v11.0: Usa AICPropagator unificato
+    valido, msg = valida_codice_aic(req.codice_aic)
+    if not valido:
+        raise HTTPException(status_code=400, detail=msg)
 
     try:
-        result = approva_supervisione_aic(
+        livello = LivelloPropagazione(req.livello_propagazione.upper())
+        propagator = AICPropagator()
+        result = propagator.risolvi_da_supervisione(
             id_supervisione=id_supervisione,
-            operatore=req.operatore,
             codice_aic=req.codice_aic,
-            livello_propagazione=req.livello_propagazione,
+            livello=livello,
+            operatore=req.operatore,
             note=req.note
         )
 
-        if not result.get('success'):
-            raise HTTPException(
-                status_code=400,
-                detail=result.get('error', 'Errore durante approvazione')
-            )
+        if not result.success:
+            raise HTTPException(status_code=400, detail=result.error)
 
-        return result
+        return {
+            'approvata': True,
+            'righe_aggiornate': result.righe_aggiornate,
+            'ordini_coinvolti': result.ordini_coinvolti,
+            'codice_aic': result.codice_aic,
+            'success': True
+        }
 
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -273,93 +289,36 @@ async def approva_pattern_aic_bulk(pattern_signature: str, req: BulkAICRequest):
     Returns:
         Risultato con conteggio supervisioni e ordini gestiti
     """
-    # Valida formato AIC
-    if not req.codice_aic or len(req.codice_aic) != 9 or not req.codice_aic.isdigit():
-        raise HTTPException(
-            status_code=400,
-            detail="Codice AIC non valido. Deve essere composto da 9 cifre."
+    # v11.0: Usa AICPropagator unificato invece di logica diretta
+    valido, msg = valida_codice_aic(req.codice_aic)
+    if not valido:
+        raise HTTPException(status_code=400, detail=msg)
+
+    try:
+        propagator = AICPropagator()
+        result = propagator.approva_bulk_pattern(
+            pattern_signature=pattern_signature,
+            codice_aic=req.codice_aic,
+            operatore=req.operatore,
+            note=req.note
         )
 
-    from ...services.supervision.aic import approva_supervisione_aic, _registra_approvazione_pattern_aic
-    from ...services.supervision.requests import sblocca_ordine_se_completo
+        if not result.success:
+            raise HTTPException(status_code=404 if 'non trovata' in result.error else 400, detail=result.error)
 
-    db = get_db()
+        return {
+            "success": True,
+            "pattern_signature": pattern_signature,
+            "codice_aic": result.codice_aic,
+            "supervisioni_approvate": result.supervisioni_approvate,
+            "righe_aggiornate": result.righe_aggiornate,
+            "ordini_coinvolti": result.ordini_coinvolti
+        }
 
-    # Trova tutte le supervisioni pending con questo pattern
-    rows = db.execute("""
-        SELECT id_supervisione, id_testata, id_dettaglio
-        FROM supervisione_aic
-        WHERE pattern_signature = %s AND stato = 'PENDING'
-    """, (pattern_signature,)).fetchall()
-
-    if not rows:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Nessuna supervisione AIC pending trovata per pattern {pattern_signature}"
-        )
-
-    supervisioni_approvate = 0
-    ordini_coinvolti = set()
-    righe_aggiornate = 0
-
-    # Approva ogni supervisione
-    for row in rows:
-        try:
-            # Aggiorna supervisione
-            db.execute("""
-                UPDATE supervisione_aic
-                SET stato = 'APPROVED',
-                    operatore = %s,
-                    timestamp_decisione = CURRENT_TIMESTAMP,
-                    codice_aic_assegnato = %s,
-                    note = %s
-                WHERE id_supervisione = %s
-            """, (req.operatore, req.codice_aic, f"[BULK] {req.note or ''}", row['id_supervisione']))
-
-            # Aggiorna riga ordine
-            if row['id_dettaglio']:
-                db.execute("""
-                    UPDATE ordini_dettaglio
-                    SET codice_aic = %s
-                    WHERE id_dettaglio = %s
-                """, (req.codice_aic, row['id_dettaglio']))
-                righe_aggiornate += 1
-
-            supervisioni_approvate += 1
-            ordini_coinvolti.add(row['id_testata'])
-
-            # Chiudi anomalie correlate
-            db.execute("""
-                UPDATE anomalie
-                SET stato = 'RISOLTA',
-                    data_risoluzione = CURRENT_TIMESTAMP,
-                    note_risoluzione = %s
-                WHERE id_testata = %s
-                  AND codice_anomalia = 'AIC-A01'
-                  AND stato = 'APERTA'
-            """, (f"AIC assegnato: {req.codice_aic} [BULK]", row['id_testata']))
-
-        except Exception as e:
-            print(f"Errore approvazione supervisione {row['id_supervisione']}: {e}")
-
-    db.commit()
-
-    # Incrementa pattern ML UNA SOLA VOLTA (non per ogni supervisione)
-    _registra_approvazione_pattern_aic(pattern_signature, req.operatore, req.codice_aic)
-    db.commit()
-
-    # Sblocca ordini
-    for id_testata in ordini_coinvolti:
-        sblocca_ordine_se_completo(id_testata)
-
-    return {
-        "success": True,
-        "pattern_signature": pattern_signature,
-        "codice_aic": req.codice_aic,
-        "supervisioni_approvate": supervisioni_approvate,
-        "righe_aggiornate": righe_aggiornate,
-        "ordini_coinvolti": list(ordini_coinvolti)
-    }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/stats", summary="Statistiche supervisione AIC")

@@ -1,13 +1,14 @@
 # =============================================================================
-# SERV.O v7.0 - SUPERVISION SERVICE PACKAGE
+# SERV.O v11.0 - SUPERVISION SERVICE PACKAGE
 # =============================================================================
 # Servizio supervisione decomposto in moduli:
-#   supervision/constants.py  - Costanti e soglie
-#   supervision/patterns.py   - Pattern signature e fasce
-#   supervision/requests.py   - Gestione richieste supervisione
-#   supervision/decisions.py  - Decisioni (approve/reject/modify)
-#   supervision/ml.py         - Machine learning e criteri ordinari
-#   supervision/queries.py    - Query e ricerche
+#   supervision/constants.py      - Costanti e soglie
+#   supervision/patterns.py       - Pattern signature e fasce
+#   supervision/requests.py       - Gestione richieste supervisione
+#   supervision/decisions.py      - Decisioni (approve/reject/modify)
+#   supervision/ml.py             - Machine learning e criteri ordinari
+#   supervision/queries.py        - Query e ricerche
+#   supervision/aic_unified.py    - [v11] Servizio AIC unificato
 #
 # Re-export per retrocompatibilita con supervisione.py
 # =============================================================================
@@ -56,6 +57,28 @@ from .queries import (
     get_storico_criteri_applicati,
 )
 
+# v11.0 - AIC Unified Service (centralizza propagazione_aic.py e aic.py)
+from .aic_unified import (
+    # Classe principale
+    AICPropagator,
+    # Enums e dataclass
+    LivelloPropagazione,
+    PropagationResult,
+    ResolutionResult,
+    # Funzioni di utilità
+    valida_codice_aic,
+    normalizza_descrizione,
+    calcola_pattern_signature as calcola_pattern_signature_aic,
+    # Wrapper retrocompatibili
+    propaga_aic,
+    risolvi_anomalia_aic,
+    approva_supervisione_aic,
+    approva_bulk_pattern_aic,
+    # Contatori
+    conta_anomalie_aic_aperte,
+    conta_supervisioni_aic_pending,
+)
+
 
 __all__ = [
     # Costanti
@@ -88,4 +111,18 @@ __all__ = [
     'può_emettere_tracciato',
     'get_supervisioni_per_ordine',
     'get_storico_criteri_applicati',
+    # v11.0 - AIC Unified
+    'AICPropagator',
+    'LivelloPropagazione',
+    'PropagationResult',
+    'ResolutionResult',
+    'valida_codice_aic',
+    'normalizza_descrizione',
+    'calcola_pattern_signature_aic',
+    'propaga_aic',
+    'risolvi_anomalia_aic',
+    'approva_supervisione_aic',
+    'approva_bulk_pattern_aic',
+    'conta_anomalie_aic_aperte',
+    'conta_supervisioni_aic_pending',
 ]
