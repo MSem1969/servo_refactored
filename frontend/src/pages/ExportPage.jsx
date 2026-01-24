@@ -474,7 +474,8 @@ export default function ExportPage() {
             {/* Tipo data: Ordine o Consegna */}
             <div>
               <label className="block text-sm font-medium text-slate-600 mb-2">Tipo Data</label>
-              <div className="flex gap-4">
+              {/* v11.0: Layout verticale - Data Consegna sotto Data Ordine */}
+              <div className="flex flex-col gap-2">
                 <label className={`flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-colors ${
                   filters.tipo_data === 'ordine'
                     ? 'bg-blue-50 border border-blue-200'

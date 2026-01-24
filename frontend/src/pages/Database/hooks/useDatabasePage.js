@@ -201,34 +201,45 @@ export function useDatabasePage(currentUser, onOpenOrdine) {
       `Lo stato diventerà EVASO e non saranno più modificabili.`
     )) return;
 
+    // Helper per ottenere numero_ordine dall'id_testata
+    const getNumeroOrdine = (id_testata) => {
+      const ordine = ordini.find(o => o.id_testata === id_testata);
+      return ordine?.numero_ordine || ordine?.numero_ordine_vendor || `ID:${id_testata}`;
+    };
+
     let successi = 0;
     let errori = [];
 
     try {
       for (const id_testata of selected) {
+        const numeroOrdine = getNumeroOrdine(id_testata);
         try {
           await ordiniApi.archiviaOrdine(id_testata, currentUser?.username || 'admin');
           successi++;
         } catch (err) {
-          errori.push({ id: id_testata, error: err.message });
+          const errorMsg = err.response?.data?.detail || err.message || 'Errore sconosciuto';
+          errori.push({ numeroOrdine, error: errorMsg });
         }
       }
 
       let msg = `ARCHIVIAZIONE COMPLETATA\n\nOrdini archiviati: ${successi}/${selected.length}\n`;
       if (errori.length > 0) {
         msg += `\nErrori: ${errori.length}\n`;
-        errori.slice(0, 5).forEach(e => {
-          msg += `  - Ordine #${e.id}: ${e.error}\n`;
+        errori.slice(0, 10).forEach(e => {
+          msg += `  - Ordine ${e.numeroOrdine}: ${e.error}\n`;
         });
+        if (errori.length > 10) {
+          msg += `  ... e altri ${errori.length - 10} errori\n`;
+        }
       }
 
       alert(msg);
       setSelected([]);
       loadOrdini();
     } catch (err) {
-      alert('Errore archiviazione: ' + err.message);
+      alert('Errore archiviazione: ' + (err.response?.data?.detail || err.message));
     }
-  }, [selected, currentUser, loadOrdini]);
+  }, [selected, currentUser, loadOrdini, ordini]);
 
   const handleBatchValidate = useCallback(async () => {
     if (selected.length === 0) return;
@@ -241,22 +252,31 @@ export function useDatabasePage(currentUser, onOpenOrdine) {
     setValidatingBatch(true);
     const operatore = currentUser?.username || 'BATCH_EXPORT';
 
+    // Helper per ottenere numero_ordine dall'id_testata
+    const getNumeroOrdine = (id_testata) => {
+      const ordine = ordini.find(o => o.id_testata === id_testata);
+      return ordine?.numero_ordine || ordine?.numero_ordine_vendor || `ID:${id_testata}`;
+    };
+
     let successi = 0;
     let errori = [];
     let totaleRighe = 0;
 
     try {
       for (const id_testata of selected) {
+        const numeroOrdine = getNumeroOrdine(id_testata);
         try {
           const res = await ordiniApi.validaEGeneraTracciato(id_testata, operatore, true);
           if (res.success) {
             successi++;
             totaleRighe += res.statistiche?.righe_esportate || 0;
           } else {
-            errori.push({ id: id_testata, error: res.error || 'Errore sconosciuto' });
+            errori.push({ numeroOrdine, error: res.error || 'Errore sconosciuto' });
           }
         } catch (err) {
-          errori.push({ id: id_testata, error: err.message });
+          // Estrai messaggio errore user-friendly dal backend
+          const errorMsg = err.response?.data?.detail || err.message || 'Errore sconosciuto';
+          errori.push({ numeroOrdine, error: errorMsg });
         }
       }
 
@@ -267,20 +287,23 @@ export function useDatabasePage(currentUser, onOpenOrdine) {
 
       if (errori.length > 0) {
         msg += `\nErrori: ${errori.length}\n`;
-        errori.slice(0, 5).forEach(e => {
-          msg += `  - Ordine #${e.id}: ${e.error}\n`;
+        errori.slice(0, 10).forEach(e => {
+          msg += `  - Ordine ${e.numeroOrdine}: ${e.error}\n`;
         });
+        if (errori.length > 10) {
+          msg += `  ... e altri ${errori.length - 10} errori\n`;
+        }
       }
 
       alert(msg);
       setSelected([]);
       loadOrdini();
     } catch (err) {
-      alert('Errore durante la validazione massiva: ' + err.message);
+      alert('Errore durante la validazione massiva: ' + (err.response?.data?.detail || err.message));
     } finally {
       setValidatingBatch(false);
     }
-  }, [selected, currentUser, loadOrdini]);
+  }, [selected, currentUser, loadOrdini, ordini]);
 
   const handleResolveAnomalies = useCallback(async () => {
     if (selectedAnomalies.length === 0) return;

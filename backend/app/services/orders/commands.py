@@ -303,6 +303,7 @@ class ArchiviazioneResult:
     stato_ordine: str = None
     stato_riga: str = None
     righe_archiviate: int = 0
+    anomalie_archiviate: int = 0  # v11.0
     ordine_completato: bool = False
     error: str = ''
 
@@ -395,21 +396,50 @@ def archivia_ordine(id_testata: int, operatore: str) -> ArchiviazioneResult:
           AND stato_riga NOT IN ('EVASO', 'ARCHIVIATO')
     """, (now, operatore, id_testata))
 
+    # v11.0: Archivia tutte le anomalie aperte dell'ordine
+    anomalie_archiviate = db.execute("""
+        UPDATE anomalie
+        SET stato = 'ARCHIVIATA',
+            risolto_da = %s,
+            data_risoluzione = %s,
+            note_risoluzione = COALESCE(note_risoluzione || ' | ', '') || 'Archiviata con ordine'
+        WHERE id_testata = %s
+          AND stato IN ('APERTA', 'IN_GESTIONE')
+        RETURNING id_anomalia
+    """, (operatore, now, id_testata)).fetchall()
+
+    # v11.0: Archivia tutte le supervisioni pending dell'ordine
+    for table in ['supervisione_espositore', 'supervisione_listino', 'supervisione_lookup',
+                  'supervisione_aic', 'supervisione_prezzo']:
+        try:
+            db.execute(f"""
+                UPDATE {table}
+                SET stato = 'ARCHIVED',
+                    operatore = %s,
+                    timestamp_decisione = CURRENT_TIMESTAMP,
+                    note = COALESCE(note || ' | ', '') || 'Archiviata con ordine'
+                WHERE id_testata = %s AND stato = 'PENDING'
+            """, (operatore, id_testata))
+        except Exception:
+            pass  # Tabella potrebbe non esistere
+
     db.commit()
 
     # Log operazione
+    num_anomalie = len(anomalie_archiviate) if anomalie_archiviate else 0
     log_operation(
         'ARCHIVIA_ORDINE',
         'ORDINI_TESTATA',
         id_testata,
-        f"Ordine archiviato. Righe archiviate: {righe_da_archiviare}. Operatore: {operatore}"
+        f"Ordine archiviato. Righe: {righe_da_archiviare}, Anomalie: {num_anomalie}. Operatore: {operatore}"
     )
 
     return ArchiviazioneResult(
         success=True,
         id_testata=id_testata,
         stato_ordine='ARCHIVIATO',
-        righe_archiviate=righe_da_archiviare
+        righe_archiviate=righe_da_archiviare,
+        anomalie_archiviate=num_anomalie
     )
 
 
