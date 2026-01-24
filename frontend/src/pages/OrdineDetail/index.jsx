@@ -13,6 +13,7 @@ import OrdineHeader from './OrdineHeader';
 import RigheTable from './RigheTable';
 import RigaEditModal from './RigaEditModal';
 import AnomalieTab from './AnomalieTab';
+import EspositoreTab from './EspositoreTab';
 import PdfModal from './PdfModal';
 
 // Custom hook
@@ -27,6 +28,7 @@ export default function OrdineDetailPage({ ordineId, currentUser, onBack, onNavi
     // Data
     ordine,
     righe,
+    righeAll,
     anomalie,
     supervisioni,
     stats,
@@ -69,7 +71,8 @@ export default function OrdineDetailPage({ ordineId, currentUser, onBack, onNavi
     assignFarmacia,
     closeAnomaliaModal,
     approvaSuper,
-    rifiutaSuper
+    rifiutaSuper,
+    fixEspositore
   } = useOrdineDetail(ordineId, currentUser);
 
   // =============================================================================
@@ -125,6 +128,7 @@ export default function OrdineDetailPage({ ordineId, currentUser, onBack, onNavi
           <nav className="flex gap-1 p-1">
             {[
               { id: 'righe', label: `Righe (${righe.length})`, icon: '[R]' },
+              { id: 'espositore', label: 'Espositore', icon: '[E]' },
               { id: 'anomalie', label: `Anomalie (${anomalie.length + supervisioni.length})`, icon: '[!]' }
             ].map(tab => (
               <button
@@ -164,6 +168,15 @@ export default function OrdineDetailPage({ ordineId, currentUser, onBack, onNavi
               onConfermaTutto={confermaTutto}
               onRipristinaTutto={ripristinaTutto}
               onValidaOrdine={validaOrdine}
+            />
+          )}
+
+          {activeTab === 'espositore' && (
+            <EspositoreTab
+              righe={righeAll}
+              ordine={ordine}
+              onFixEspositore={fixEspositore}
+              loading={loading}
             />
           )}
 

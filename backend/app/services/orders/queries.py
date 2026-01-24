@@ -209,15 +209,29 @@ def get_ordine_detail(id_testata: int) -> Optional[Dict[str, Any]]:
     return result
 
 
-def get_ordine_righe(id_testata: int) -> List[Dict]:
-    """Ritorna solo le righe dettaglio di un ordine (esclusi CHILD_ESPOSITORE)."""
+def get_ordine_righe(id_testata: int, include_children: bool = False) -> List[Dict]:
+    """Ritorna le righe dettaglio di un ordine.
+
+    Args:
+        id_testata: ID ordine
+        include_children: Se True, include anche righe CHILD_ESPOSITORE (per EspositoreTab)
+    """
     db = get_db()
-    rows = db.execute("""
-        SELECT * FROM ORDINI_DETTAGLIO
-        WHERE id_testata = ?
-          AND (is_child = FALSE OR is_child IS NULL)
-        ORDER BY n_riga
-    """, (id_testata,)).fetchall()
+
+    if include_children:
+        rows = db.execute("""
+            SELECT * FROM ORDINI_DETTAGLIO
+            WHERE id_testata = ?
+            ORDER BY n_riga
+        """, (id_testata,)).fetchall()
+    else:
+        rows = db.execute("""
+            SELECT * FROM ORDINI_DETTAGLIO
+            WHERE id_testata = ?
+              AND (is_child = FALSE OR is_child IS NULL)
+            ORDER BY n_riga
+        """, (id_testata,)).fetchall()
+
     return [dict(r) for r in rows]
 
 

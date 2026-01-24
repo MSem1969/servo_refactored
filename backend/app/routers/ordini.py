@@ -227,12 +227,18 @@ async def dettaglio_ordine(id_testata: int) -> Dict[str, Any]:
 
 
 @router.get("/{id_testata}/righe")
-async def righe_ordine(id_testata: int) -> Dict[str, Any]:
+async def righe_ordine(
+    id_testata: int,
+    include_children: bool = Query(False, description="Include righe CHILD_ESPOSITORE (per EspositoreTab)")
+) -> Dict[str, Any]:
     """
-    Ritorna solo le righe dettaglio di un ordine.
+    Ritorna le righe dettaglio di un ordine.
+
+    Per default esclude le righe CHILD_ESPOSITORE (mostrate aggregate nel parent).
+    Con include_children=true ritorna tutte le righe (per editing espositore).
     """
     try:
-        righe = get_ordine_righe(id_testata)
+        righe = get_ordine_righe(id_testata, include_children=include_children)
         return {
             "success": True,
             "data": _map_righe_per_frontend(righe),
@@ -924,4 +930,171 @@ async def fix_stati_tutti() -> Dict[str, Any]:
         result = fix_stati_righe(None)
         return result
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# v11.0: FIX ESPOSITORE - Correzione relazioni parent/child
+# =============================================================================
+
+class EspositoreRigaUpdate(BaseModel):
+    id_dettaglio: int
+    tipo_riga: str  # 'NORMAL', 'PARENT_ESPOSITORE', 'CHILD_ESPOSITORE'
+    id_parent_espositore: Optional[int] = None  # Required if tipo_riga == 'CHILD_ESPOSITORE'
+
+class FixEspositoreRequest(BaseModel):
+    righe: List[EspositoreRigaUpdate]
+    operatore: str
+    note: Optional[str] = None
+
+
+@router.put("/{id_testata}/fix-espositore")
+async def fix_espositore(
+    id_testata: int,
+    request: FixEspositoreRequest
+) -> Dict[str, Any]:
+    """
+    Corregge le relazioni parent/child (espositore) per le righe di un ordine.
+
+    Permette di:
+    - Impostare una riga come PARENT_ESPOSITORE
+    - Impostare righe come CHILD_ESPOSITORE collegandole a un parent
+    - Reimpostare righe come NORMAL (senza relazione espositore)
+
+    Args:
+        id_testata: ID ordine
+        request: Lista righe con nuovo tipo e parent (se child)
+
+    Returns:
+        success, righe_aggiornate, dettagli
+    """
+    db = get_db()
+
+    try:
+        # Verifica ordine esiste
+        ordine = db.execute(
+            "SELECT id_testata, stato FROM ordini_testata WHERE id_testata = %s",
+            (id_testata,)
+        ).fetchone()
+
+        if not ordine:
+            raise HTTPException(status_code=404, detail="Ordine non trovato")
+
+        # Verifica che tutte le righe appartengano all'ordine
+        id_righe = [r.id_dettaglio for r in request.righe]
+        placeholders = ','.join(['%s'] * len(id_righe))
+        existing = db.execute(
+            f"SELECT id_dettaglio FROM ordini_dettaglio WHERE id_testata = %s AND id_dettaglio IN ({placeholders})",
+            (id_testata, *id_righe)
+        ).fetchall()
+        existing_ids = {r['id_dettaglio'] for r in existing}
+
+        missing = set(id_righe) - existing_ids
+        if missing:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Righe non trovate nell'ordine: {list(missing)}"
+            )
+
+        # Raccogli gli ID dei parent per validazione
+        parent_ids = {r.id_dettaglio for r in request.righe if r.tipo_riga == 'PARENT_ESPOSITORE'}
+
+        # Valida che i child puntino a parent validi
+        for riga in request.righe:
+            if riga.tipo_riga == 'CHILD_ESPOSITORE':
+                if not riga.id_parent_espositore:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Riga {riga.id_dettaglio}: CHILD_ESPOSITORE richiede id_parent_espositore"
+                    )
+                if riga.id_parent_espositore not in parent_ids:
+                    # Verifica se il parent esiste già nel DB
+                    parent_exists = db.execute(
+                        "SELECT 1 FROM ordini_dettaglio WHERE id_dettaglio = %s AND id_testata = %s",
+                        (riga.id_parent_espositore, id_testata)
+                    ).fetchone()
+                    if not parent_exists:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Riga {riga.id_dettaglio}: parent {riga.id_parent_espositore} non trovato"
+                        )
+
+        # Applica gli aggiornamenti
+        righe_aggiornate = 0
+        dettagli = []
+
+        for riga in request.righe:
+            if riga.tipo_riga == 'PARENT_ESPOSITORE':
+                db.execute("""
+                    UPDATE ordini_dettaglio
+                    SET tipo_riga = 'PARENT_ESPOSITORE',
+                        is_espositore = TRUE,
+                        is_child = FALSE,
+                        id_parent_espositore = NULL
+                    WHERE id_dettaglio = %s
+                """, (riga.id_dettaglio,))
+                dettagli.append({
+                    'id_dettaglio': riga.id_dettaglio,
+                    'tipo': 'PARENT_ESPOSITORE',
+                    'parent': None
+                })
+
+            elif riga.tipo_riga == 'CHILD_ESPOSITORE':
+                db.execute("""
+                    UPDATE ordini_dettaglio
+                    SET tipo_riga = 'CHILD_ESPOSITORE',
+                        is_espositore = TRUE,
+                        is_child = TRUE,
+                        id_parent_espositore = %s
+                    WHERE id_dettaglio = %s
+                """, (riga.id_parent_espositore, riga.id_dettaglio))
+                dettagli.append({
+                    'id_dettaglio': riga.id_dettaglio,
+                    'tipo': 'CHILD_ESPOSITORE',
+                    'parent': riga.id_parent_espositore
+                })
+
+            else:  # NORMAL
+                db.execute("""
+                    UPDATE ordini_dettaglio
+                    SET tipo_riga = '',
+                        is_espositore = FALSE,
+                        is_child = FALSE,
+                        id_parent_espositore = NULL
+                    WHERE id_dettaglio = %s
+                """, (riga.id_dettaglio,))
+                dettagli.append({
+                    'id_dettaglio': riga.id_dettaglio,
+                    'tipo': 'NORMAL',
+                    'parent': None
+                })
+
+            righe_aggiornate += 1
+
+        # Log operazione
+        db.execute("""
+            INSERT INTO log_operazioni (tipo_operazione, entita, id_entita, descrizione, username_snapshot)
+            VALUES ('FIX_ESPOSITORE', 'ordini_dettaglio', %s, %s, %s)
+        """, (
+            id_testata,
+            f"Aggiornate {righe_aggiornate} righe: {request.note or 'Fix espositore'}",
+            request.operatore
+        ))
+
+        db.commit()
+
+        return {
+            "success": True,
+            "id_testata": id_testata,
+            "righe_aggiornate": righe_aggiornate,
+            "dettagli": dettagli,
+            "message": f"Relazioni espositore aggiornate per {righe_aggiornate} righe"
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))

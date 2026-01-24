@@ -27,6 +27,7 @@ export function useOrdineDetail(ordineId, currentUser) {
   // Core state
   const [ordine, setOrdine] = useState(null);
   const [righe, setRighe] = useState([]);
+  const [righeAll, setRigheAll] = useState([]);  // Include child rows for EspositoreTab
   const [anomalie, setAnomalieList] = useState([]);
   const [supervisioni, setSupervisioni] = useState([]);
 
@@ -57,9 +58,10 @@ export function useOrdineDetail(ordineId, currentUser) {
     setError(null);
 
     try {
-      const [ordineData, righeData, anomalieData] = await Promise.all([
+      const [ordineData, righeData, righeAllData, anomalieData] = await Promise.all([
         ordiniApi.getDetail(ordineId),
         ordiniApi.getRighe(ordineId),
+        ordiniApi.getRigheAll(ordineId),  // Include children for EspositoreTab
         anomalieApi.getByOrdine(ordineId).catch(() => ({ items: [] }))
       ]);
 
@@ -69,6 +71,11 @@ export function useOrdineDetail(ordineId, currentUser) {
         ? righeData
         : (righeData?.righe || righeData?.data || righeData?.items || []);
       setRighe(righeArray);
+
+      const righeAllArray = Array.isArray(righeAllData)
+        ? righeAllData
+        : (righeAllData?.righe || righeAllData?.data || righeAllData?.items || []);
+      setRigheAll(righeAllArray);
 
       const anomalieArray = Array.isArray(anomalieData)
         ? anomalieData
@@ -484,6 +491,29 @@ export function useOrdineDetail(ordineId, currentUser) {
   }, [currentUser, loadOrdine]);
 
   // =============================================================================
+  // ESPOSITORE HANDLERS
+  // =============================================================================
+
+  const fixEspositore = useCallback(async (righeToUpdate) => {
+    try {
+      const result = await ordiniApi.fixEspositore(
+        ordineId,
+        righeToUpdate,
+        currentUser?.username || 'admin',
+        'Fix espositore da dettaglio ordine'
+      );
+      if (result.success) {
+        await loadOrdine();
+      }
+      return result;
+    } catch (err) {
+      const errorMsg = err.response?.data?.detail || err.message || 'Errore fix espositore';
+      setError(errorMsg);
+      return { success: false, error: errorMsg };
+    }
+  }, [ordineId, currentUser, loadOrdine]);
+
+  // =============================================================================
   // COMPUTED VALUES
   // =============================================================================
 
@@ -506,6 +536,7 @@ export function useOrdineDetail(ordineId, currentUser) {
     // Data
     ordine,
     righe,
+    righeAll,  // Include children for EspositoreTab
     anomalie,
     supervisioni,
     stats,
@@ -549,7 +580,8 @@ export function useOrdineDetail(ordineId, currentUser) {
     assignFarmacia,
     closeAnomaliaModal,
     approvaSuper,
-    rifiutaSuper
+    rifiutaSuper,
+    fixEspositore
   };
 }
 

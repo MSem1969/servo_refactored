@@ -16,6 +16,7 @@ export const ordiniApi = {
 
   getDetail: (id) => api.get(`/ordini/${id}`).then(r => r.data),
   getRighe: (id) => api.get(`/ordini/${id}/righe`).then(r => r.data),
+  getRigheAll: (id) => api.get(`/ordini/${id}/righe?include_children=true`).then(r => r.data),
   updateStato: (id, stato) => api.put(`/ordini/${id}/stato?nuovo_stato=${stato}`).then(r => r.data),
   delete: (id) => api.delete(`/ordini/${id}`).then(r => r.data),
   batchUpdateStato: (ids, stato) => api.post('/ordini/batch/stato', { ids, nuovo_stato: stato }).then(r => r.data),
@@ -70,6 +71,14 @@ export const ordiniApi = {
 
   ripristinaTutto: (idTestata, operatore) =>
     api.post(`/ordini/${idTestata}/ripristina-tutto`, { operatore }).then(r => r.data),
+
+  // Fix Espositore - Correzione relazioni parent/child
+  fixEspositore: (idTestata, righe, operatore, note = null) =>
+    api.put(`/ordini/${idTestata}/fix-espositore`, {
+      righe,
+      operatore,
+      note
+    }).then(r => r.data),
 
   // Download PDF come ZIP
   downloadPdfZip: async (ids) => {
