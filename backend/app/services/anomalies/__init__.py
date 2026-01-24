@@ -1,7 +1,8 @@
 # =============================================================================
-# SERV.O v10.1 - ANOMALIES SERVICE PACKAGE
+# SERV.O v11.0 - ANOMALIES SERVICE PACKAGE
 # =============================================================================
 # Servizio gestione anomalie centralizzato
+# v11.0: Aggiunto AnomaliaResolver (TIER 2.4)
 # =============================================================================
 
 from .queries import (
@@ -30,6 +31,15 @@ from .detection import (
     ANOMALY_LEVELS,
 )
 
+# v11.0: Resolver centralizzato (TIER 2.4)
+from .resolver import (
+    AnomaliaResolver,
+    ResolutionParams,
+    ResolutionResult,
+    TipoRisoluzione,
+    risolvi_anomalia,
+)
+
 __all__ = [
     # Queries
     'get_anomalie',
@@ -51,4 +61,10 @@ __all__ = [
     'create_listino_anomaly',
     'ANOMALY_CODES',
     'ANOMALY_LEVELS',
+    # Resolver (v11.0)
+    'AnomaliaResolver',
+    'ResolutionParams',
+    'ResolutionResult',
+    'TipoRisoluzione',
+    'risolvi_anomalia',
 ]
