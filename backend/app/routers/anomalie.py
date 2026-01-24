@@ -934,37 +934,51 @@ async def risolvi_anomalia_deposito(
 
     db = get_db()
 
-    # Auto-migrazione: crea colonne se non esistono
-    try:
-        db.execute("""
-            ALTER TABLE ordini_testata ADD COLUMN IF NOT EXISTS deposito_riferimento VARCHAR(10);
-            ALTER TABLE ordini_testata ADD COLUMN IF NOT EXISTS id_cliente_manuale INTEGER;
-            ALTER TABLE ordini_testata ADD COLUMN IF NOT EXISTS note_cliente_manuale TEXT;
-        """)
-        db.commit()
-    except Exception:
-        pass  # Colonne già esistono o altro errore non critico
+    # Auto-migrazione: crea colonne se non esistono (una alla volta per PostgreSQL)
+    for col_def in [
+        "ALTER TABLE ordini_testata ADD COLUMN IF NOT EXISTS deposito_riferimento VARCHAR(10)",
+        "ALTER TABLE ordini_testata ADD COLUMN IF NOT EXISTS id_cliente_manuale INTEGER",
+        "ALTER TABLE ordini_testata ADD COLUMN IF NOT EXISTS note_cliente_manuale TEXT"
+    ]:
+        try:
+            db.execute(col_def)
+            db.commit()
+        except Exception:
+            db.rollback()  # Rollback se errore, poi continua
 
     try:
-        # 1. Recupera anomalia e verifica sia LKP-A05
+        # 1. Recupera anomalia
         anomalia = db.execute("""
-            SELECT a.*, t.id_testata
+            SELECT a.*, a.id_testata as id_testata_anomalia
             FROM anomalie a
-            LEFT JOIN ordini_testata t ON a.id_testata = t.id_testata
             WHERE a.id_anomalia = %s
         """, (id_anomalia,)).fetchone()
 
         if not anomalia:
             raise HTTPException(status_code=404, detail=f"Anomalia {id_anomalia} non trovata")
 
+        # v11.0: Permetti risoluzione deposito anche per anomalie senza codice specifico
+        # ma con tipo LOOKUP o descrizione che indica problema deposito
         codice_anomalia = anomalia['codice_anomalia'] or ''
-        if codice_anomalia != 'LKP-A05':
+        tipo_anomalia = anomalia.get('tipo_anomalia', '') or ''
+        descrizione = anomalia.get('descrizione', '') or ''
+
+        # Accetta LKP-A05, anomalie LOOKUP, o anomalie con "deposito" nella descrizione
+        is_deposito_anomaly = (
+            codice_anomalia == 'LKP-A05' or
+            codice_anomalia.startswith('LKP-') or
+            tipo_anomalia == 'LOOKUP' or
+            'deposito' in descrizione.lower() or
+            'cliente' in descrizione.lower()
+        )
+
+        if not is_deposito_anomaly:
             raise HTTPException(
                 status_code=400,
-                detail=f"Questo endpoint è solo per LKP-A05. Anomalia trovata: {codice_anomalia}"
+                detail=f"Questo endpoint è per anomalie LOOKUP/deposito. Anomalia trovata: {codice_anomalia or tipo_anomalia or 'N/D'}"
             )
 
-        id_testata = anomalia['id_testata']
+        id_testata = anomalia.get('id_testata') or anomalia.get('id_testata_anomalia')
         if not id_testata:
             raise HTTPException(status_code=400, detail="Anomalia non collegata a un ordine")
 
