@@ -188,8 +188,10 @@ def identifica_tipo_riga(codice: str, descrizione: str, tipo_posizione: str = ''
     ESP01 v3.2: Classifica tipo riga con priorità tipo_posizione.
 
     v3.2: Aggiunto supporto MENARINI
+    v11.0: Aggiunto supporto BAYER
     - MENARINI: parent ha codice "--" + keywords espositore
     - ANGELINI: parent ha codice 6 cifre + XXPZ o keywords
+    - BAYER: parent ha keywords (Espo/Mix) + XXPZ nella descrizione (codice 7-9 cifre)
     """
     codice = str(codice).strip() if codice else ''
     tipo_posizione = str(tipo_posizione).strip().upper() if tipo_posizione else ''
@@ -207,6 +209,19 @@ def identifica_tipo_riga(codice: str, descrizione: str, tipo_posizione: str = ''
         if codice == '--' and re.search(r'BANCO|DBOX|FSTAND|EXPO|DISPLAY|ESPOSITORE|CESTA', descrizione, re.I):
             return 'PARENT_ESPOSITORE'
         # Qualsiasi altra riga MENARINI è prodotto standard (child gestiti da state machine)
+        return 'PRODOTTO_STANDARD'
+
+    # v11.0: BAYER - parent ha keywords + XXPZ nella descrizione
+    # Formato: "Supradyn Expert EspoB Mix 9pz" (7-9 digit code + keywords + XPZ)
+    if vendor == 'BAYER':
+        # Keywords espositore BAYER: Espo, EspoB, Mix + XXPZ
+        has_espo_keyword = re.search(r'ESPO|MIX', descrizione, re.I)
+        has_pz = re.search(r'\d+\s*PZ\b', descrizione, re.I)
+        if has_espo_keyword and has_pz:
+            return 'PARENT_ESPOSITORE'
+        # Keywords generiche espositore
+        if re.search(r'BANCO|DBOX|FSTAND|EXPO|DISPLAY|ESPOSITORE|CESTA', descrizione, re.I) and has_pz:
+            return 'PARENT_ESPOSITORE'
         return 'PRODOTTO_STANDARD'
 
     # ANGELINI e altri vendor: logica esistente

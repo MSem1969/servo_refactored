@@ -1,25 +1,34 @@
 """
-EXTRACTOR_TO - Estrattore BAYER
-================================
+EXTRACTOR_TO - Estrattore BAYER v11.0
+=====================================
 Convertito da SERV.O_v6_0_DB_def.ipynb - Cella 7
 Regole: REGOLE_BAYER.md
+
+v11.0: Aggiunto supporto espositori parent/child (logica simile ad ANGELINI)
 """
 
 import re
 from typing import Dict, List
 
-from ....utils import parse_date, parse_decimal, parse_int, normalize_aic, format_piva
+from ....utils import parse_date, parse_decimal, parse_int, normalize_aic_simple, format_piva
+from ...espositore import elabora_righe_ordine
 
 
 def extract_bayer(text: str, lines: List[str], pdf_path: str = None) -> List[Dict]:
     """
     Estrae dati da PDF BAYER (formato SAP).
-    
+
     Particolarità:
     - Formato SAP standard
     - Codici materiale SAP interni
+    - v11.0: Supporto espositori parent/child
     """
-    data = {'vendor': 'BAYER', 'righe': []}
+    data = {
+        'vendor': 'BAYER',
+        'righe_raw': [],
+        'righe': [],
+        'anomalie_espositore': [],
+    }
 
     # Numero ordine
     for i, line in enumerate(lines):
@@ -79,8 +88,8 @@ def extract_bayer(text: str, lines: List[str], pdf_path: str = None) -> List[Dic
     if m:
         data['data_consegna'] = parse_date(m.group(1))
 
-    # Righe prodotto
-    n = 0
+    # v11.0: Righe prodotto - raccogliamo in righe_raw prima dell'elaborazione espositore
+    righe_raw = []
     for line in lines:
         line_stripped = line.strip()
         m = re.match(
@@ -88,20 +97,34 @@ def extract_bayer(text: str, lines: List[str], pdf_path: str = None) -> List[Dic
             line_stripped
         )
         if m:
-            n += 1
             codice_raw = m.group(1)
             desc = m.group(2).strip()[:40]
-            aic_norm, aic_orig, is_esp, is_child = normalize_aic(codice_raw, desc)
+            aic_norm = normalize_aic_simple(codice_raw)
 
-            data['righe'].append({
-                'n_riga': n,
+            righe_raw.append({
                 'codice_aic': aic_norm,
-                'codice_originale': aic_orig,
+                'codice_originale': codice_raw,
                 'descrizione': desc,
-                'q_venduta': parse_int(m.group(3)),
+                'quantita': parse_int(m.group(3)),
                 'prezzo_netto': float(parse_decimal(m.group(4))),
-                'is_espositore': is_esp,
-                'is_child': is_child,
+                'aliquota_iva': 10,  # Default IVA
+                'valore_netto': float(parse_decimal(m.group(4))) * parse_int(m.group(3)),
             })
+
+    data['righe_raw'] = righe_raw
+
+    # v11.0: Elabora con logica espositori (parent/child)
+    if righe_raw:
+        ctx = elabora_righe_ordine(righe_raw, vendor='BAYER')
+        data['righe'] = ctx.righe_output
+        data['anomalie_espositore'] = ctx.anomalie
+        data['_stats'] = {
+            'righe_raw': len(righe_raw),
+            'righe_output': len(ctx.righe_output),
+            'espositori': ctx.espositori_elaborati,
+            'chiusure_normali': ctx.chiusure_normali,
+            'chiusure_forzate': ctx.chiusure_forzate,
+            'anomalie': len(ctx.anomalie),
+        }
 
     return [data]
