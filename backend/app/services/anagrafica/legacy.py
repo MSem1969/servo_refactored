@@ -618,7 +618,7 @@ def import_anagrafica_clienti(
         result['totale_righe_csv'] = len(df)
         result['colonne_csv'] = list(df.columns)
 
-        # Mappa colonne CSV -> DB
+        # Mappa colonne CSV -> DB (v11.2: corretto mapping AGTIDD e AGDRIF)
         col_map = {
             'codice_cliente': ['AGCANA', 'codice_cliente', 'codice'],
             'ragione_sociale_1': ['AGRSO1', 'ragione_sociale_1', 'ragione_sociale'],
@@ -629,12 +629,12 @@ def import_anagrafica_clienti(
             'provincia': ['AGPROV', 'provincia'],
             'partita_iva': ['AGPIVA', 'partita_iva', 'piva'],
             'email': ['AGMAIL', 'email'],
-            'categoria': ['AGCATE', 'categoria'],
+            'farmacia_categoria': ['AGCATE', 'farmacia_categoria', 'categoria'],
             'codice_farmacia': ['AGCFAR', 'codice_farmacia'],
-            'codice_stato': ['AGCSTA', 'codice_stato'],
+            'farma_status': ['AGCSTA', 'farma_status', 'codice_stato'],
             'codice_pagamento': ['AGCPAG', 'codice_pagamento'],
-            'id_tipo': ['AGTIDD', 'id_tipo'],
-            'riferimento': ['AGDRIF', 'riferimento'],
+            'min_id': ['AGTIDD', 'min_id'],
+            'deposito_riferimento': ['AGDRIF', 'deposito_riferimento', 'riferimento'],
         }
 
         def get_col(row, field):
@@ -661,7 +661,7 @@ def import_anagrafica_clienti(
                 ).fetchone()
 
                 if existing:
-                    # Update
+                    # Update (v11.2: nomi colonne corretti, aggiorna anche data_import)
                     db.execute("""
                         UPDATE anagrafica_clienti SET
                             ragione_sociale_1 = ?,
@@ -672,12 +672,13 @@ def import_anagrafica_clienti(
                             provincia = ?,
                             partita_iva = ?,
                             email = ?,
-                            categoria = ?,
+                            farmacia_categoria = ?,
                             codice_farmacia = ?,
-                            codice_stato = ?,
+                            farma_status = ?,
                             codice_pagamento = ?,
-                            id_tipo = ?,
-                            riferimento = ?,
+                            min_id = ?,
+                            deposito_riferimento = ?,
+                            data_import = CURRENT_TIMESTAMP,
                             data_aggiornamento = CURRENT_TIMESTAMP
                         WHERE codice_cliente = ?
                     """, (
@@ -689,23 +690,24 @@ def import_anagrafica_clienti(
                         get_col(row, 'provincia')[:3] or None,
                         get_col(row, 'partita_iva')[:16] or None,
                         get_col(row, 'email')[:200] or None,
-                        get_col(row, 'categoria')[:10] or None,
+                        get_col(row, 'farmacia_categoria')[:10] or None,
                         get_col(row, 'codice_farmacia')[:20] or None,
-                        get_col(row, 'codice_stato')[:10] or None,
+                        get_col(row, 'farma_status')[:10] or None,
                         get_col(row, 'codice_pagamento')[:10] or None,
-                        get_col(row, 'id_tipo')[:20] or None,
-                        get_col(row, 'riferimento')[:10] or None,
+                        get_col(row, 'min_id')[:20] or None,
+                        get_col(row, 'deposito_riferimento')[:10] or None,
                         codice
                     ))
                     result['aggiornati'] += 1
                 else:
-                    # Insert
+                    # Insert (v11.2: nomi colonne corretti, imposta data_import)
                     db.execute("""
                         INSERT INTO anagrafica_clienti
                         (codice_cliente, ragione_sociale_1, ragione_sociale_2, indirizzo, cap,
-                         localita, provincia, partita_iva, email, categoria,
-                         codice_farmacia, codice_stato, codice_pagamento, id_tipo, riferimento)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         localita, provincia, partita_iva, email, farmacia_categoria,
+                         codice_farmacia, farma_status, codice_pagamento, min_id, deposito_riferimento,
+                         data_import)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                     """, (
                         codice,
                         get_col(row, 'ragione_sociale_1')[:100] or None,
@@ -716,12 +718,12 @@ def import_anagrafica_clienti(
                         get_col(row, 'provincia')[:3] or None,
                         get_col(row, 'partita_iva')[:16] or None,
                         get_col(row, 'email')[:200] or None,
-                        get_col(row, 'categoria')[:10] or None,
+                        get_col(row, 'farmacia_categoria')[:10] or None,
                         get_col(row, 'codice_farmacia')[:20] or None,
-                        get_col(row, 'codice_stato')[:10] or None,
+                        get_col(row, 'farma_status')[:10] or None,
                         get_col(row, 'codice_pagamento')[:10] or None,
-                        get_col(row, 'id_tipo')[:20] or None,
-                        get_col(row, 'riferimento')[:10] or None,
+                        get_col(row, 'min_id')[:20] or None,
+                        get_col(row, 'deposito_riferimento')[:10] or None,
                     ))
                     result['importate'] += 1
 

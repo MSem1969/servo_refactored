@@ -1,5 +1,5 @@
 # =============================================================================
-# SERV.O v8.1 - LOOKUP SERVICE
+# SERV.O v11.2 - LOOKUP SERVICE
 # =============================================================================
 # Ricerca farmacia/parafarmacia con fuzzy matching
 #
@@ -7,6 +7,8 @@
 # - scoring.py: Funzioni di scoring e fuzzy matching
 # - matching.py: Logica principale di lookup
 # - queries.py: Query database e operazioni batch
+#
+# v11.2: Aggiunta integrazione anagrafica_clienti per lookup MIN_ID
 # =============================================================================
 
 # Scoring
@@ -21,6 +23,8 @@ from .scoring import (
 from .matching import (
     FUZZY_THRESHOLD,
     lookup_farmacia,
+    lookup_farmacia_extended,
+    lookup_cliente_by_piva,
     _disambiguate_multipunto,
 )
 
@@ -45,6 +49,8 @@ __all__ = [
     # Matching
     'FUZZY_THRESHOLD',
     'lookup_farmacia',
+    'lookup_farmacia_extended',
+    'lookup_cliente_by_piva',
     '_disambiguate_multipunto',
     # Queries
     'popola_header_da_anagrafica',

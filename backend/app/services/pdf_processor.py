@@ -69,7 +69,7 @@ from ..config import config
 from ..database_pg import get_db, get_vendor_id, log_operation
 from ..utils import compute_file_hash, generate_order_key, calcola_q_totale
 from .extraction import get_extractor, detect_vendor
-from .lookup import lookup_farmacia
+from .lookup import lookup_farmacia, lookup_cliente_by_piva
 from .supervisione import (
     valuta_anomalia_con_apprendimento,
     crea_richiesta_supervisione,
@@ -373,7 +373,7 @@ def _insert_order(
     if min_id_estratto and len(min_id_estratto) >= 6 and piva_estratta and len(piva_estratta) == 11:
         # Dati completi dal documento - lookup opzionale per collegamento anagrafica
         id_farm, id_parafarm, lookup_method, lookup_source, lookup_score = lookup_farmacia(order_data)
-        
+
         # Se lookup non trova, non è un errore - i dati estratti sono sufficienti
         if lookup_method == 'NESSUNO':
             lookup_method = 'DOCUMENTO_COMPLETO'
@@ -381,18 +381,25 @@ def _insert_order(
     else:
         # Dati incompleti - lookup necessario
         id_farm, id_parafarm, lookup_method, lookup_source, lookup_score = lookup_farmacia(order_data)
-    
+
+    # v11.2: Recupera deposito_riferimento da anagrafica_clienti
+    deposito_riferimento = None
+    if piva_estratta:
+        cliente_info = lookup_cliente_by_piva(piva_estratta)
+        if cliente_info:
+            deposito_riferimento = cliente_info.get('deposito_riferimento')
+
     # Genera chiave univoca
     cod_min = order_data.get('codice_ministeriale', '')
     if not cod_min and id_farm:
         farm_row = db.execute(
-            "SELECT min_id FROM ANAGRAFICA_FARMACIE WHERE id_farmacia = ?", 
+            "SELECT min_id FROM ANAGRAFICA_FARMACIE WHERE id_farmacia = %s",
             (id_farm,)
         ).fetchone()
         cod_min = farm_row['min_id'] if farm_row else ''
     if not cod_min and id_parafarm:
         para_row = db.execute(
-            "SELECT codice_sito FROM ANAGRAFICA_PARAFARMACIE WHERE id_parafarmacia = ?", 
+            "SELECT codice_sito FROM ANAGRAFICA_PARAFARMACIE WHERE id_parafarmacia = %s",
             (id_parafarm,)
         ).fetchone()
         cod_min = para_row['codice_sito'] if para_row else ''
@@ -444,7 +451,7 @@ def _insert_order(
     elif id_parafarm:
         fonte_anagrafica = 'LOOKUP_PARAFARMACIA'
 
-    # Inserisci testata con campi estratti (v7.0: Data Lineage)
+    # Inserisci testata con campi estratti (v7.0: Data Lineage, v11.2: deposito_riferimento)
     cursor = db.execute("""
         INSERT INTO ordini_testata
         (id_acquisizione, id_vendor, numero_ordine_vendor, data_ordine, data_consegna,
@@ -454,9 +461,9 @@ def _insert_order(
          chiave_univoca_ordine, is_ordine_duplicato, id_testata_originale, stato,
          ragione_sociale_1_estratta, indirizzo_estratto, cap_estratto,
          citta_estratta, provincia_estratta, data_ordine_estratta, data_consegna_estratta,
-         fonte_anagrafica)
+         fonte_anagrafica, deposito_riferimento)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s, %s, %s, %s)
+                %s, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING id_testata
     """, (
         id_acquisizione, id_vendor, order_data.get('numero_ordine', ''),
@@ -469,7 +476,7 @@ def _insert_order(
         chiave_univoca, is_ordine_dup, id_testata_orig, stato,
         ragione_sociale_val, indirizzo_val, cap_val,
         citta_val, provincia_val, data_ordine_val, data_consegna_val,
-        fonte_anagrafica
+        fonte_anagrafica, deposito_riferimento
     ))
     id_testata = cursor.fetchone()[0]
     db.commit()
