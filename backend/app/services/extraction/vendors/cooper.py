@@ -27,6 +27,96 @@ except ImportError:
     PDFPLUMBER_AVAILABLE = False
 
 
+def _fix_concatenated_text(text: str) -> str:
+    """
+    Aggiunge spazi in testo concatenato da PDF.
+
+    Gestisce casi come:
+    - "FARMACIADALESSANDROdottssa" → "FARMACIA D'ALESSANDRO DOTT.SSA"
+    - "SANVITOALTAGLIAMENTO" → "SAN VITO AL TAGLIAMENTO"
+    - "VIAGARIBALDIn.15" → "VIA GARIBALDI N. 15"
+    """
+    if not text:
+        return text
+
+    result = text.upper()
+
+    # Fix apostrofi comuni nei nomi italiani
+    apostrophe_fixes = [
+        (r"DALESSANDRO", "D'ALESSANDRO"),
+        (r"DANGELO", "D'ANGELO"),
+        (r"DAMICO", "D'AMICO"),
+        (r"DANDREA", "D'ANDREA"),
+        (r"DANTONIO", "D'ANTONIO"),
+        (r"LAQUILA", "L'AQUILA"),
+    ]
+    for pattern, replacement in apostrophe_fixes:
+        result = re.sub(pattern, replacement, result, flags=re.IGNORECASE)
+
+    # Keywords da separare con spazio prima (ordine importante: più lunghe prima)
+    keywords_before = [
+        'PARAFARMACIA', 'FARMACIA', 'DOTT\\.SSA', 'DOTTSSA', 'DOTT\\.', 'DOTT',
+        'DELLA', 'DELLO', 'DEGLI', 'DELLE', 'DALLA', 'DALLO',
+        'SRLS', 'S\\.R\\.L\\.S\\.', 'SRL', 'S\\.R\\.L\\.',
+        'S\\.N\\.C\\.', 'SNC', 'S\\.A\\.S\\.', 'SAS', 'S\\.P\\.A\\.', 'SPA',
+        'SANTA', 'SANTO', 'SANT', 'SAN',
+        'VIALE', 'VICOLO', 'PIAZZA', 'LARGO', 'CORSO', 'VIA',
+        'CONTRADA', 'LOCALITA', 'FRAZIONE',
+    ]
+
+    # Aggiungi spazio prima delle keywords (se precedute da lettera)
+    for kw in keywords_before:
+        pattern = rf'([A-Za-z])({kw})(?=[A-Z\s]|$)'
+        result = re.sub(pattern, r'\1 \2', result)
+
+    # Keywords da separare con spazio dopo
+    keywords_after = ['DEL', 'DI', 'AL', 'DAL', 'N\\.', 'NR\\.', 'NUM\\.']
+    for kw in keywords_after:
+        # Aggiungi spazio dopo se seguito da lettera o numero
+        pattern = rf'({kw})([A-Z0-9])'
+        result = re.sub(pattern, r'\1 \2', result)
+
+    # Aggiungi spazio tra minuscola seguita da maiuscola (CamelCase)
+    result = re.sub(r'([a-z])([A-Z])', r'\1 \2', result)
+
+    # Aggiungi spazio tra lettera e numero (es. "VIA15" → "VIA 15")
+    result = re.sub(r'([A-Za-z])(\d)', r'\1 \2', result)
+
+    # Normalizza spazi multipli
+    result = re.sub(r'\s+', ' ', result).strip()
+
+    return result
+
+
+def _fix_locality_name(text: str) -> str:
+    """
+    Corregge nomi di località concatenati.
+
+    Es: "SANVITOALTAGLIAMENTO" → "SAN VITO AL TAGLIAMENTO"
+    """
+    if not text:
+        return text
+
+    # Prima applica fix generale
+    result = _fix_concatenated_text(text)
+
+    # Pattern specifici per località italiane
+    locality_fixes = [
+        (r'SANVITO', 'SAN VITO'),
+        (r'SANTAGATA', "SANT'AGATA"),
+        (r'SANTANGELO', "SANT'ANGELO"),
+        (r'SANTAGOSTINO', "SANT'AGOSTINO"),
+        (r'MONTEGROTTO', 'MONTEGROTTO'),
+        (r'PORTOGRUARO', 'PORTOGRUARO'),
+        (r'TAGLIAMENTO', 'TAGLIAMENTO'),
+    ]
+
+    for pattern, replacement in locality_fixes:
+        result = re.sub(pattern, replacement, result, flags=re.IGNORECASE)
+
+    return result.strip()
+
+
 def extract_cooper(text: str, lines: List[str], pdf_path: str = None) -> List[Dict]:
     """
     Estrattore COOPER v11.2.
@@ -98,27 +188,33 @@ def _extract_spedizione_fallback(text: str, data: Dict):
     if m:
         data['min_id'] = m.group(1).strip()
 
+    # Ragione Sociale - con fix spazi concatenati
     m = re.search(r'Ragione\s*Sociale:\s*(.+?)(?:\s*Partita|\n|$)', spedizione_text, re.I)
     if m:
-        data['ragione_sociale'] = m.group(1).strip()[:50]
+        raw_rs = m.group(1).strip()
+        data['ragione_sociale'] = _fix_concatenated_text(raw_rs)[:50]
 
     m = re.search(r'Partita\s*IVA:\s*(\d{11})', spedizione_text, re.I)
     if m:
         data['partita_iva'] = m.group(1).strip()
 
+    # Indirizzo - con fix spazi concatenati
     m = re.search(r'Indirizzo:\s*(.+?)(?:\s*Località|\n|$)', spedizione_text, re.I)
     if m:
-        data['indirizzo'] = m.group(1).strip()[:50]
+        raw_ind = m.group(1).strip()
+        data['indirizzo'] = _fix_concatenated_text(raw_ind)[:50]
 
     m = re.search(r'CAP:\s*(\d{5})', spedizione_text, re.I)
     if m:
         data['cap'] = m.group(1).strip()
 
     # Località con provincia tra parentesi: "SANVITOALTAGLIAMENTO(PN)"
-    m = re.search(r'Località:\s*([A-Z\s]+?)\s*\(([A-Z]{2})\)', spedizione_text, re.I)
+    # Pattern più flessibile per catturare anche senza spazi
+    m = re.search(r'Località:\s*([A-Za-z]+)\s*\(([A-Z]{2})\)', spedizione_text, re.I)
     if m:
-        data['citta'] = m.group(1).strip()[:50]
-        data['provincia'] = m.group(2).strip()
+        raw_citta = m.group(1).strip()
+        data['citta'] = _fix_locality_name(raw_citta)[:50]
+        data['provincia'] = m.group(2).strip().upper()
 
 
 def _extract_products_from_pdf(pdf_path: str) -> List[Dict]:
