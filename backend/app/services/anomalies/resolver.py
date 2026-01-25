@@ -135,7 +135,16 @@ class AnomaliaResolver:
                 message="Anomalia gia risolta"
             )
 
-        # Routing basato su codice anomalia
+        # =====================================================================
+        # PROPAGAZIONE CENTRALIZZATA (v11.3)
+        # Se livello GLOBALE o ORDINE con propagazione, usa servizio unificato
+        # La propagazione chiude TUTTE le anomalie identiche, poi applica
+        # eventuali correzioni dati (AIC, prezzo, etc.)
+        # =====================================================================
+        if params.livello_propagazione in ('GLOBALE', 'ORDINE'):
+            return self._risolvi_con_propagazione(anomalia, params)
+
+        # Routing specifico solo per risoluzione SINGOLA (senza propagazione)
         codice = anomalia.get('codice_anomalia', '') or ''
 
         if codice.startswith('AIC-'):
@@ -177,7 +186,234 @@ class AnomaliaResolver:
         return dict(row) if row else None
 
     # =========================================================================
-    # RISOLUTORI SPECIFICI
+    # PROPAGAZIONE CENTRALIZZATA (v11.3)
+    # =========================================================================
+
+    def _risolvi_con_propagazione(self, anomalia: Dict, params: ResolutionParams) -> ResolutionResult:
+        """
+        Risolve anomalia con propagazione CENTRALIZZATA per TUTTI i tipi.
+
+        Workflow:
+        1. Trova tutte le anomalie identiche (stesso codice + stesso pattern)
+        2. Applica correzioni dati a tutte le righe coinvolte
+        3. Chiude tutte le anomalie identiche
+        4. Sblocca tutti gli ordini coinvolti
+        5. Aggiorna pattern ML
+
+        Questo metodo unifica la logica per:
+        - AIC-*: propaga codice AIC
+        - LST-*/PRICE-*: propaga prezzi/sconti
+        - LKP-*: propaga assegnazione farmacia
+        - ESP-*: propaga correzione quantita
+        - Altri: propaga solo chiusura anomalia
+        """
+        from .propagazione import (
+            trova_anomalie_identiche,
+            LivelloPropagazione,
+            _approva_supervisioni_collegate,
+            _incrementa_pattern_ml,
+            _sblocca_ordine_se_possibile
+        )
+
+        codice = anomalia.get('codice_anomalia', '') or ''
+        tipo = anomalia.get('tipo_anomalia', '') or ''
+
+        # Determina livello propagazione
+        livello = LivelloPropagazione.GLOBALE if params.livello_propagazione == 'GLOBALE' else LivelloPropagazione.ORDINE
+
+        # Verifica permessi
+        if livello == LivelloPropagazione.GLOBALE and params.ruolo not in ('admin', 'superuser', 'supervisore'):
+            return ResolutionResult(
+                success=False,
+                id_anomalia=anomalia['id_anomalia'],
+                tipo_risoluzione='PROPAGAZIONE',
+                message=f"Ruolo {params.ruolo} non può usare propagazione GLOBALE"
+            )
+
+        try:
+            # 1. Trova tutte le anomalie identiche
+            anomalie_da_risolvere = trova_anomalie_identiche(anomalia['id_anomalia'], livello)
+
+            if not anomalie_da_risolvere:
+                return ResolutionResult(
+                    success=False,
+                    id_anomalia=anomalia['id_anomalia'],
+                    tipo_risoluzione='PROPAGAZIONE',
+                    message="Nessuna anomalia trovata"
+                )
+
+            anomalie_risolte = 0
+            righe_aggiornate = 0
+            ordini_coinvolti = set()
+            supervisioni_approvate = 0
+
+            # 2. Applica correzioni dati a TUTTE le righe coinvolte
+            if self._ha_dati_correzione(params):
+                for anom in anomalie_da_risolvere:
+                    if anom.get('id_dettaglio'):
+                        updated = self._applica_correzioni_riga(anom['id_dettaglio'], params, codice)
+                        righe_aggiornate += updated
+
+            # 3. Chiudi TUTTE le anomalie identiche
+            for anom in anomalie_da_risolvere:
+                if anom['stato'] in ('APERTA', 'IN_GESTIONE'):
+                    self.db.execute("""
+                        UPDATE anomalie
+                        SET stato = 'RISOLTA',
+                            data_risoluzione = CURRENT_TIMESTAMP,
+                            note_risoluzione = %s
+                        WHERE id_anomalia = %s
+                    """, (
+                        f"[{livello.value}] Operatore: {params.operatore} - {params.note or 'Risolto con propagazione'}",
+                        anom['id_anomalia']
+                    ))
+                    anomalie_risolte += 1
+
+                    if anom.get('id_testata'):
+                        ordini_coinvolti.add(anom['id_testata'])
+
+                    # 4. Approva supervisioni collegate
+                    sup_count = _approva_supervisioni_collegate(
+                        self.db, anom['id_anomalia'], params.operatore
+                    )
+                    supervisioni_approvate += sup_count
+
+            # 5. Sblocca ordini coinvolti
+            for id_testata in ordini_coinvolti:
+                _sblocca_ordine_se_possibile(self.db, id_testata)
+
+            # 6. Aggiorna pattern ML
+            ml_incremento = 0
+            if anomalie_risolte > 0:
+                ml_incremento = _incrementa_pattern_ml(
+                    self.db, anomalia, params.operatore, anomalie_risolte
+                )
+
+            self.db.commit()
+
+            # Log
+            log_operation(
+                'RISOLVI_ANOMALIA_PROPAGAZIONE',
+                'ANOMALIE',
+                anomalia['id_anomalia'],
+                f"[{codice}] Risolte {anomalie_risolte} anomalie ({livello.value}), "
+                f"{righe_aggiornate} righe aggiornate, {len(ordini_coinvolti)} ordini",
+                dati={
+                    'livello': livello.value,
+                    'codice_anomalia': codice,
+                    'anomalie_risolte': anomalie_risolte,
+                    'righe_aggiornate': righe_aggiornate,
+                    'ordini_coinvolti': list(ordini_coinvolti),
+                },
+                operatore=params.operatore
+            )
+
+            return ResolutionResult(
+                success=True,
+                id_anomalia=anomalia['id_anomalia'],
+                tipo_risoluzione=f'PROPAGAZIONE_{livello.value}',
+                message=f"Risolte {anomalie_risolte} anomalie ({livello.value})",
+                anomalie_risolte=anomalie_risolte,
+                righe_aggiornate=righe_aggiornate,
+                ordini_coinvolti=list(ordini_coinvolti),
+                ml_pattern_incrementato=ml_incremento,
+                data={
+                    'supervisioni_approvate': supervisioni_approvate,
+                    'livello': livello.value
+                }
+            )
+
+        except Exception as e:
+            self.db.rollback()
+            return ResolutionResult(
+                success=False,
+                id_anomalia=anomalia['id_anomalia'],
+                tipo_risoluzione='PROPAGAZIONE',
+                message=f"Errore propagazione: {str(e)}"
+            )
+
+    def _ha_dati_correzione(self, params: ResolutionParams) -> bool:
+        """Verifica se ci sono dati di correzione da applicare."""
+        return any([
+            params.codice_aic,
+            params.prezzo_netto is not None,
+            params.prezzo_pubblico is not None,
+            params.sconto_1 is not None,
+            params.sconto_2 is not None,
+            params.sconto_3 is not None,
+            params.sconto_4 is not None,
+            params.q_venduta is not None,
+            params.q_omaggio is not None,
+            params.q_sconto_merce is not None,
+        ])
+
+    def _applica_correzioni_riga(self, id_dettaglio: int, params: ResolutionParams, codice_anomalia: str) -> int:
+        """
+        Applica correzioni dati a una riga ordine.
+
+        Returns:
+            1 se aggiornata, 0 altrimenti
+        """
+        updates = []
+        values = []
+
+        # Correzioni AIC
+        if params.codice_aic:
+            updates.append("codice_aic = %s")
+            values.append(params.codice_aic)
+
+        # Correzioni prezzi (LISTINO)
+        if params.prezzo_netto is not None:
+            updates.append("prezzo_netto = %s")
+            values.append(params.prezzo_netto)
+
+        if params.prezzo_pubblico is not None:
+            updates.append("prezzo_pubblico = %s")
+            values.append(params.prezzo_pubblico)
+
+        if params.sconto_1 is not None:
+            updates.append("sconto_1 = %s")
+            values.append(params.sconto_1)
+
+        if params.sconto_2 is not None:
+            updates.append("sconto_2 = %s")
+            values.append(params.sconto_2)
+
+        if params.sconto_3 is not None:
+            updates.append("sconto_3 = %s")
+            values.append(params.sconto_3)
+
+        if params.sconto_4 is not None:
+            updates.append("sconto_4 = %s")
+            values.append(params.sconto_4)
+
+        # Correzioni quantita (ESPOSITORE)
+        if params.q_venduta is not None:
+            updates.append("q_venduta = %s")
+            values.append(params.q_venduta)
+
+        if params.q_omaggio is not None:
+            updates.append("q_omaggio = %s")
+            values.append(params.q_omaggio)
+
+        if params.q_sconto_merce is not None:
+            updates.append("q_sconto_merce = %s")
+            values.append(params.q_sconto_merce)
+
+        if not updates:
+            return 0
+
+        values.append(id_dettaglio)
+        self.db.execute(f"""
+            UPDATE ordini_dettaglio
+            SET {', '.join(updates)}
+            WHERE id_dettaglio = %s
+        """, values)
+
+        return 1
+
+    # =========================================================================
+    # RISOLUTORI SPECIFICI (per risoluzione SINGOLA senza propagazione)
     # =========================================================================
 
     def _risolvi_aic(self, anomalia: Dict, params: ResolutionParams) -> ResolutionResult:
@@ -468,35 +704,10 @@ class AnomaliaResolver:
 
     def _risolvi_generico(self, anomalia: Dict, params: ResolutionParams) -> ResolutionResult:
         """
-        Risoluzione generica - marca come risolto senza azioni specifiche.
-        Usa propagazione se richiesto.
+        Risoluzione generica SINGOLA - marca come risolto senza azioni specifiche.
+        NOTA: La propagazione è gestita centralmente da _risolvi_con_propagazione()
         """
         try:
-            # Se livello GLOBALE, usa servizio propagazione
-            if params.livello_propagazione == 'GLOBALE':
-                from .propagazione import (
-                    risolvi_anomalia_con_propagazione,
-                    LivelloPropagazione
-                )
-
-                result = risolvi_anomalia_con_propagazione(
-                    id_anomalia=anomalia['id_anomalia'],
-                    livello=LivelloPropagazione.GLOBALE,
-                    operatore=params.operatore,
-                    ruolo=params.ruolo,
-                    note=params.note
-                )
-
-                return ResolutionResult(
-                    success=result.get('success', False),
-                    id_anomalia=anomalia['id_anomalia'],
-                    tipo_risoluzione=TipoRisoluzione.GENERICO.value,
-                    message=result.get('error', 'Risolto con propagazione globale'),
-                    anomalie_risolte=result.get('anomalie_risolte', 1),
-                    ordini_coinvolti=result.get('ordini_coinvolti', []),
-                    ml_pattern_incrementato=result.get('ml_pattern_incrementato', 0)
-                )
-
             # Risoluzione singola
             self._marca_risolta(
                 anomalia['id_anomalia'],
