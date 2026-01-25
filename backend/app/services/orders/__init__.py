@@ -28,9 +28,10 @@ from .commands import (
     update_ordine_stato,
     delete_ordine,
     modifica_riga_dettaglio,
-    update_anomalia_stato,
     create_anomalia,
 )
+# v11.2: update_anomalia_stato ora usa la versione con supporto ruoli da anomalies.commands
+from ..anomalies.commands import update_anomalia_stato
 
 # Fulfillment functions
 from .fulfillment import (

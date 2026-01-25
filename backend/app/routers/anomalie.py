@@ -192,30 +192,49 @@ async def anomalie_ordine(id_testata: int) -> Dict[str, Any]:
 @router.put("/{id_anomalia}")
 async def aggiorna_anomalia(
     id_anomalia: int,
-    update: AnomaliaUpdate
+    update: AnomaliaUpdate,
+    current_user: UtenteResponse = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """
     Aggiorna stato anomalia.
-    
+
     Stati validi: APERTA, IN_GESTIONE, RISOLTA, IGNORATA
+
+    v11.2: Gestione ruoli per supervisioni:
+    - SUPERVISORE/ADMIN → risolve anomalia + supervisione collegata
+    - OPERATORE → risolve anomalia ma supervisione resta PENDING
     """
     stati_validi = ['APERTA', 'IN_GESTIONE', 'RISOLTA', 'IGNORATA']
-    
+
     if update.stato not in stati_validi:
         raise HTTPException(
             status_code=400,
             detail=f"Stato non valido. Valori accettati: {', '.join(stati_validi)}"
         )
-    
+
     try:
-        success = update_anomalia_stato(id_anomalia, update.stato, update.note)
-        
+        # v11.2: Passa ruolo per gestione supervisioni
+        ruolo = current_user.ruolo if current_user.ruolo else 'operatore'
+        operatore = current_user.username if current_user else 'system'
+
+        success = update_anomalia_stato(
+            id_anomalia,
+            update.stato,
+            update.note,
+            operatore=operatore,
+            ruolo=ruolo
+        )
+
         if not success:
             raise HTTPException(status_code=404, detail="Anomalia non trovata")
-        
+
+        # v11.2: Informa se supervisione è stata risolta automaticamente
+        sup_risolta = ruolo.lower() in ['supervisore', 'admin']
+
         return {
             "success": True,
-            "message": f"Anomalia aggiornata a {update.stato}"
+            "message": f"Anomalia aggiornata a {update.stato}",
+            "supervisione_risolta": sup_risolta if update.stato in ('RISOLTA', 'IGNORATA') else None
         }
     except HTTPException:
         raise
@@ -265,20 +284,26 @@ async def crea_anomalia(anomalia: AnomaliaCreate) -> Dict[str, Any]:
 @router.post("/batch/stato")
 async def aggiorna_stato_batch(
     request: BatchAnomalieRequest,
-    nuovo_stato: str = Query(..., description="Nuovo stato da applicare")
+    nuovo_stato: str = Query(..., description="Nuovo stato da applicare"),
+    current_user: UtenteResponse = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """
     Aggiorna stato di più anomalie.
+
+    v11.2: Se SUPERVISORE/ADMIN risolve anche le supervisioni collegate.
     """
     stati_validi = ['APERTA', 'IN_GESTIONE', 'RISOLTA', 'IGNORATA']
 
     if nuovo_stato not in stati_validi:
         raise HTTPException(status_code=400, detail="Stato non valido")
 
+    ruolo = current_user.ruolo if current_user.ruolo else 'operatore'
+    operatore = current_user.username if current_user else 'system'
+
     try:
         success_count = 0
         for id_anomalia in request.ids:
-            if update_anomalia_stato(id_anomalia, nuovo_stato, request.note):
+            if update_anomalia_stato(id_anomalia, nuovo_stato, request.note, operatore=operatore, ruolo=ruolo):
                 success_count += 1
 
         return {
@@ -293,15 +318,23 @@ async def aggiorna_stato_batch(
 
 
 @router.post("/batch/risolvi")
-async def risolvi_batch(request: BatchAnomalieRequest) -> Dict[str, Any]:
+async def risolvi_batch(
+    request: BatchAnomalieRequest,
+    current_user: UtenteResponse = Depends(get_current_user)
+) -> Dict[str, Any]:
     """
     Risolvi più anomalie in una volta.
+
+    v11.2: Se SUPERVISORE/ADMIN risolve anche le supervisioni collegate.
     """
     note = request.note or "Risoluzione batch"
+    ruolo = current_user.ruolo if current_user.ruolo else 'operatore'
+    operatore = current_user.username if current_user else 'system'
+
     try:
         success_count = 0
         for id_anomalia in request.ids:
-            if update_anomalia_stato(id_anomalia, 'RISOLTA', note):
+            if update_anomalia_stato(id_anomalia, 'RISOLTA', note, operatore=operatore, ruolo=ruolo):
                 success_count += 1
 
         return {
@@ -316,15 +349,23 @@ async def risolvi_batch(request: BatchAnomalieRequest) -> Dict[str, Any]:
 
 
 @router.post("/batch/ignora")
-async def ignora_batch(request: BatchAnomalieRequest) -> Dict[str, Any]:
+async def ignora_batch(
+    request: BatchAnomalieRequest,
+    current_user: UtenteResponse = Depends(get_current_user)
+) -> Dict[str, Any]:
     """
     Ignora più anomalie in una volta.
+
+    v11.2: Se SUPERVISORE/ADMIN risolve anche le supervisioni collegate.
     """
     note = request.note or "Ignorata"
+    ruolo = current_user.ruolo if current_user.ruolo else 'operatore'
+    operatore = current_user.username if current_user else 'system'
+
     try:
         success_count = 0
         for id_anomalia in request.ids:
-            if update_anomalia_stato(id_anomalia, 'IGNORATA', note):
+            if update_anomalia_stato(id_anomalia, 'IGNORATA', note, operatore=operatore, ruolo=ruolo):
                 success_count += 1
 
         return {
@@ -611,15 +652,20 @@ async def modifica_riga_anomalia(
 @router.post("/dettaglio/{id_anomalia}/risolvi")
 async def risolvi_anomalia_dettaglio(
     id_anomalia: int,
-    note: Optional[str] = "Risolta da dettaglio"
+    note: Optional[str] = "Risolta da dettaglio",
+    current_user: UtenteResponse = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """
     Risolve un'anomalia singola (senza propagazione).
 
+    v11.2: Se SUPERVISORE/ADMIN risolve anche le supervisioni collegate.
     NOTA: Per risolvere con propagazione, usare /dettaglio/{id}/risolvi-propaga
     """
+    ruolo = current_user.ruolo if current_user.ruolo else 'operatore'
+    operatore = current_user.username if current_user else 'system'
+
     try:
-        success = update_anomalia_stato(id_anomalia, 'RISOLTA', note)
+        success = update_anomalia_stato(id_anomalia, 'RISOLTA', note, operatore=operatore, ruolo=ruolo)
 
         if not success:
             raise HTTPException(status_code=404, detail="Anomalia non trovata")
@@ -1034,11 +1080,11 @@ async def risolvi_anomalia_deposito(
             # Verifica anche supervisioni pending
             sup_pending = db.execute("""
                 SELECT COUNT(*) FROM (
-                    SELECT id FROM supervisione_espositore WHERE id_testata = %s AND stato = 'PENDING'
+                    SELECT id_supervisione FROM supervisione_espositore WHERE id_testata = %s AND stato = 'PENDING'
                     UNION ALL
-                    SELECT id FROM supervisione_lookup WHERE id_testata = %s AND stato = 'PENDING'
+                    SELECT id_supervisione FROM supervisione_lookup WHERE id_testata = %s AND stato = 'PENDING'
                     UNION ALL
-                    SELECT id FROM supervisione_aic WHERE id_testata = %s AND stato = 'PENDING'
+                    SELECT id_supervisione FROM supervisione_aic WHERE id_testata = %s AND stato = 'PENDING'
                 ) sub
             """, (id_testata, id_testata, id_testata)).fetchone()[0]
 
