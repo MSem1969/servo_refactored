@@ -574,13 +574,12 @@ def valida_e_genera_tracciato(
     db.execute("""
         UPDATE anomalie
         SET stato = 'RISOLTA',
-            risolto_da = %s,
             data_risoluzione = %s,
-            note_risoluzione = COALESCE(note_risoluzione || ' | ', '') || 'Chiusa automaticamente con validazione ordine'
+            note_risoluzione = COALESCE(note_risoluzione || ' | ', '') || %s
         WHERE id_testata = %s
           AND stato IN ('APERTA', 'IN_GESTIONE')
           AND livello IN ('INFO', 'ATTENZIONE')
-    """, (operatore, now.isoformat(), id_testata))
+    """, (now.isoformat(), f'Chiusa automaticamente con validazione ordine (operatore: {operatore})', id_testata))
 
     db.commit()
 

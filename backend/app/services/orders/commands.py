@@ -400,13 +400,12 @@ def archivia_ordine(id_testata: int, operatore: str) -> ArchiviazioneResult:
     anomalie_archiviate = db.execute("""
         UPDATE anomalie
         SET stato = 'ARCHIVIATA',
-            risolto_da = %s,
             data_risoluzione = %s,
-            note_risoluzione = COALESCE(note_risoluzione || ' | ', '') || 'Archiviata con ordine'
+            note_risoluzione = COALESCE(note_risoluzione || ' | ', '') || %s
         WHERE id_testata = %s
           AND stato IN ('APERTA', 'IN_GESTIONE')
         RETURNING id_anomalia
-    """, (operatore, now, id_testata)).fetchall()
+    """, (now, f'Archiviata con ordine (operatore: {operatore})', id_testata)).fetchall()
 
     # v11.0: Archivia tutte le supervisioni pending dell'ordine
     for table in ['supervisione_espositore', 'supervisione_listino', 'supervisione_lookup',
