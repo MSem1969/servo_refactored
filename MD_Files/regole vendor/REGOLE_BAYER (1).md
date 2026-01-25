@@ -1,8 +1,8 @@
 # 📋 REGOLE ESTRAZIONE: BAYER
 
-**Vendor**: Bayer S.p.A.  
-**Versione**: 2.0  
-**Data**: 06 Gennaio 2026  
+**Vendor**: Bayer S.p.A.
+**Versione**: 3.0
+**Data**: 25 Gennaio 2026
 **Identificativo**: Transfer Order / BAYER
 
 ---
@@ -70,12 +70,90 @@ DATI ORDINE
 └── DATA ACQUISIZIONE (GG mmm AAAA)
 
 TABELLA PRODOTTI
-├── ARTICOLO (codice prodotto)
+├── ARTICOLO (codice prodotto + descrizione)
 ├── Q.tà Vendita
 ├── Prezzo Cessione
 ├── Q.tà Merce Sconto
 ├── Merce Sconto Extra
+├── CONSEGNE (colonne date - es: "5 nov 2025", "26 nov 2025")
 └── CONDIZIONI PAGAMENTO PARTICOLARI
+```
+
+---
+
+## 🗓️ DATE CONSEGNA MULTIPLE (v3.0)
+
+### BAYER-DC01: Colonne Date nell'Header
+```
+PARTICOLARITÀ BAYER: Le date di consegna sono negli HEADER COLONNA.
+
+Struttura tipica:
+  CONSEGNE
+  ┌─────────┬─────────┐
+  │ 5 nov   │ 26 nov  │
+  │ 2025    │ 2025    │
+  └─────────┴─────────┘
+
+Le quantità per riga sono posizionate sotto la colonna data corrispondente.
+```
+
+### BAYER-DC02: Stesso Prodotto con Date Diverse
+```
+REGOLA CRITICA: Se un prodotto ha quantità su DATE DIVERSE, creare RIGHE SEPARATE.
+
+Esempio da PDF IT25O-20667:
+  CITROSODINA GRAN. EFF 150 GR | Q.tà Vendita: 40 | 20 ott: 12 | 20 dic: 28
+
+Risultato estrazione:
+  Riga 1: CITROSODINA, qty=12, data_consegna=20/10/2025
+  Riga 2: CITROSODINA, qty=28, data_consegna=20/12/2026
+
+Ogni riga ha n_riga progressivo univoco.
+```
+
+### BAYER-DC03: Prodotto con Singola Data
+```
+Se un prodotto ha quantità su UNA SOLA colonna data:
+  - Creare una singola riga
+  - Data consegna dalla colonna che contiene la quantità
+
+Esempio da PDF IT25O-23566:
+  Supradyn Expert EspoB | Q.tà: 1 | 5 nov: vuoto | 26 nov: 1
+
+Risultato: Riga con qty=1, data_consegna=26/11/2025
+```
+
+---
+
+## 🎪 ESPOSITORI BAYER (v3.0)
+
+### BAYER-ESP01: Espositori sono Prodotti AUTONOMI
+```
+IMPORTANTE: BAYER NON usa logica parent/child per espositori.
+
+A differenza di ANGELINI/MENARINI:
+  - Gli espositori BAYER sono prodotti AUTONOMI
+  - NON ci sono righe "child" associate
+  - L'espositore è un singolo articolo con il suo prezzo
+
+Identificazione espositore (solo informativa):
+  Keywords: EXPO, BANCO, DISPLAY, ESPOSITORE, CESTA, DBOX, FSTAND
+  Flag: is_espositore = 1 (per tracciabilità, non per logica speciale)
+```
+
+### BAYER-ESP02: Codici AIC Espositori
+```
+ANOMALIA AIC: Espositori BAYER possono avere codici NON standard.
+
+Esempi riscontrati:
+  - 0091639224 (10 cifre) → Anomalia AIC-A01
+  - 92035128 (8 cifre) → Anomalia AIC-A01
+  - 91779360 (8 cifre) → Anomalia AIC-A01
+
+Gestione:
+  - Codice normalizzato con padding/troncamento
+  - Anomalia AIC-A01 generata per revisione manuale
+  - L'operatore può correggere il codice se errato
 ```
 
 ---
@@ -398,59 +476,83 @@ Expected Righe (estratto):
     prezzo_netto: 8.54
 ```
 
-### TC-BAYER-03: Ordine Con Sconto Extra
+### TC-BAYER-03: Ordine Con Date Consegna Multiple (v3.0)
 ```
 Input: PDF IT25O-20667 (NUOVA FARMACIA BARONE SCALA)
+Date colonne: "20 ott 2025", "20 dic 2026"
 
-Expected Riga con sconto extra:
-  - codice_aic: "938181462"
-    descrizione: "CITROSODINA GRAN. EFF 150 GR"
-    q_venduta: 40
-    q_sconto_merce: 12
-    merce_sconto_extra: 28
-    prezzo_netto: 3.22
+Expected Righe CITROSODINA (prodotto con 2 date):
+  Riga 1:
+    - codice_aic: "938181462"
+    - descrizione: "CITROSODINA GRAN. EFF 150 GR"
+    - quantita: 12
+    - data_consegna: 20/10/2025
 
-NOTA: La somma (12 + 28 = 40 omaggi totali) verrà gestita
-      in fase di generazione tracciato.
+  Riga 2:
+    - codice_aic: "938181462"
+    - descrizione: "CITROSODINA GRAN. EFF 150 GR"
+    - quantita: 28
+    - data_consegna: 20/12/2026
+
+Expected Righe Geffer (prodotto con 2 date):
+  Riga 1: qty=12, data=20/10/2025
+  Riga 2: qty=36, data=20/12/2026
+
+Expected Righe GYNO-CANESTEN (prodotto con 2 date):
+  Riga 1: qty=6, data=20/10/2025
+  Riga 2: qty=30, data=20/12/2026
+
+TOTALE RIGHE ORDINE: 11 (8 prodotti, 3 con date multiple)
 ```
 
-### TC-BAYER-04: Espositore con Codice 6 Cifre
+### TC-BAYER-04: Espositore BAYER (v3.0)
 ```
 Input: Riga "0091639224 Aspirina C20 TAEF Expo Banco 20 pz DP IT"
 
-CASO A - Se codice reale è 10 cifre (0091639224):
-  - codice_aic: "009163922" (troncamento a 9)
+COMPORTAMENTO v3.0:
+  - codice_aic: normalizzato (padding/troncamento)
   - codice_originale: "0091639224"
-  - is_espositore: 0
-  - Warning: codice > 9 cifre
-
-CASO B - Se codice reale è 6 cifre (091639):
-  - codice_aic: "500091639" (padding con 5)
-  - codice_originale: "091639"
-  - is_espositore: 1
-  - descrizione: "Aspirina C20 TAEF Expo Banco 20 pz DP IT"
-  - q_venduta: 1
+  - is_espositore: 1 (flag informativo per keyword "Expo Banco")
+  - tipo_riga: "PRODOTTO_STANDARD" (NON parent/child!)
+  - quantita: 1
   - prezzo_netto: 123.30
+  - data_consegna: dalla colonna appropriata
 
-VERIFICA: Controllare nei PDF originali lunghezza esatta
+ANOMALIA GENERATA:
+  - codice: AIC-A01
+  - messaggio: "AIC non conforme: 0091639224 (10 cifre invece di 9)"
+  - livello: ERRORE
+  - Richiede revisione manuale operatore
+
+IMPORTANTE: L'espositore è un prodotto AUTONOMO, non ha righe child associate.
 ```
 
-### TC-BAYER-05: Multiple Righe Stesso Prodotto
+### TC-BAYER-05: Prodotto con Data Consegna Singola ma Diversa (v3.0)
 ```
 Input: PDF IT25O-23566 (FARMACIA CROCE VERDE)
+Date colonne: "5 nov 2025", "26 nov 2025"
 
 Expected:
-  - Prodotto: "Supradyn Ricarica 30 TAEF IT"
-  - Possibili righe duplicate con quantità diverse
-  - Ogni riga va estratta separatamente
-  - Progressivo n_riga univoco per ognuna
+  - La maggior parte dei prodotti ha qty sotto "5 nov 2025"
+  - Supradyn Expert EspoB Mix ha qty=1 sotto "26 nov 2025"
+
+Risultato estrazione Supradyn Expert EspoB:
+  - n_riga: (progressivo)
+  - codice_aic: "92035128" (8 cifre → anomalia AIC-A01)
+  - descrizione: "Supradyn Expert EspoB Mix 9p"
+  - quantita: 1
+  - data_consegna: 26/11/2025 (NON 05/11/2025!)
+  - is_espositore: 1
+
+IMPORTANTE: L'estrazione tabellare garantisce la corretta
+            mappatura colonna → data consegna.
 ```
 
 ---
 
 ## 📝 NOTE IMPLEMENTAZIONE
 
-### Differenze Chiave da Altri Vendor
+### Differenze Chiave da Altri Vendor (v3.0)
 
 ```
 1. DUE SOGGETTI:
@@ -458,23 +560,29 @@ Expected:
    - CLIENTE (farmacia destinataria finale)
    - Estratti entrambi, solo grossista ha prefisso speciale
 
-2. COLONNA SCONTO EXTRA:
-   - Campo "Merce Sconto Extra" unico di BAYER
-   - Va estratto separatamente come merce_sconto_extra
-   - Gestione finale in fase di generazione tracciato
+2. DATE CONSEGNA NEGLI HEADER COLONNA (v3.0):
+   - Le date sono nelle intestazioni colonna della tabella
+   - Possono esserci 1 o 2 colonne data (es: "5 nov 2025", "26 nov 2025")
+   - Ogni prodotto ha quantità sotto la colonna della sua data consegna
+   - Se stesso prodotto ha qty su più date → RIGHE SEPARATE
 
-3. ESPOSITORI:
-   - Codici a 6 cifre trattati come ANGELINI
-   - Padding con "5" iniziale → 9 cifre (es: 091639 → 500091639)
-   - Salvare sia codice_aic normalizzato che codice_originale
-   - Flag is_espositore = 1
+3. ESPOSITORI AUTONOMI (v3.0):
+   - BAYER NON usa logica parent/child per espositori
+   - Espositori sono prodotti AUTONOMI con prezzo proprio
+   - Flag is_espositore = 1 solo informativo
+   - Codici non standard (6-10 cifre) generano anomalia AIC-A01
 
-4. IDENTIFICAZIONE VENDOR:
+4. ESTRAZIONE TABELLARE (v3.0):
+   - Usa pdfplumber table extraction per mappare correttamente le colonne
+   - Fallback su text extraction se tabella non disponibile
+   - Garantisce corretta associazione qty → data consegna
+
+5. IDENTIFICAZIONE VENDOR:
    - SOLO da contenuto testuale
    - Pattern multipli: "Bayer" + "COOPERATIVA/ GROSSISTA" + "NUM. PROP. D'ORDINE"
    - Nome file NON considerato
 
-5. CAMPI NON ESTRATTI:
+6. CAMPI NON ESTRATTI:
    - COLLABORATORE (agente)
    - TELEFONO
    - BANCA/AGENZIA
@@ -600,7 +708,22 @@ PATTERN_GG_DILAZIONE = r'(\d+)\s*gg'
 
 ---
 
-**Documento**: REGOLE_BAYER.md  
-**Versione**: 2.0  
-**Ultima modifica**: 06 Gennaio 2026  
+**Documento**: REGOLE_BAYER.md
+**Versione**: 3.0
+**Ultima modifica**: 25 Gennaio 2026
 **Stato**: ✅ CONFERMATO
+
+---
+
+## 📜 CHANGELOG
+
+### v3.0 (25 Gennaio 2026)
+- **DATE CONSEGNA MULTIPLE**: Supporto colonne date nell'header tabella
+- **RIGHE SEPARATE**: Stesso prodotto con date diverse → righe ordine separate
+- **ESPOSITORI AUTONOMI**: Rimossa logica parent/child (non applicabile a BAYER)
+- **ESTRAZIONE TABELLARE**: Usa pdfplumber tables per mappatura colonne accurate
+- **ANOMALIA AIC-A01**: Codici non standard (≠9 cifre) segnalati per revisione
+
+### v2.0 (06 Gennaio 2026)
+- Prima versione documentata
+- Supporto base per Transfer Order BAYER
