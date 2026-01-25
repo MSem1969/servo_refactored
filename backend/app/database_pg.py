@@ -31,6 +31,9 @@ def init_pool():
     if _pool is not None:
         return
 
+    # v11.2: Aggiunti timeout per evitare blocchi
+    # - connect_timeout: timeout connessione (secondi)
+    # - options: statement_timeout per query (millisecondi)
     _pool = pool.ThreadedConnectionPool(
         minconn=2,
         maxconn=20,
@@ -38,9 +41,11 @@ def init_pool():
         port=config.PG_PORT,
         database=config.PG_DATABASE,
         user=config.PG_USER,
-        password=config.PG_PASSWORD
+        password=config.PG_PASSWORD,
+        connect_timeout=config.PG_CONNECT_TIMEOUT,
+        options=f"-c statement_timeout={config.PG_STATEMENT_TIMEOUT}"
     )
-    print(f"   PostgreSQL pool: {config.PG_HOST}:{config.PG_PORT}/{config.PG_DATABASE}")
+    print(f"   PostgreSQL pool: {config.PG_HOST}:{config.PG_PORT}/{config.PG_DATABASE} (timeout: {config.PG_STATEMENT_TIMEOUT}ms)")
 
 
 def close_pool():

@@ -28,6 +28,10 @@ class Settings:
     PG_USER: str = os.getenv("PG_USER", "servo_user")
     PG_PASSWORD: str = os.getenv("PG_PASSWORD", "")
 
+    # Timeout PostgreSQL (in millisecondi per statement, secondi per connect)
+    PG_CONNECT_TIMEOUT: int = int(os.getenv("PG_CONNECT_TIMEOUT", "10"))  # 10 secondi
+    PG_STATEMENT_TIMEOUT: int = int(os.getenv("PG_STATEMENT_TIMEOUT", "6000"))  # 6000ms = 6 secondi
+
     # SQLite (mantenuto per compatibilita/migrazione)
     DB_PATH: str = os.getenv("DB_PATH", "extractor_to.db")
 
