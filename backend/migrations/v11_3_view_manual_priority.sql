@@ -16,8 +16,8 @@ SELECT
     ot.stato,
     -- MIN_ID: priorità a testata se MANUALE, altrimenti anagrafica
     CASE
-        WHEN ot.lookup_method = 'MANUALE' THEN COALESCE(ot.min_id, ot.codice_ministeriale_estratto, af.min_id)
-        ELSE COALESCE(af.min_id, ot.min_id, ot.codice_ministeriale_estratto)
+        WHEN ot.lookup_method = 'MANUALE' THEN COALESCE(ot.codice_ministeriale_estratto, af.min_id)
+        ELSE COALESCE(af.min_id, ot.codice_ministeriale_estratto)
     END AS min_id,
     -- P.IVA: priorità a testata se MANUALE
     CASE
@@ -35,8 +35,8 @@ SELECT
     ot.cap,
     -- Città: priorità a testata se MANUALE
     CASE
-        WHEN ot.lookup_method = 'MANUALE' THEN COALESCE(ot.citta, af.comune)
-        ELSE COALESCE(af.comune, ot.citta)
+        WHEN ot.lookup_method = 'MANUALE' THEN COALESCE(ot.citta, af.citta)
+        ELSE COALESCE(af.citta, ot.citta)
     END AS citta,
     -- Provincia: priorità a testata se MANUALE
     CASE
