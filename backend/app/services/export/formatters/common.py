@@ -11,8 +11,73 @@ from datetime import date, datetime
 TO_T_LENGTH = 857   # Testata (calcolato da schema)
 TO_D_LENGTH = 344   # Dettaglio (calcolato da schema)
 
-# Codice produttore default
+# Codice produttore default (fallback)
 DEFAULT_VENDOR_CODE = "HAL_FARVI"
+
+# =============================================================================
+# MAPPING VENDOR → PREFISSO 3 CARATTERI
+# =============================================================================
+VENDOR_PREFIX_MAP = {
+    'ANGELINI': 'ANG',
+    'BAYER': 'BAY',
+    'CHIESI': 'CHI',
+    'CODIFI': 'COD',
+    'COOPER': 'COP',
+    'DOC_GENERICI': 'DOC',
+    'MENARINI': 'MEN',
+    'OPELLA': 'OPE',
+    'RECKITT': 'REC',
+}
+
+# =============================================================================
+# MAPPING DEPOSITO → DISTRIBUTORE
+# =============================================================================
+# CT, CL → SOFAD
+# PE, CB → SAFAR
+# Altri  → FARVI
+DEPOSITO_DISTRIBUTORE_MAP = {
+    'CT': 'SOFAD',
+    'CL': 'SOFAD',
+    'PE': 'SAFAR',
+    'CB': 'SAFAR',
+}
+DEFAULT_DISTRIBUTORE = 'FARVI'
+
+
+def get_vendor_code(vendor: str, deposito: str = None) -> str:
+    """
+    Genera il codice vendor per il tracciato TO_T (posizione 1-10).
+
+    Combina:
+    - Prefisso vendor (3 caratteri): ANG, BAY, CHI, COD, COP, DOC, MEN, OPE, REC
+    - Distributore (5 caratteri): FARVI, SOFAD, SAFAR
+
+    Logica distributore basata su deposito:
+    - CT, CL → SOFAD
+    - PE, CB → SAFAR
+    - Altri  → FARVI
+
+    Args:
+        vendor: Nome vendor (ANGELINI, BAYER, etc.)
+        deposito: Codice deposito (CT, CL, PE, CB, etc.)
+
+    Returns:
+        Codice vendor formato "{PREFIX}_{DISTRIBUTORE}" (es: ANG_FARVI, BAY_SOFAD)
+    """
+    # Ottieni prefisso vendor (3 char)
+    vendor_upper = (vendor or '').upper().strip()
+    prefix = VENDOR_PREFIX_MAP.get(vendor_upper)
+
+    if not prefix:
+        # Fallback: primi 3 caratteri del vendor o 'HAL'
+        prefix = vendor_upper[:3] if vendor_upper else 'HAL'
+
+    # Ottieni distributore da deposito
+    deposito_upper = (deposito or '').upper().strip()
+    distributore = DEPOSITO_DISTRIBUTORE_MAP.get(deposito_upper, DEFAULT_DISTRIBUTORE)
+
+    # Combina: PREFIX_DISTRIBUTORE
+    return f"{prefix}_{distributore}"
 
 
 def format_date_edi(date_val) -> str:

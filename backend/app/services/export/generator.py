@@ -69,6 +69,12 @@ def generate_tracciati_per_ordine(
         ordine_dict['numero_ordine'] = numero_ordine  # Normalizza per uso successivo
         vendor = ordine_dict['vendor']
 
+        # v11.2: Recupera deposito_riferimento per codice vendor nel tracciato
+        deposito_row = db.execute("""
+            SELECT deposito_riferimento FROM ordini_testata WHERE id_testata = ?
+        """, (id_testata,)).fetchone()
+        ordine_dict['deposito_riferimento'] = deposito_row['deposito_riferimento'] if deposito_row else None
+
         # Verifica se ordine puo essere esportato (nessuna supervisione pending)
         if not può_emettere_tracciato(id_testata):
             continue
@@ -203,6 +209,12 @@ def valida_e_genera_tracciato(
     ordine_dict = dict(ordine)
     # Normalizza numero_ordine (supporta sia 'numero_ordine' che 'numero_ordine_vendor')
     ordine_dict['numero_ordine'] = ordine_dict.get('numero_ordine') or ordine_dict.get('numero_ordine_vendor') or ''
+
+    # v11.2: Recupera deposito_riferimento per codice vendor nel tracciato
+    deposito_row = db.execute("""
+        SELECT deposito_riferimento FROM ordini_testata WHERE id_testata = %s
+    """, (id_testata,)).fetchone()
+    ordine_dict['deposito_riferimento'] = deposito_row['deposito_riferimento'] if deposito_row else None
 
     # 1a. Verifica stato ordine - blocca generazione per stati non validi
     stato_ordine = ordine_dict.get('stato', 'ESTRATTO')

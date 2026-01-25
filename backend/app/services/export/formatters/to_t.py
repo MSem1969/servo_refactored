@@ -13,6 +13,7 @@ from .common import (
     format_date_edi,
     format_float_edi,
     format_int_edi,
+    get_vendor_code,
 )
 
 
@@ -49,7 +50,12 @@ def generate_to_t_line(data: Dict[str, Any]) -> str:
     - Pos 658-857: BOT_Annotation (200)
     """
     # Estrai dati
-    vendor_code = DEFAULT_VENDOR_CODE
+    # v11.2: Genera codice vendor dinamico da vendor + deposito
+    # Formato: {PREFIX_3CHAR}_{DISTRIBUTORE} (es: ANG_FARVI, BAY_SOFAD, MEN_SAFAR)
+    vendor = data.get('vendor') or ''
+    deposito = data.get('deposito_riferimento') or data.get('deposito') or ''
+    vendor_code = get_vendor_code(vendor, deposito)
+
     min_id = str(data.get('min_id') or data.get('anag_min_id') or '').strip()
 
     # Date in formato GG/MM/AAAA
