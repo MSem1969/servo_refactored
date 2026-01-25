@@ -167,7 +167,7 @@ def _parse_product_row(row: List, is_resi: bool = False) -> Dict:
     """
     Parse una riga prodotto dalla tabella.
 
-    Colonne attese:
+    Colonne attese (righe normali):
     0: Codice (interno)
     1: Codice Aic
     2: Prodotto
@@ -180,6 +180,15 @@ def _parse_product_row(row: List, is_resi: bool = False) -> Dict:
     9: Sconto (%)
     10: Prezzo Totale
     11: Prezzo Unitario
+
+    Colonne RESI (formato ridotto):
+    0: Codice (interno)
+    1: Codice Aic
+    2: Prodotto
+    3: Formato (vuoto)
+    4: Fascia
+    5-6: vuoti
+    7: Quantità (questa è la quantità omaggio!)
     """
     try:
         # Pulisci celle
@@ -207,12 +216,40 @@ def _parse_product_row(row: List, is_resi: bool = False) -> Dict:
 
         # Descrizione (colonna dopo AIC)
         descrizione = cells[aic_idx + 1] if aic_idx + 1 < len(cells) else ''
-        descrizione = descrizione[:60]
+        descrizione = descrizione.replace('\n', ' ')[:60]
 
-        # Cerca valori numerici per quantità e prezzi
-        # Strategia: cerca pattern specifici nelle celle rimanenti
+        # === GESTIONE SPECIALE RESI ===
+        # Le righe RESI hanno formato ridotto: solo quantità in posizione ~7
+        if is_resi:
+            # Cerca primo numero intero nelle celle (è la quantità omaggio)
+            q_omaggio = 0
+            for cell in cells:
+                if cell and re.match(r'^\d+$', cell):
+                    val = int(cell)
+                    if val > 0:
+                        q_omaggio = val
+                        break
+
+            return {
+                'codice_aic': codice_aic,
+                'codice_originale': cells[aic_idx],
+                'codice_interno': codice_interno,
+                'descrizione': descrizione,
+                'q_venduta': 0,
+                'q_sconto_merce': 0,
+                'q_omaggio': q_omaggio,
+                'sconto_1': 0.0,
+                'prezzo_netto': 0.0,
+                'prezzo_totale': 0.0,
+                'aliquota_iva': 10.0,
+                'is_espositore': False,
+                'is_child': False,
+            }
+
+        # === RIGHE NORMALI ===
         q_vendita = 0
         q_sconto_merce = 0
+        q_omaggio = 0  # Righe normali: sempre 0 (RESI gestito sopra con early return)
         sconto_pct = 0.0
         prezzo_totale = 0.0
         prezzo_unitario = 0.0
@@ -240,16 +277,9 @@ def _parse_product_row(row: List, is_resi: bool = False) -> Dict:
             sconto_pct = numeric_cells[4][1]
             prezzo_totale = numeric_cells[5][1]
             prezzo_unitario = numeric_cells[6][1]
-        elif len(numeric_cells) >= 5:
-            # Formato ridotto (es. sezione Resi)
+        elif len(numeric_cells) >= 3:
+            # Formato con meno colonne
             q_vendita = int(numeric_cells[0][1]) if numeric_cells else 0
-
-        # Se è sezione RESI, la quantità va in omaggio
-        if is_resi:
-            q_omaggio = q_vendita
-            q_vendita = 0
-        else:
-            q_omaggio = 0
 
         return {
             'codice_aic': codice_aic,

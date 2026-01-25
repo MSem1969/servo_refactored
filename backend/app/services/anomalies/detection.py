@@ -165,6 +165,7 @@ def _detect_listino_anomalies(id_testata: int) -> List[Dict]:
     anomalies = []
 
     # Trova righe senza prezzo o con prezzo diverso da listino
+    # v11.2: Escludi prodotti omaggio/sconto merce (prezzo irrilevante per omaggi)
     rows = db.execute("""
         SELECT
             d.id_dettaglio,
@@ -179,6 +180,10 @@ def _detect_listino_anomalies(id_testata: int) -> List[Dict]:
         WHERE d.id_testata = %s
         AND d.tipo_espositore IS NULL  -- Escludi espositori
         AND d.stato NOT IN ('ARCHIVIATO')
+        AND NOT (
+            COALESCE(d.q_venduta, 0) = 0
+            AND (COALESCE(d.q_omaggio, 0) > 0 OR COALESCE(d.q_sconto_merce, 0) > 0)
+        )  -- v11.2: Escludi pure gift/sconto rows (q_venduta=0 ma q_omaggio/q_sconto_merce>0)
     """, (id_testata,)).fetchall()
 
     for row in rows:
