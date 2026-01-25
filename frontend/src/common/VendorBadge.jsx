@@ -90,6 +90,22 @@ const VendorBadge = ({
       name: 'DOC Generici',
       acronym: 'DOC',
       icon: '📦'
+    },
+    COOPER: {
+      bg: 'bg-teal-100',
+      text: 'text-teal-700',
+      border: 'border-teal-200',
+      name: 'Cooper',
+      acronym: 'COP',
+      icon: '🧴'
+    },
+    RECKITT: {
+      bg: 'bg-rose-100',
+      text: 'text-rose-700',
+      border: 'border-rose-200',
+      name: 'Reckitt',
+      acronym: 'REC',
+      icon: '💗'
     }
   };
   
@@ -146,14 +162,14 @@ const VendorBadge = ({
 };
 
 // Utility per ottenere lista vendor supportati
-// v11.2: Lista aggiornata vendor abilitati + COOPER
+// v11.2: Lista aggiornata vendor abilitati + COOPER + RECKITT
 VendorBadge.getSupportedVendors = () => {
-  return ['DOC_GENERICI', 'CODIFI', 'COOPER', 'MENARINI', 'OPELLA', 'CHIESI', 'ANGELINI', 'BAYER'];
+  return ['DOC_GENERICI', 'CODIFI', 'COOPER', 'MENARINI', 'OPELLA', 'CHIESI', 'ANGELINI', 'BAYER', 'RECKITT'];
 };
 
 // Utility per verificare se vendor è supportato
 VendorBadge.isSupported = (vendor) => {
-  const supported = ['DOC_GENERICI', 'CODIFI', 'COOPER', 'MENARINI', 'OPELLA', 'CHIESI', 'ANGELINI', 'BAYER'];
+  const supported = ['DOC_GENERICI', 'CODIFI', 'COOPER', 'MENARINI', 'OPELLA', 'CHIESI', 'ANGELINI', 'BAYER', 'RECKITT'];
   return supported.includes(vendor?.toUpperCase());
 };
 
