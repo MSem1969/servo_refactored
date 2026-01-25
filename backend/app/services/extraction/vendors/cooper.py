@@ -125,14 +125,14 @@ def extract_cooper(text: str, lines: List[str], pdf_path: str = None) -> List[Di
     """
     data = {'vendor': 'COOPER', 'righe': []}
 
-    # v11.2: Estrai testo direttamente dal PDF con x_tolerance per spacing corretto
+    # v11.2: Estrai testo direttamente dal PDF con x_tolerance=1 per spacing corretto
+    # NOTA: Per COOPER, x_tolerance=1 preserva gli spazi, valori più alti li rimuovono!
     if pdf_path and PDFPLUMBER_AVAILABLE:
         try:
             with pdfplumber.open(pdf_path) as pdf:
-                # Estrai testo con spacing corretto (x_tolerance=3)
                 text_parts = []
                 for page in pdf.pages:
-                    page_text = page.extract_text(x_tolerance=3, y_tolerance=3) or ""
+                    page_text = page.extract_text(x_tolerance=1, y_tolerance=1) or ""
                     text_parts.append(page_text)
                 text = "\n".join(text_parts)
         except Exception as e:
@@ -251,9 +251,10 @@ def _extract_products_from_pdf(pdf_path: str) -> List[Dict]:
     in_resi_section = False
 
     # v11.2: Table settings con spacing corretto
+    # NOTA: Per COOPER, x_tolerance=1 preserva gli spazi originali del PDF
     table_settings = {
-        "text_x_tolerance": 3,
-        "text_y_tolerance": 3,
+        "text_x_tolerance": 1,
+        "text_y_tolerance": 1,
     }
 
     with pdfplumber.open(pdf_path) as pdf:
