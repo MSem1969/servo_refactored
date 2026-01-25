@@ -747,19 +747,17 @@ async def modifica_header_ordine(
 
         for field, value in field_mapping.items():
             if value is not None:
-                # Gestione speciale per alcuni campi
+                # Mapping nomi campo frontend -> colonne DB reali
+                # Usa solo colonne che esistono in ordini_testata
                 if field == 'partita_iva':
-                    updates.append("partita_iva = %s")
-                    updates.append("partita_iva_estratta = %s")  # Aggiorna anche campo estratto
-                    params.extend([value.strip(), value.strip()])
+                    updates.append("partita_iva_estratta = %s")
+                    params.append(value.strip())
                 elif field == 'ragione_sociale':
-                    updates.append("ragione_sociale = %s")
-                    updates.append("ragione_sociale_1 = %s")  # Aggiorna anche campo alternativo
-                    params.extend([value.strip(), value.strip()])
+                    updates.append("ragione_sociale_1 = %s")
+                    params.append(value.strip())
                 elif field == 'localita':
-                    updates.append("localita = %s")
-                    updates.append("citta = %s")  # Aggiorna anche campo alternativo
-                    params.extend([value.strip(), value.strip()])
+                    updates.append("citta = %s")
+                    params.append(value.strip())
                 else:
                     updates.append(f"{field} = %s")
                     params.append(value.strip() if isinstance(value, str) else value)
