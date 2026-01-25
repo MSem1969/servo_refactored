@@ -98,8 +98,8 @@ async def get_report_data(
         conditions.append(f"""
             EXISTS (
                 SELECT 1 FROM anagrafica_clienti ac
-                WHERE (ac.partita_iva = t.partita_iva OR ac.id_tipo = t.min_id)
-                AND ac.riferimento IN ({placeholders})
+                WHERE (ac.partita_iva = t.partita_iva OR ac.min_id = t.min_id)
+                AND ac.deposito_riferimento IN ({placeholders})
             )
         """)
         params.extend(deposito_list)
@@ -306,8 +306,8 @@ async def download_excel(
         conditions.append(f"""
             EXISTS (
                 SELECT 1 FROM anagrafica_clienti ac
-                WHERE (ac.partita_iva = t.partita_iva OR ac.id_tipo = t.min_id)
-                AND ac.riferimento IN ({placeholders})
+                WHERE (ac.partita_iva = t.partita_iva OR ac.min_id = t.min_id)
+                AND ac.deposito_riferimento IN ({placeholders})
             )
         """)
         params.extend(deposito_list)
@@ -558,8 +558,8 @@ def build_cascade_conditions(data_inizio, data_fine, vendors, stati, clienti, ai
         conditions.append(f"""
             EXISTS (
                 SELECT 1 FROM anagrafica_clienti ac
-                WHERE (ac.partita_iva = t.partita_iva OR ac.id_tipo = t.min_id)
-                AND ac.riferimento IN ({placeholders})
+                WHERE (ac.partita_iva = t.partita_iva OR ac.min_id = t.min_id)
+                AND ac.deposito_riferimento IN ({placeholders})
             )
         """)
         params.extend(deposito_list)
@@ -714,31 +714,31 @@ async def get_depositi(
 
     where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
-    # Query che trova i depositi (riferimento) per le farmacie che hanno ordini
+    # Query che trova i depositi (deposito_riferimento) per le farmacie che hanno ordini
     if conditions:
         query = f"""
-            SELECT DISTINCT ac.riferimento
+            SELECT DISTINCT ac.deposito_riferimento
             FROM anagrafica_clienti ac
-            WHERE ac.riferimento IS NOT NULL
-              AND ac.riferimento != ''
+            WHERE ac.deposito_riferimento IS NOT NULL
+              AND ac.deposito_riferimento != ''
               AND EXISTS (
                   SELECT 1 FROM v_ordini_completi t
                   {"JOIN ordini_dettaglio d ON t.id_testata = d.id_testata" if aic else ""}
                   {where_clause}
-                  AND (t.partita_iva = ac.partita_iva OR t.min_id = ac.id_tipo)
+                  AND (t.partita_iva = ac.partita_iva OR t.min_id = ac.min_id)
               )
-            ORDER BY ac.riferimento
+            ORDER BY ac.deposito_riferimento
         """
     else:
         query = """
-            SELECT DISTINCT riferimento
+            SELECT DISTINCT deposito_riferimento
             FROM anagrafica_clienti
-            WHERE riferimento IS NOT NULL AND riferimento != ''
-            ORDER BY riferimento
+            WHERE deposito_riferimento IS NOT NULL AND deposito_riferimento != ''
+            ORDER BY deposito_riferimento
         """
 
     rows = db.execute(query, tuple(params) if params else ()).fetchall()
-    return {'depositi': [r['riferimento'] for r in rows]}
+    return {'depositi': [r['deposito_riferimento'] for r in rows]}
 
 
 @router.get("/filters/prodotti", summary="Ricerca prodotti per AIC o descrizione")

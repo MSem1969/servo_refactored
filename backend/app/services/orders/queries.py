@@ -103,11 +103,11 @@ def get_ordini(
         deposito = None
 
         if piva:
-            # Prova prima con multipunto (P.IVA + id_tipo = MIN_ID)
+            # Prova prima con multipunto (P.IVA + min_id)
             if min_id:
                 cliente = db.execute("""
-                    SELECT riferimento FROM anagrafica_clienti
-                    WHERE partita_iva = ? AND id_tipo = ?
+                    SELECT deposito_riferimento FROM anagrafica_clienti
+                    WHERE partita_iva = %s AND min_id = %s
                     LIMIT 1
                 """, (piva, min_id)).fetchone()
                 if cliente:
@@ -116,8 +116,8 @@ def get_ordini(
             # Fallback: solo P.IVA
             if not deposito:
                 cliente = db.execute("""
-                    SELECT riferimento FROM anagrafica_clienti
-                    WHERE partita_iva = ?
+                    SELECT deposito_riferimento FROM anagrafica_clienti
+                    WHERE partita_iva = %s
                     LIMIT 1
                 """, (piva,)).fetchone()
                 if cliente:
@@ -163,11 +163,11 @@ def get_ordine_detail(id_testata: int) -> Optional[Dict[str, Any]]:
         deposito = None
 
         if piva:
-            # Prova prima con multipunto (P.IVA + id_tipo = MIN_ID)
+            # Prova prima con multipunto (P.IVA + min_id)
             if min_id:
                 cliente = db.execute("""
-                    SELECT riferimento FROM anagrafica_clienti
-                    WHERE partita_iva = ? AND id_tipo = ?
+                    SELECT deposito_riferimento FROM anagrafica_clienti
+                    WHERE partita_iva = %s AND min_id = %s
                     LIMIT 1
                 """, (piva, min_id)).fetchone()
                 if cliente:
@@ -176,8 +176,8 @@ def get_ordine_detail(id_testata: int) -> Optional[Dict[str, Any]]:
             # Fallback: solo P.IVA
             if not deposito:
                 cliente = db.execute("""
-                    SELECT riferimento FROM anagrafica_clienti
-                    WHERE partita_iva = ?
+                    SELECT deposito_riferimento FROM anagrafica_clienti
+                    WHERE partita_iva = %s
                     LIMIT 1
                 """, (piva,)).fetchone()
                 if cliente:

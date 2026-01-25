@@ -54,12 +54,12 @@ def import_clienti(csv_path: str, truncate: bool = False) -> dict:
         'AGPROV': 'provincia',
         'AGPIVA': 'partita_iva',
         'AGMAIL': 'email',
-        'AGCATE': 'categoria',
+        'AGCATE': 'farmacia_categoria',
         'AGCFAR': 'codice_farmacia',
-        'AGCSTA': 'codice_stato',
+        'AGCSTA': 'farma_status',
         'AGCPAG': 'codice_pagamento',
-        'AGTIDD': 'id_tipo',
-        'AGDRIF': 'riferimento',
+        'AGTIDD': 'min_id',
+        'AGDRIF': 'deposito_riferimento',
     }
 
     print(f"Lettura file: {csv_path}")
