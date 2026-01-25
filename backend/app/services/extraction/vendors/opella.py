@@ -1,13 +1,54 @@
 """
-EXTRACTOR_TO - Estrattore OPELLA
-=================================
+EXTRACTOR_TO - Estrattore OPELLA v11.2
+======================================
 Convertito da SERV.O_v6_0_DB_def.ipynb - Cella 10
+
+v11.2: Gestione AIC con zeri iniziali troncati
+- OPELLA visualizza solo i digit significativi (es. 12345 invece di 000012345)
+- Padding automatico a 9 cifre per codici < 9 caratteri
 """
 
 import re
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
-from ....utils import parse_date, normalize_aic
+from ....utils import parse_date
+
+
+def _normalize_aic_opella(codice: str, descrizione: str = '') -> Tuple[str, str, bool, bool]:
+    """
+    Normalizza AIC specifico per OPELLA con padding a 9 cifre.
+
+    OPELLA tronca gli zeri iniziali nei codici AIC.
+    Esempio: 12345 -> 000012345
+
+    Args:
+        codice: Codice AIC originale (può essere < 9 cifre)
+        descrizione: Descrizione prodotto (per rilevare espositore)
+
+    Returns:
+        Tuple (aic_padded, aic_originale, is_espositore, is_child)
+    """
+    codice = str(codice).strip() if codice else ''
+    aic_orig = codice
+    is_espositore = False
+    is_child = False
+
+    # Rileva espositore da codice o descrizione
+    esp_pattern = r'(ESP|EXP|BANCO|EXPO|DISPLAY)'
+    if re.search(esp_pattern, codice.upper()) or \
+       re.search(esp_pattern, descrizione.upper()):
+        is_espositore = True
+
+    # Estrae solo cifre
+    aic_digits = re.sub(r'[^\d]', '', codice)
+
+    # v11.2: Padding a 9 cifre con zeri iniziali (specifico OPELLA)
+    if aic_digits and len(aic_digits) < 9:
+        aic_padded = aic_digits.zfill(9)
+    else:
+        aic_padded = aic_digits
+
+    return aic_padded, aic_orig, is_espositore, is_child
 
 # Import pdfplumber opzionale
 try:
@@ -108,8 +149,9 @@ def extract_opella(text: str, lines: List[str], pdf_path: str = None) -> List[Di
                         if not row or not row[0]:
                             continue
                         row_text = row[0] if isinstance(row, list) else str(row)
+                        # v11.2: Regex aggiornata per accettare AIC da 1 a 9 cifre (OPELLA tronca zeri)
                         m = re.match(
-                            r'^(\d+)\s+(\d{6,9})\s+(.+?)\s+(\d+)\s+UNT\s+([\d,]+)\s+([\d,\.]+)',
+                            r'^(\d+)\s+(\d{1,9})\s+(.+?)\s+(\d+)\s+UNT\s+([\d,]+)\s+([\d,\.]+)',
                             row_text
                         )
                         if m:
@@ -120,7 +162,8 @@ def extract_opella(text: str, lines: List[str], pdf_path: str = None) -> List[Di
                             pu = float(m.group(5).replace(',', '.'))
                             totale = float(m.group(6).replace('.', '').replace(',', '.'))
 
-                            aic_norm, aic_orig, is_esp, is_child = normalize_aic(codice_raw, desc)
+                            # v11.2: Usa normalizzazione OPELLA con padding a 9 cifre
+                            aic_norm, aic_orig, is_esp, is_child = _normalize_aic_opella(codice_raw, desc)
 
                             data['righe'].append({
                                 'n_riga': n,
@@ -188,8 +231,9 @@ def _extract_opella_text_fallback(text: str, lines: List[str]) -> List[Dict]:
     n = 0
     for line in lines:
         line_stripped = line.strip()
+        # v11.2: Regex aggiornata per accettare AIC da 1 a 9 cifre (OPELLA tronca zeri)
         m = re.match(
-            r'^(\d+)\s+(\d{6,9})\s+(.+?)\s+(\d+)\s+UNT\s+([\d,]+)\s+([\d,\.]+)',
+            r'^(\d+)\s+(\d{1,9})\s+(.+?)\s+(\d+)\s+UNT\s+([\d,]+)\s+([\d,\.]+)',
             line_stripped
         )
         if m:
@@ -200,7 +244,8 @@ def _extract_opella_text_fallback(text: str, lines: List[str]) -> List[Dict]:
             pu = float(m.group(5).replace(',', '.'))
             totale = float(m.group(6).replace('.', '').replace(',', '.'))
 
-            aic_norm, aic_orig, is_esp, is_child = normalize_aic(codice_raw, desc)
+            # v11.2: Usa normalizzazione OPELLA con padding a 9 cifre
+            aic_norm, aic_orig, is_esp, is_child = _normalize_aic_opella(codice_raw, desc)
 
             data['righe'].append({
                 'n_riga': n,
