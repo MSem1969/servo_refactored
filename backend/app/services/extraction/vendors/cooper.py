@@ -127,9 +127,16 @@ def extract_cooper(text: str, lines: List[str], pdf_path: str = None) -> List[Di
 
     # === HEADER: Codice Ordine, Data Ordine ===
     # NOTA: pdfplumber può estrarre testo senza spazi (es. "CodiceOrdine:" invece di "Codice Ordine:")
+    # v11.2: Estrai solo parte dopo "PAD-" (es: "BRETAM-PAD-000296/01" → "000296/01")
     m = re.search(r'Codice\s*Ordine:\s*([A-Z0-9\-/]+)', text, re.I)
     if m:
-        data['numero_ordine'] = m.group(1).strip()
+        raw_ordine = m.group(1).strip()
+        # Estrai parte dopo PAD-
+        if 'PAD-' in raw_ordine.upper():
+            idx = raw_ordine.upper().find('PAD-')
+            data['numero_ordine'] = raw_ordine[idx + 4:]  # Tutto dopo "PAD-"
+        else:
+            data['numero_ordine'] = raw_ordine
 
     m = re.search(r'Data\s*Ordine:\s*(\d{2}/\d{2}/\d{4})', text, re.I)
     if m:
@@ -317,12 +324,14 @@ def _parse_product_row(row: List, is_resi: bool = False) -> Dict:
         # === GESTIONE SPECIALE RESI ===
         # Le righe RESI hanno formato ridotto: solo quantità in posizione ~7
         if is_resi:
-            # Cerca primo numero intero nelle celle (è la quantità omaggio)
+            # Cerca quantità DOPO la posizione AIC (esclude codici prodotto)
+            # La quantità è tipicamente 1-3 cifre, non 6-9 come i codici AIC
             q_omaggio = 0
-            for cell in cells:
-                if cell and re.match(r'^\d+$', cell):
+            for i in range(aic_idx + 2, len(cells)):  # Cerca dopo descrizione
+                cell = cells[i]
+                if cell and re.match(r'^\d{1,4}$', cell):  # Max 4 cifre per quantità
                     val = int(cell)
-                    if val > 0:
+                    if 0 < val <= 9999:  # Range ragionevole per quantità
                         q_omaggio = val
                         break
 
