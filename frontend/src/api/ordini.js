@@ -44,6 +44,11 @@ export const ordiniApi = {
   modificaRiga: (idTestata, idDettaglio, operatore, modifiche, note = null) =>
     api.put(`/ordini/${idTestata}/righe/${idDettaglio}`, { operatore, modifiche, note }).then(r => r.data),
 
+  // Modifica header ordine (v11.3)
+  // Priorità MASSIMA: sovrascrive lookup automatico e dati PDF
+  modificaHeader: (idTestata, data) =>
+    api.patch(`/ordini/${idTestata}/header`, data).then(r => r.data),
+
   inviaASupervisione: (idTestata, idDettaglio, operatore) =>
     api.post(`/ordini/${idTestata}/righe/${idDettaglio}/supervisione?operatore=${encodeURIComponent(operatore)}`).then(r => r.data),
 

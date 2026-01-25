@@ -106,6 +106,34 @@ class RipristinaRequest(BaseModel):
     operatore: str
 
 
+class ModificaHeaderRequest(BaseModel):
+    """
+    Request per modifica manuale header ordine (v11.3).
+
+    La modifica manuale ha priorità MASSIMA:
+    - Sovrascrive i dati estratti dal PDF
+    - Sovrascrive i dati da lookup automatico
+    - Permette correzione errori anagrafica ministeriale
+    """
+    # Dati farmacia
+    partita_iva: Optional[str] = None
+    min_id: Optional[str] = None
+    ragione_sociale: Optional[str] = None
+
+    # Deposito
+    deposito_riferimento: Optional[str] = None
+
+    # Indirizzo (opzionale)
+    indirizzo: Optional[str] = None
+    cap: Optional[str] = None
+    localita: Optional[str] = None
+    provincia: Optional[str] = None
+
+    # Metadati
+    operatore: str
+    note: Optional[str] = None
+
+
 # =============================================================================
 # LISTA E RICERCA
 # =============================================================================
@@ -619,6 +647,224 @@ async def modifica_riga(
     except HTTPException:
         raise
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# MODIFICA HEADER ORDINE (v11.3)
+# =============================================================================
+
+@router.patch("/{id_testata}/header")
+async def modifica_header_ordine(
+    id_testata: int,
+    request: ModificaHeaderRequest
+) -> Dict[str, Any]:
+    """
+    Modifica manualmente i campi dell'header (testata) di un ordine.
+
+    ## Priorità MASSIMA
+
+    La modifica manuale ha priorità superiore a:
+    - Dati estratti dal PDF
+    - Lookup automatico (PIVA, FUZZY, etc.)
+    - Anagrafica ministeriale
+
+    ## Campi modificabili
+
+    - `partita_iva`: P.IVA cliente (11-16 caratteri)
+    - `min_id`: Codice ministeriale farmacia
+    - `ragione_sociale`: Nome farmacia
+    - `deposito_riferimento`: Codice deposito (CT, CL, PE, CB, etc.)
+    - `indirizzo`, `cap`, `localita`, `provincia`: Dati indirizzo
+
+    ## Comportamento
+
+    1. Salva valori originali in JSON per audit trail
+    2. Aggiorna solo i campi forniti (non nulli)
+    3. Imposta `lookup_method = 'MANUALE'` e `lookup_score = 100`
+    4. Registra modifica in log_operazioni
+    5. Risolve automaticamente anomalie LKP correlate
+
+    ## Vincoli
+
+    - Non modificabile se ordine in stato EVASO o ARCHIVIATO
+    - Almeno un campo deve essere fornito
+    """
+    import json
+    from ..database_pg import get_db, log_operation
+
+    db = get_db()
+
+    try:
+        # 1. Verifica esistenza ordine
+        ordine = db.execute("""
+            SELECT ot.*, v.codice_vendor as vendor
+            FROM ordini_testata ot
+            LEFT JOIN vendor v ON ot.id_vendor = v.id_vendor
+            WHERE ot.id_testata = %s
+        """, (id_testata,)).fetchone()
+
+        if not ordine:
+            raise HTTPException(status_code=404, detail="Ordine non trovato")
+
+        # 2. Verifica stato ordine
+        stato = ordine['stato']
+        if stato in ('EVASO', 'ARCHIVIATO'):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Ordine in stato {stato} non modificabile"
+            )
+
+        # 3. Salva valori originali per audit
+        valori_originali = {
+            'partita_iva': ordine.get('partita_iva') or ordine.get('partita_iva_estratta'),
+            'min_id': ordine.get('min_id'),
+            'ragione_sociale': ordine.get('ragione_sociale') or ordine.get('ragione_sociale_1'),
+            'deposito_riferimento': ordine.get('deposito_riferimento'),
+            'indirizzo': ordine.get('indirizzo'),
+            'cap': ordine.get('cap'),
+            'localita': ordine.get('localita') or ordine.get('citta'),
+            'provincia': ordine.get('provincia'),
+            'lookup_method': ordine.get('lookup_method'),
+            'lookup_score': ordine.get('lookup_score'),
+        }
+
+        # 4. Costruisci UPDATE dinamico
+        updates = []
+        params = []
+        campi_modificati = []
+
+        field_mapping = {
+            'partita_iva': request.partita_iva,
+            'min_id': request.min_id,
+            'ragione_sociale': request.ragione_sociale,
+            'deposito_riferimento': request.deposito_riferimento,
+            'indirizzo': request.indirizzo,
+            'cap': request.cap,
+            'localita': request.localita,
+            'provincia': request.provincia,
+        }
+
+        for field, value in field_mapping.items():
+            if value is not None:
+                # Gestione speciale per alcuni campi
+                if field == 'partita_iva':
+                    updates.append("partita_iva = %s")
+                    updates.append("partita_iva_estratta = %s")  # Aggiorna anche campo estratto
+                    params.extend([value.strip(), value.strip()])
+                elif field == 'ragione_sociale':
+                    updates.append("ragione_sociale = %s")
+                    updates.append("ragione_sociale_1 = %s")  # Aggiorna anche campo alternativo
+                    params.extend([value.strip(), value.strip()])
+                elif field == 'localita':
+                    updates.append("localita = %s")
+                    updates.append("citta = %s")  # Aggiorna anche campo alternativo
+                    params.extend([value.strip(), value.strip()])
+                else:
+                    updates.append(f"{field} = %s")
+                    params.append(value.strip() if isinstance(value, str) else value)
+
+                campi_modificati.append(field)
+
+        if not campi_modificati:
+            raise HTTPException(status_code=400, detail="Nessun campo da modificare fornito")
+
+        # 5. Aggiungi metadati modifica manuale
+        # PRIORITÀ MASSIMA: lookup_method = MANUALE, score = 100
+        updates.append("lookup_method = 'MANUALE'")
+        updates.append("lookup_score = 100")
+
+        # Audit trail
+        updates.append("valori_originali_header = %s")
+        params.append(json.dumps(valori_originali, default=str))
+
+        updates.append("data_modifica_header = CURRENT_TIMESTAMP")
+
+        updates.append("operatore_modifica_header = %s")
+        params.append(request.operatore)
+
+        if request.note:
+            updates.append("note_modifica_header = %s")
+            params.append(request.note)
+
+        params.append(id_testata)  # WHERE clause
+
+        # 6. Esegui UPDATE
+        db.execute(f"""
+            UPDATE ordini_testata
+            SET {', '.join(updates)}
+            WHERE id_testata = %s
+        """, tuple(params))
+
+        # 7. Risolvi anomalie LKP correlate (se P.IVA o MIN_ID modificati)
+        anomalie_risolte = 0
+        if request.partita_iva or request.min_id or request.deposito_riferimento:
+            result = db.execute("""
+                UPDATE anomalie
+                SET stato = 'RISOLTA',
+                    note_risoluzione = %s,
+                    data_risoluzione = CURRENT_TIMESTAMP
+                WHERE id_testata = %s
+                  AND codice_anomalia IN ('LKP-A01', 'LKP-A02', 'LKP-A03', 'LKP-A04', 'LKP-A05')
+                  AND stato IN ('APERTA', 'IN_GESTIONE')
+            """, (
+                f"[MANUALE] Header modificato da {request.operatore}. {request.note or ''}",
+                id_testata
+            ))
+            anomalie_risolte = result.rowcount if hasattr(result, 'rowcount') else 0
+
+            # Sblocca ordine se non ci sono altre anomalie
+            anomalie_aperte = db.execute("""
+                SELECT COUNT(*) FROM anomalie
+                WHERE id_testata = %s
+                  AND stato IN ('APERTA', 'IN_GESTIONE')
+                  AND livello IN ('ERRORE', 'CRITICO')
+            """, (id_testata,)).fetchone()[0]
+
+            if anomalie_aperte == 0:
+                db.execute("""
+                    UPDATE ordini_testata
+                    SET stato = 'ESTRATTO'
+                    WHERE id_testata = %s AND stato = 'ANOMALIA'
+                """, (id_testata,))
+
+        # 8. Log operazione
+        log_operation(
+            'MODIFICA_HEADER_MANUALE',
+            'ORDINI_TESTATA',
+            id_testata,
+            f"Modificati: {', '.join(campi_modificati)}",
+            dati={
+                'campi_modificati': campi_modificati,
+                'valori_originali': valori_originali,
+                'valori_nuovi': {k: v for k, v in field_mapping.items() if v is not None},
+                'anomalie_risolte': anomalie_risolte,
+                'note': request.note
+            },
+            operatore=request.operatore
+        )
+
+        db.commit()
+
+        return {
+            "success": True,
+            "message": f"Header ordine {id_testata} aggiornato",
+            "data": {
+                "id_testata": id_testata,
+                "campi_modificati": campi_modificati,
+                "valori_originali": valori_originali,
+                "lookup_method": "MANUALE",
+                "lookup_score": 100,
+                "anomalie_risolte": anomalie_risolte
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
 

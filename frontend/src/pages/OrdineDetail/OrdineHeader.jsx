@@ -31,8 +31,11 @@ function formatDataItaliana(dataStr) {
   return dataStr;
 }
 
-export default function OrdineHeader({ ordine, onBack, onShowPdf }) {
+export default function OrdineHeader({ ordine, onBack, onShowPdf, onEditHeader }) {
   if (!ordine) return null;
+
+  // Verifica se l'ordine è modificabile
+  const isEditable = !['EVASO', 'ARCHIVIATO'].includes(ordine.stato);
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-6">
@@ -44,8 +47,25 @@ export default function OrdineHeader({ ordine, onBack, onShowPdf }) {
           <span className={`px-3 py-1 rounded-full text-sm font-medium ${getStatoColor(ordine.stato)}`}>
             {ordine.stato?.toUpperCase()}
           </span>
+          {ordine.lookup_method === 'MANUALE' && (
+            <span className="px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full font-medium">
+              Modificato manualmente
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
+          {isEditable && onEditHeader && (
+            <button
+              onClick={onEditHeader}
+              className="px-3 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 flex items-center gap-2 text-sm"
+              title="Modifica dati farmacia"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+              </svg>
+              Modifica Header
+            </button>
+          )}
           <Button variant="secondary" onClick={onBack}>
             Torna al Database
           </Button>

@@ -4,9 +4,10 @@
 // Pagina dettaglio ordine - versione decomposta e modulare
 // =============================================================================
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Loading, ErrorBox, Button } from '../../common';
 import { AnomaliaDetailModal } from '../../components';
+import ModificaHeaderModal from '../../components/ModificaHeaderModal';
 
 // Sub-components
 import OrdineHeader from './OrdineHeader';
@@ -24,6 +25,9 @@ import { useOrdineDetail } from './hooks/useOrdineDetail';
 // =============================================================================
 
 export default function OrdineDetailPage({ ordineId, currentUser, onBack, onNavigateToSupervisione }) {
+  // State per modal modifica header
+  const [showHeaderModal, setShowHeaderModal] = useState(false);
+
   const {
     // Data
     ordine,
@@ -116,6 +120,7 @@ export default function OrdineDetailPage({ ordineId, currentUser, onBack, onNavi
         ordine={ordine}
         onBack={onBack}
         onShowPdf={() => setShowPdfModal(true)}
+        onEditHeader={() => setShowHeaderModal(true)}
       />
 
       {/* Error message */}
@@ -231,6 +236,17 @@ export default function OrdineDetailPage({ ordineId, currentUser, onBack, onNavi
         onSaveParent={saveRigaParent}
         onRisolvi={risolviAnomaliaDetail}
         onAssignFarmacia={assignFarmacia}
+      />
+
+      {/* Modal Modifica Header (v11.3) */}
+      <ModificaHeaderModal
+        ordine={ordine}
+        isOpen={showHeaderModal}
+        onClose={() => setShowHeaderModal(false)}
+        onSuccess={() => {
+          // Ricarica ordine dopo modifica
+          loadOrdine();
+        }}
       />
     </div>
   );
