@@ -1,9 +1,13 @@
 """
-EXTRACTOR_TO - Estrattore BAYER v11.2
+EXTRACTOR_TO - Estrattore BAYER v11.3
 =====================================
 Convertito da SERV.O_v6_0_DB_def.ipynb - Cella 7
 Regole: REGOLE_BAYER.md
 
+v11.3: Fix mapping campi quantità per database:
+       - Usa q_venduta invece di quantita (compatibilità DB)
+       - Estrae q_merce_sconto e merce_sconto_extra dalle colonne [3] e [4]
+       - Fallback: se date_quantities vuote ma q_vendita > 0, usa q_vendita
 v11.2: Usa estrazione tabellare per mappare correttamente colonne date consegna
        Gestisce prodotti con consegne su date diverse (righe separate)
 v11.1: Rimossa logica espositore parent/child (BAYER espositori sono prodotti autonomi)
@@ -225,12 +229,20 @@ def _extract_products_from_table(pdf_path: str, date_columns: List[Tuple[str, Op
                 # Estrai quantità vendita e prezzo
                 q_vendita = 0
                 prezzo = 0.0
+                q_merce_sconto = 0
+                merce_sconto_extra = 0
 
                 if len(row) > 1 and row[1]:
                     q_vendita = parse_int(row[1])
                 if len(row) > 2 and row[2]:
                     prezzo_str = row[2].replace('€', '').strip()
                     prezzo = float(parse_decimal(prezzo_str))
+                # Colonna [3] = Q.tà Merce Sconto
+                if len(row) > 3 and row[3]:
+                    q_merce_sconto = parse_int(row[3])
+                # Colonna [4] = Merce Sconto Extra
+                if len(row) > 4 and row[4]:
+                    merce_sconto_extra = parse_int(row[4])
 
                 # Estrai dilazione dal ultimo elemento
                 dilazione = 60  # default
@@ -240,7 +252,6 @@ def _extract_products_from_table(pdf_path: str, date_columns: List[Tuple[str, Op
                         dilazione = parse_int(dil_match.group(1))
 
                 # Colonne date: tipicamente indici 5 e 6 (o solo 5 se una sola data)
-                # Indice 3 = Q.tà Merce Sconto, Indice 4 = Merce Sconto Extra
                 date_col_indices = [5, 6] if len(date_columns) >= 2 else [5]
 
                 date_quantities = []
@@ -262,6 +273,8 @@ def _extract_products_from_table(pdf_path: str, date_columns: List[Tuple[str, Op
                     'prezzo': prezzo,
                     'dilazione': dilazione,
                     'date_quantities': date_quantities,
+                    'q_merce_sconto': q_merce_sconto,
+                    'merce_sconto_extra': merce_sconto_extra,
                 })
 
     except Exception as e:
@@ -377,8 +390,53 @@ def extract_bayer(text: str, lines: List[str], pdf_path: str = None) -> List[Dic
         # Flag espositore (informativo)
         is_espositore = _is_espositore(product['descrizione'])
 
+        # Estrai quantità sconto merce (sommati insieme per il tracciato)
+        q_merce_sconto = product.get('q_merce_sconto', 0)
+        merce_sconto_extra = product.get('merce_sconto_extra', 0)
+
+        # Verifica se ci sono quantità nelle colonne date
+        date_quantities = product.get('date_quantities', [])
+        has_date_quantities = any(qty > 0 for qty in date_quantities)
+
+        # FALLBACK: Se nessuna quantità nelle colonne date ma q_vendita > 0,
+        # crea una singola riga con q_vendita (data consegna default)
+        if not has_date_quantities and product.get('q_vendita', 0) > 0:
+            n_riga += 1
+            qty = product['q_vendita']
+
+            riga = {
+                'n_riga': n_riga,
+                'codice_aic': aic_norm,
+                'codice_originale': product['codice_raw'],
+                'descrizione': product['descrizione'],
+                'q_venduta': qty,
+                'q_sconto_merce': q_merce_sconto,
+                'merce_sconto_extra': merce_sconto_extra,
+                'q_omaggio': 0,
+                'prezzo_netto': product['prezzo'],
+                'aliquota_iva': 10,  # Default IVA
+                'valore_netto': product['prezzo'] * qty,
+                'data_consegna': data.get('data_consegna'),
+                'is_espositore': is_espositore,
+                'tipo_riga': 'PRODOTTO_STANDARD',
+            }
+            righe.append(riga)
+
+            # Anomalia AIC non conforme
+            if not aic_valid and aic_anomalia:
+                anomalie.append({
+                    'tipo': 'AIC',
+                    'codice': 'AIC-A01',
+                    'livello': 'ERRORE',
+                    'messaggio': aic_anomalia,
+                    'n_riga': n_riga,
+                    'codice_aic': product['codice_raw'],
+                    'descrizione': product['descrizione'],
+                })
+            continue
+
         # Crea righe separate per ogni data consegna con quantità > 0
-        for date_idx, qty in enumerate(product['date_quantities']):
+        for date_idx, qty in enumerate(date_quantities):
             if qty <= 0:
                 continue
 
@@ -395,7 +453,10 @@ def extract_bayer(text: str, lines: List[str], pdf_path: str = None) -> List[Dic
                 'codice_aic': aic_norm,
                 'codice_originale': product['codice_raw'],
                 'descrizione': product['descrizione'],
-                'quantita': qty,
+                'q_venduta': qty,
+                'q_sconto_merce': q_merce_sconto,
+                'merce_sconto_extra': merce_sconto_extra,
+                'q_omaggio': 0,
                 'prezzo_netto': product['prezzo'],
                 'aliquota_iva': 10,  # Default IVA
                 'valore_netto': product['prezzo'] * qty,
