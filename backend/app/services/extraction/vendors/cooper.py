@@ -121,12 +121,24 @@ def extract_cooper(text: str, lines: List[str], pdf_path: str = None) -> List[Di
     """
     Estrattore COOPER v11.2.
 
-    Usa pdfplumber per estrazione accurata delle tabelle.
+    Usa pdfplumber per estrazione accurata con spacing corretto.
     """
     data = {'vendor': 'COOPER', 'righe': []}
 
+    # v11.2: Estrai testo direttamente dal PDF con x_tolerance per spacing corretto
+    if pdf_path and PDFPLUMBER_AVAILABLE:
+        try:
+            with pdfplumber.open(pdf_path) as pdf:
+                # Estrai testo con spacing corretto (x_tolerance=3)
+                text_parts = []
+                for page in pdf.pages:
+                    page_text = page.extract_text(x_tolerance=3, y_tolerance=3) or ""
+                    text_parts.append(page_text)
+                text = "\n".join(text_parts)
+        except Exception as e:
+            print(f"   ⚠️ Errore lettura PDF COOPER: {e}")
+
     # === HEADER: Codice Ordine, Data Ordine ===
-    # NOTA: pdfplumber può estrarre testo senza spazi (es. "CodiceOrdine:" invece di "Codice Ordine:")
     # v11.2: Estrai solo parte dopo "PAD-" (es: "BRETAM-PAD-000296/01" → "000296/01")
     m = re.search(r'Codice\s*Ordine:\s*([A-Z0-9\-/]+)', text, re.I)
     if m:
@@ -151,8 +163,6 @@ def extract_cooper(text: str, lines: List[str], pdf_path: str = None) -> List[Di
         data['agente'] = m.group(1).strip()[:50]
 
     # === DATI SPEDIZIONE (Destinatario farmacia) ===
-    # NOTA: pdfplumber può estrarre senza spazi (es. "DatiSpedizione" invece di "Dati Spedizione")
-    # Cerchiamo la sezione Dati Spedizione con pattern flessibili
     _extract_spedizione_fallback(text, data)
 
     # === TABELLA PRODOTTI ===
@@ -195,32 +205,42 @@ def _extract_spedizione_fallback(text: str, data: Dict):
     if m:
         data['min_id'] = m.group(1).strip()
 
-    # Ragione Sociale - con fix spazi concatenati
-    m = re.search(r'Ragione\s*Sociale:\s*(.+?)(?:\s*Partita|\n|$)', spedizione_text, re.I)
+    # Ragione Sociale - v11.2: usa testo originale (spacing corretto da x_tolerance)
+    # Pattern più ampio per catturare con o senza spazi
+    m = re.search(r'Ragione\s*Sociale:\s*(.+?)(?:Partita|P\.?\s*IVA|\n|$)', spedizione_text, re.I)
     if m:
         raw_rs = m.group(1).strip()
-        data['ragione_sociale'] = _fix_concatenated_text(raw_rs)[:50]
+        # Solo se non ci sono spazi, applica fix
+        if ' ' not in raw_rs and len(raw_rs) > 15:
+            raw_rs = _fix_concatenated_text(raw_rs)
+        data['ragione_sociale'] = raw_rs[:50]
 
     m = re.search(r'Partita\s*IVA:\s*(\d{11})', spedizione_text, re.I)
     if m:
         data['partita_iva'] = m.group(1).strip()
 
-    # Indirizzo - con fix spazi concatenati
-    m = re.search(r'Indirizzo:\s*(.+?)(?:\s*Località|\n|$)', spedizione_text, re.I)
+    # Indirizzo - v11.2: usa testo originale
+    m = re.search(r'Indirizzo:\s*(.+?)(?:Località|CAP|\n|$)', spedizione_text, re.I)
     if m:
         raw_ind = m.group(1).strip()
-        data['indirizzo'] = _fix_concatenated_text(raw_ind)[:50]
+        # Solo se non ci sono spazi, applica fix
+        if ' ' not in raw_ind and len(raw_ind) > 10:
+            raw_ind = _fix_concatenated_text(raw_ind)
+        data['indirizzo'] = raw_ind[:50]
 
     m = re.search(r'CAP:\s*(\d{5})', spedizione_text, re.I)
     if m:
         data['cap'] = m.group(1).strip()
 
-    # Località con provincia tra parentesi: "SANVITOALTAGLIAMENTO(PN)"
-    # Pattern più flessibile per catturare anche senza spazi
-    m = re.search(r'Località:\s*([A-Za-z]+)\s*\(([A-Z]{2})\)', spedizione_text, re.I)
+    # Località con provincia tra parentesi
+    # v11.2: Pattern più flessibile, accetta spazi
+    m = re.search(r'Località:\s*([A-Za-z\s]+?)\s*\(([A-Z]{2})\)', spedizione_text, re.I)
     if m:
         raw_citta = m.group(1).strip()
-        data['citta'] = _fix_locality_name(raw_citta)[:50]
+        # Solo se non ci sono spazi, applica fix
+        if ' ' not in raw_citta and len(raw_citta) > 8:
+            raw_citta = _fix_locality_name(raw_citta)
+        data['citta'] = raw_citta[:50]
         data['provincia'] = m.group(2).strip().upper()
 
 
@@ -230,9 +250,15 @@ def _extract_products_from_pdf(pdf_path: str) -> List[Dict]:
     n_riga = 0
     in_resi_section = False
 
+    # v11.2: Table settings con spacing corretto
+    table_settings = {
+        "text_x_tolerance": 3,
+        "text_y_tolerance": 3,
+    }
+
     with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:
-            tables = page.extract_tables()
+            tables = page.extract_tables(table_settings=table_settings)
 
             for table in tables:
                 if not table:
