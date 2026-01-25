@@ -38,8 +38,8 @@ const TracciatiPage = () => {
     vendors: []
   });
 
-  // Lista vendor disponibili
-  const vendorOptions = ['ANGELINI', 'BAYER', 'CODIFI', 'CHIESI', 'MENARINI', 'OPELLA'];
+  // Lista vendor disponibili - v11.2
+  const vendorOptions = ['DOC_GENERICI', 'CODIFI', 'MENARINI', 'OPELLA', 'CHIESI', 'ANGELINI', 'BAYER'];
 
   // Carica dati iniziali
   const loadInitialData = useCallback(async () => {

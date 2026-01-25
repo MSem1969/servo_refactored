@@ -146,14 +146,14 @@ const VendorBadge = ({
 };
 
 // Utility per ottenere lista vendor supportati
-// v6.2: Aggiunto DOC_GENERICI
+// v11.2: Lista aggiornata vendor abilitati
 VendorBadge.getSupportedVendors = () => {
-  return ['ANGELINI', 'BAYER', 'CODIFI', 'CHIESI', 'MENARINI', 'OPELLA', 'DOC_GENERICI'];
+  return ['DOC_GENERICI', 'CODIFI', 'MENARINI', 'OPELLA', 'CHIESI', 'ANGELINI', 'BAYER'];
 };
 
 // Utility per verificare se vendor è supportato
 VendorBadge.isSupported = (vendor) => {
-  const supported = ['ANGELINI', 'BAYER', 'CODIFI', 'CHIESI', 'MENARINI', 'OPELLA', 'DOC_GENERICI'];
+  const supported = ['DOC_GENERICI', 'CODIFI', 'MENARINI', 'OPELLA', 'CHIESI', 'ANGELINI', 'BAYER'];
   return supported.includes(vendor?.toUpperCase());
 };
 
