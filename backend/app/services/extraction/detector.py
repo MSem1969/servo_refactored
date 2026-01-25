@@ -50,6 +50,15 @@ def detect_vendor(text: str, filename: str = "") -> Tuple[str, float]:
     if "DESALUTESRL" in t.replace(" ", "") and "DATISPEDIZIONE" in t.replace(" ", ""):
         return "COOPER", 0.90
 
+    # RECKITT - v11.2 Reckitt Benckiser Healthcare
+    if "RECKITT" in t:
+        return "RECKITT", 0.95
+    if "IT04 - HEALTHCARE" in t or "IT04-HEALTHCARE" in t.replace(" ", ""):
+        return "RECKITT", 0.90
+    # Pattern combinato: Transfer Order + DUREX/NUROFEN/BENAGOL (prodotti tipici)
+    if "TRANSFER ORDER" in t and ("DUREX" in t or "NUROFEN" in t or "BENAGOL" in t or "GAVISCON" in t):
+        return "RECKITT", 0.85
+
     # OPELLA
     if "INFORMAZIONI SULL'ORDINE" in t or "OPELLA" in t:
         return "OPELLA", 0.95
@@ -166,6 +175,7 @@ SUPPORTED_VENDORS = [
     'DOC_GENERICI',
     'MENARINI',
     'OPELLA',
+    'RECKITT',
 ]
 
 def get_supported_vendors() -> list:

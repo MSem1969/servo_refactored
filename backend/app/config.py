@@ -132,11 +132,14 @@ PROVINCE_MAP: Dict[str, str] = {
 
 SUPPORTED_VENDORS = [
     'ANGELINI',
-    'BAYER', 
+    'BAYER',
     'CHIESI',
     'CODIFI',
+    'COOPER',
+    'DOC_GENERICI',
     'MENARINI',
     'OPELLA',
+    'RECKITT',
 ]
 
 

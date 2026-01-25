@@ -1,5 +1,5 @@
 # =============================================================================
-# SERV.O v7.0 - EXTRACTION PACKAGE
+# SERV.O v11.2 - EXTRACTION PACKAGE
 # =============================================================================
 # Factory pattern unificato per estrattori PDF
 # Sostituisce e unifica:
@@ -18,6 +18,7 @@ from .vendors import (
     extract_cooper,
     extract_opella,
     extract_menarini,
+    extract_reckitt,
     extract_doc_generici,
     extract_generic,
 )
@@ -36,6 +37,7 @@ EXTRACTORS: Dict[str, Callable] = {
     'DOC_GENERICI': extract_doc_generici,
     'MENARINI': extract_menarini,
     'OPELLA': extract_opella,
+    'RECKITT': extract_reckitt,
     'GENERIC': extract_generic,
     'UNKNOWN': extract_generic,
 }
@@ -90,6 +92,7 @@ __all__ = [
     'extract_cooper',
     'extract_opella',
     'extract_menarini',
+    'extract_reckitt',
     'extract_doc_generici',
     'extract_generic',
 ]

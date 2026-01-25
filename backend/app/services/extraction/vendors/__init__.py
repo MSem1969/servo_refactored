@@ -1,5 +1,5 @@
 # =============================================================================
-# SERV.O v7.0 - VENDORS PACKAGE
+# SERV.O v11.2 - VENDORS PACKAGE
 # =============================================================================
 # Estrattori vendor-specifici unificati
 # =============================================================================
@@ -11,6 +11,7 @@ from .codifi import extract_codifi
 from .cooper import extract_cooper
 from .opella import extract_opella
 from .menarini import extract_menarini
+from .reckitt import extract_reckitt
 from .doc_generici import extract_doc_generici
 from .generic import extract_generic
 
@@ -22,6 +23,7 @@ __all__ = [
     'extract_cooper',
     'extract_opella',
     'extract_menarini',
+    'extract_reckitt',
     'extract_doc_generici',
     'extract_generic',
 ]
