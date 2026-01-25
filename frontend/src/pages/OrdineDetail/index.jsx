@@ -247,6 +247,7 @@ export default function OrdineDetailPage({ ordineId, currentUser, onBack, onNavi
           // Ricarica ordine dopo modifica
           loadOrdine();
         }}
+        currentUser={currentUser}
       />
     </div>
   );

@@ -10,7 +10,6 @@
 import React, { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { ordiniApi } from '../api/ordini';
-import { useAuth } from '../context/AuthContext';
 import Modal from './Modal';
 
 // Opzioni deposito disponibili
@@ -23,9 +22,8 @@ const DEPOSITI_OPTIONS = [
   { value: '001', label: '001 - Deposito Default (FARVI)' },
 ];
 
-export default function ModificaHeaderModal({ ordine, isOpen, onClose, onSuccess }) {
+export default function ModificaHeaderModal({ ordine, isOpen, onClose, onSuccess, currentUser }) {
   const queryClient = useQueryClient();
-  const { user } = useAuth();
 
   const [formData, setFormData] = useState({
     partita_iva: '',
@@ -111,7 +109,7 @@ export default function ModificaHeaderModal({ ordine, isOpen, onClose, onSuccess
 
     // Prepara payload: invia solo campi modificati rispetto a originale
     const payload = {
-      operatore: user?.username || 'admin'
+      operatore: currentUser?.username || currentUser || 'admin'
     };
 
     // Confronta con valori originali e includi solo modifiche
