@@ -556,3 +556,52 @@ async def get_subentri(
         }
     except Exception as e:
         raise HTTPException(500, f"Errore recupero subentri: {str(e)}")
+
+
+# =============================================================================
+# SCHEDULER ANAGRAFICA (v11.2)
+# =============================================================================
+
+@router.get("/sync/scheduler/status")
+async def get_anagrafica_scheduler_status() -> Dict[str, Any]:
+    """
+    Ritorna lo stato dello scheduler sincronizzazione anagrafica.
+
+    Mostra:
+    - Se lo scheduler è attivo
+    - Prossima esecuzione programmata
+    - Ultimo risultato della sync
+    """
+    try:
+        from ..services.scheduler import get_anagrafica_scheduler_status as get_status
+        status = get_status()
+        return {
+            "success": True,
+            "data": status
+        }
+    except Exception as e:
+        raise HTTPException(500, f"Errore recupero stato scheduler: {str(e)}")
+
+
+@router.post("/sync/scheduler/run-now")
+async def run_anagrafica_sync_now(background_tasks: BackgroundTasks) -> Dict[str, Any]:
+    """
+    Esegue immediatamente la sincronizzazione anagrafica.
+
+    La sync viene eseguita in background e invia email di report.
+    Utile per:
+    - Test della configurazione
+    - Aggiornamento manuale urgente
+    """
+    try:
+        from ..services.scheduler import run_anagrafica_sync_now
+
+        # Esegui in background per non bloccare la risposta
+        background_tasks.add_task(run_anagrafica_sync_now)
+
+        return {
+            "success": True,
+            "message": "Sincronizzazione avviata in background. Riceverai email con il report."
+        }
+    except Exception as e:
+        raise HTTPException(500, f"Errore avvio sync: {str(e)}")

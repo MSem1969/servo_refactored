@@ -31,7 +31,11 @@ from fastapi.responses import JSONResponse
 
 from .config import config
 from .database_pg import init_database, get_stats
-from .services.scheduler import init_mail_scheduler, shutdown_scheduler
+from .services.scheduler import (
+    init_mail_scheduler,
+    init_anagrafica_scheduler,
+    shutdown_all_schedulers
+)
 
 # Import router autenticazione (NUOVO v6.2)
 from .auth import auth_router
@@ -61,13 +65,14 @@ async def lifespan(app: FastAPI):
     print(f"   📊 Parafarmacie: {stats['parafarmacie']:,}")
     print(f"   📊 Ordini: {stats['ordini']:,}")
 
-    # Inizializza Mail Scheduler
+    # Inizializza Schedulers
     init_mail_scheduler()
+    init_anagrafica_scheduler()  # v11.2: Sync anagrafica Lun-Ven 06:30
 
     yield
 
     # Shutdown
-    shutdown_scheduler()
+    shutdown_all_schedulers()
     print("👋 SERV.O - Arresto...")
 
 
