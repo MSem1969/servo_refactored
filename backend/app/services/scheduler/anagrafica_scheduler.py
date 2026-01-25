@@ -198,10 +198,11 @@ def _run_anagrafica_sync():
 def _send_sync_report_email(result: SyncAllResult):
     """Invia email con il report della sync."""
     # Recupera destinatari da env o config
-    recipients = os.getenv('SYNC_REPORT_EMAIL', os.getenv('ADMIN_EMAIL', ''))
+    # Priorità: SYNC_REPORT_EMAIL > ADMIN_EMAIL > SMTP_USER (email configurata)
+    recipients = os.getenv('SYNC_REPORT_EMAIL') or os.getenv('ADMIN_EMAIL') or os.getenv('SMTP_USER', '')
 
     if not recipients:
-        print("⏭️ Nessun destinatario configurato per report sync (SYNC_REPORT_EMAIL)")
+        print("⏭️ Nessun destinatario configurato per report sync")
         return
 
     try:
@@ -237,7 +238,7 @@ def _send_sync_report_email(result: SyncAllResult):
 
 def _send_error_email(error_message: str):
     """Invia email in caso di errore critico."""
-    recipients = os.getenv('SYNC_REPORT_EMAIL', os.getenv('ADMIN_EMAIL', ''))
+    recipients = os.getenv('SYNC_REPORT_EMAIL') or os.getenv('ADMIN_EMAIL') or os.getenv('SMTP_USER', '')
 
     if not recipients:
         return
