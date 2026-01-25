@@ -162,8 +162,8 @@ export default function DatabasePage({ currentUser, onOpenOrdine }) {
               className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Tutti i Vendor</option>
-              {/* v11.2: Lista vendor aggiornata */}
-              {['DOC_GENERICI', 'CODIFI', 'MENARINI', 'OPELLA', 'CHIESI', 'ANGELINI', 'BAYER'].map((v) => (
+              {/* v11.2: Lista vendor aggiornata + COOPER */}
+              {['DOC_GENERICI', 'CODIFI', 'COOPER', 'MENARINI', 'OPELLA', 'CHIESI', 'ANGELINI', 'BAYER'].map((v) => (
                 <option key={v} value={v}>{v}</option>
               ))}
             </select>

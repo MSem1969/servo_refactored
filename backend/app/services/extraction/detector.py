@@ -44,6 +44,12 @@ def detect_vendor(text: str, filename: str = "") -> Tuple[str, float]:
     if "02944970348" in t:  # P.IVA Chiesi
         return "CHIESI", 0.90
 
+    # COOPER - v11.2
+    if "COOPER CONSUMER HEALTH" in t:
+        return "COOPER", 0.95
+    if "DE SALUTE SRL" in t and "DATI SPEDIZIONE" in t:
+        return "COOPER", 0.90
+
     # OPELLA
     if "INFORMAZIONI SULL'ORDINE" in t or "OPELLA" in t:
         return "OPELLA", 0.95
@@ -156,6 +162,7 @@ SUPPORTED_VENDORS = [
     'BAYER',
     'CHIESI',
     'CODIFI',
+    'COOPER',
     'DOC_GENERICI',
     'MENARINI',
     'OPELLA',

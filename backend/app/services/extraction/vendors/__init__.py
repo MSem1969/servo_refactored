@@ -8,6 +8,7 @@ from .angelini import extract_angelini
 from .bayer import extract_bayer
 from .chiesi import extract_chiesi
 from .codifi import extract_codifi
+from .cooper import extract_cooper
 from .opella import extract_opella
 from .menarini import extract_menarini
 from .doc_generici import extract_doc_generici
@@ -18,6 +19,7 @@ __all__ = [
     'extract_bayer',
     'extract_chiesi',
     'extract_codifi',
+    'extract_cooper',
     'extract_opella',
     'extract_menarini',
     'extract_doc_generici',
