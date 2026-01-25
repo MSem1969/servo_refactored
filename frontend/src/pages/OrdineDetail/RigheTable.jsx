@@ -211,7 +211,8 @@ export default function RigheTable({
                       )}
                     </td>
                     <td className="px-3 py-3 uppercase">
-                      {!!(riga.is_espositore || (riga.codice_originale && riga.codice_originale !== riga.codice_aic)) && (
+                      {/* v11.2: Mostra emoji solo per veri espositori, non per differenze AIC (padding OPELLA) */}
+                      {!!riga.is_espositore && (
                         <span className="mr-1" title="Espositore">🎁</span>
                       )}
                       {riga.descrizione_prodotto || riga.descrizione || '-'}
