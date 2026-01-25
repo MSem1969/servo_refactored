@@ -96,13 +96,25 @@ def get_ordini(
     rows = db.execute(query, params).fetchall()
     ordini = [dict(row) for row in rows]
 
-    # Aggiungi deposito da anagrafica_clienti per ogni ordine
+    # Aggiungi deposito per ogni ordine
+    # Priorità: 1) deposito manuale in testata, 2) anagrafica_clienti
     for ordine in ordini:
+        id_testata = ordine.get('id_testata')
         piva = ordine.get('partita_iva')
         min_id = ordine.get('min_id')
         deposito = None
 
-        if piva:
+        # 1. Prima controlla deposito_riferimento assegnato manualmente
+        if id_testata:
+            deposito_manuale = db.execute("""
+                SELECT deposito_riferimento FROM ordini_testata
+                WHERE id_testata = %s AND deposito_riferimento IS NOT NULL AND deposito_riferimento != ''
+            """, (id_testata,)).fetchone()
+            if deposito_manuale and deposito_manuale[0]:
+                deposito = deposito_manuale[0]
+
+        # 2. Fallback: cerca in anagrafica_clienti
+        if not deposito and piva:
             # Prova prima con multipunto (P.IVA + min_id)
             if min_id:
                 cliente = db.execute("""
