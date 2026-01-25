@@ -44,10 +44,10 @@ def detect_vendor(text: str, filename: str = "") -> Tuple[str, float]:
     if "02944970348" in t:  # P.IVA Chiesi
         return "CHIESI", 0.90
 
-    # COOPER - v11.2
-    if "COOPER CONSUMER HEALTH" in t:
+    # COOPER - v11.2 (pattern senza spazi per PDF con testo concatenato)
+    if "COOPERCONSUMER" in t.replace(" ", "") or "COOPER CONSUMER HEALTH" in t:
         return "COOPER", 0.95
-    if "DE SALUTE SRL" in t and "DATI SPEDIZIONE" in t:
+    if "DESALUTESRL" in t.replace(" ", "") and "DATISPEDIZIONE" in t.replace(" ", ""):
         return "COOPER", 0.90
 
     # OPELLA
