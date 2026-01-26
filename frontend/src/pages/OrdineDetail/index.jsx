@@ -44,6 +44,11 @@ export default function OrdineDetailPage({ ordineId, currentUser, onBack, onNavi
     activeTab,
     setActiveTab,
 
+    // v11.3: Sort state (persists across reloads)
+    sortField,
+    sortDirection,
+    handleSort,
+
     // Edit state
     rigaInModifica,
     formModifica,
@@ -162,6 +167,10 @@ export default function OrdineDetailPage({ ordineId, currentUser, onBack, onNavi
               setFormModifica={setFormModifica}
               stats={stats}
               ordine={ordine}
+              // v11.3: Sort state from parent (persists across reloads)
+              sortField={sortField}
+              sortDirection={sortDirection}
+              onSort={handleSort}
               onShowPdf={() => setShowPdfModal(true)}
               onApriModifica={apriModificaRiga}
               onSalvaModifica={salvaModificaRiga}

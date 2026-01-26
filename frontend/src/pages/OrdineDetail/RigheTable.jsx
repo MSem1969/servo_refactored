@@ -1,8 +1,10 @@
 // =============================================================================
-// SERV.O v7.0 - RIGHE TABLE COMPONENT
+// SERV.O v11.3 - RIGHE TABLE COMPONENT
+// =============================================================================
+// v11.3: Sort state lifted to parent (persists across reloads and tab changes)
 // =============================================================================
 
-import React, { useState, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { calculateRigaQuantities, getStatoRigaColor, getStatoRigaLabel } from './utils';
 
 // Componente intestazione colonna ordinabile
@@ -30,6 +32,10 @@ export default function RigheTable({
   setFormModifica,
   stats,
   ordine,
+  // v11.3: Sort state from parent (persists across reloads)
+  sortField = 'n_riga',
+  sortDirection = 'asc',
+  onSort,
   onShowPdf,
   onApriModifica,
   onSalvaModifica,
@@ -42,17 +48,8 @@ export default function RigheTable({
   onRipristinaTutto,
   onValidaOrdine
 }) {
-  const [sortField, setSortField] = useState('n_riga');
-  const [sortDirection, setSortDirection] = useState('asc');
-
-  const handleSort = (field) => {
-    if (sortField === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortField(field);
-      setSortDirection('asc');
-    }
-  };
+  // v11.3: Sort handler from parent
+  const handleSort = onSort;
 
   // Ordina le righe
   const sortedRighe = useMemo(() => {

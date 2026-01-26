@@ -1,7 +1,8 @@
 // =============================================================================
-// SERV.O v7.0 - USE ORDINE DETAIL HOOK
+// SERV.O v11.3 - USE ORDINE DETAIL HOOK
 // =============================================================================
 // Custom hook per gestione stato e logica dettaglio ordine
+// v11.3: Sort state persistente (non si resetta durante reload)
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react';
@@ -36,6 +37,10 @@ export function useOrdineDetail(ordineId, currentUser) {
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('righe');
   const [actionLoading, setActionLoading] = useState(null);
+
+  // v11.3: Sort state - lifted here to persist across tab changes and data reloads
+  const [sortField, setSortField] = useState('n_riga');
+  const [sortDirection, setSortDirection] = useState('asc');
 
   // Edit state
   const [rigaInModifica, setRigaInModifica] = useState(null);
@@ -514,6 +519,19 @@ export function useOrdineDetail(ordineId, currentUser) {
   }, [ordineId, currentUser, loadOrdine]);
 
   // =============================================================================
+  // SORT HANDLER (v11.3)
+  // =============================================================================
+
+  const handleSort = useCallback((field) => {
+    if (sortField === field) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  }, [sortField]);
+
+  // =============================================================================
   // COMPUTED VALUES
   // =============================================================================
 
@@ -548,6 +566,11 @@ export function useOrdineDetail(ordineId, currentUser) {
     activeTab,
     setActiveTab,
     actionLoading,
+
+    // v11.3: Sort state (persists across reloads and tab changes)
+    sortField,
+    sortDirection,
+    handleSort,
 
     // Edit state
     rigaInModifica,
