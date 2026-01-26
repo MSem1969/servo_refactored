@@ -110,7 +110,7 @@ def registra_rifiuto_pattern(pattern_signature: str):
     Registra rifiuto per un pattern.
 
     Reset contatore approvazioni a 0 (un rifiuto invalida apprendimento).
-    Supporta pattern espositore, listino e lookup.
+    Supporta pattern espositore, listino, lookup e aic.
 
     Args:
         pattern_signature: Signature pattern
@@ -138,6 +138,15 @@ def registra_rifiuto_pattern(pattern_signature: str):
     # Reset lookup
     db.execute("""
         UPDATE criteri_ordinari_lookup
+        SET count_approvazioni = 0,
+            is_ordinario = FALSE,
+            data_promozione = NULL
+        WHERE pattern_signature = %s
+    """, (pattern_signature,))
+
+    # v11.3: Reset AIC
+    db.execute("""
+        UPDATE criteri_ordinari_aic
         SET count_approvazioni = 0,
             is_ordinario = FALSE,
             data_promozione = NULL

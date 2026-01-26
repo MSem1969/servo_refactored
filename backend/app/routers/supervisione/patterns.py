@@ -179,11 +179,13 @@ async def promuovi_pattern(pattern_signature: str, operatore: str = Query(...)):
     Forza promozione di un pattern a "ordinario" (automatico).
 
     Permette di rendere automatico un pattern anche prima delle 5 approvazioni standard.
-    Supporta pattern espositore, listino e lookup.
+    Supporta pattern espositore, listino, lookup e aic.
     """
+    from ...database_pg import log_operation
+
     db = get_db()
 
-    # Verifica che il pattern esista in una delle tre tabelle
+    # Verifica che il pattern esista in una delle quattro tabelle
     criterio_esp = db.execute(
         "SELECT pattern_signature, count_approvazioni FROM criteri_ordinari_espositore WHERE pattern_signature = %s",
         (pattern_signature,)
@@ -199,7 +201,13 @@ async def promuovi_pattern(pattern_signature: str, operatore: str = Query(...)):
         (pattern_signature,)
     ).fetchone()
 
-    if not criterio_esp and not criterio_lst and not criterio_lkp:
+    # v11.3: Aggiunto supporto per criteri_ordinari_aic
+    criterio_aic = db.execute(
+        "SELECT pattern_signature, count_approvazioni FROM criteri_ordinari_aic WHERE pattern_signature = %s",
+        (pattern_signature,)
+    ).fetchone()
+
+    if not criterio_esp and not criterio_lst and not criterio_lkp and not criterio_aic:
         raise HTTPException(status_code=404, detail="Pattern non trovato")
 
     # Forza promozione settando count_approvazioni = 5 e is_ordinario = true
@@ -219,7 +227,7 @@ async def promuovi_pattern(pattern_signature: str, operatore: str = Query(...)):
             WHERE pattern_signature = %s
         """, (pattern_signature,))
         tipo = "listino"
-    else:
+    elif criterio_lkp:
         db.execute("""
             UPDATE criteri_ordinari_lookup
             SET count_approvazioni = 5, is_ordinario = true,
@@ -227,8 +235,26 @@ async def promuovi_pattern(pattern_signature: str, operatore: str = Query(...)):
             WHERE pattern_signature = %s
         """, (pattern_signature,))
         tipo = "lookup"
+    else:
+        # v11.3: Pattern AIC
+        db.execute("""
+            UPDATE criteri_ordinari_aic
+            SET count_approvazioni = 5, is_ordinario = true,
+                data_promozione = CURRENT_TIMESTAMP
+            WHERE pattern_signature = %s
+        """, (pattern_signature,))
+        tipo = "aic"
 
     db.commit()
+
+    # v11.3: Log operazione
+    log_operation(
+        'PROMOZIONE_FORZATA_PATTERN',
+        f'criteri_ordinari_{tipo}',
+        0,
+        f"Pattern {pattern_signature[:16]}... promosso forzatamente a ordinario",
+        operatore=operatore
+    )
 
     return {
         "success": True,
