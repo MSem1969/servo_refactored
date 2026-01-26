@@ -331,7 +331,9 @@ def normalize_piva(piva: str) -> str:
 
 def parse_farmacie_json(content: bytes) -> list:
     """Parsa JSON farmacie e filtra solo record attivi."""
-    data = json.loads(content)
+    # Decodifica esplicita UTF-8 con gestione BOM
+    text = content.decode('utf-8-sig')
+    data = json.loads(text)
     return [r for r in data if r.get('data_fine_validita', '').strip() == '-']
 
 
@@ -518,7 +520,9 @@ def sync_farmacie(
 
 def parse_parafarmacie_json(content: bytes) -> list:
     """Parsa JSON parafarmacie e filtra solo record attivi."""
-    data = json.loads(content)
+    # Decodifica esplicita UTF-8 con gestione BOM
+    text = content.decode('utf-8-sig')
+    data = json.loads(text)
     return [r for r in data if r.get('data_fine_validita', '').strip() == '-']
 
 
