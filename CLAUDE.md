@@ -46,29 +46,49 @@ frontend/src/
 
 ## Formato Tracciati EDI
 
-### TO_T - TESTATA
+**REGOLE GENERALI:**
+- **UPPERCASE**: Tutti i campi testo devono essere in MAIUSCOLO
+- **Allineamento**: Campi stringa allineati a sinistra (ljust), numeri a destra (zfill)
+- **Encoding**: UTF-8, terminatore riga CRLF
 
-| Pos | Campo | Lung. | Obbl. | Descrizione |
-|-----|-------|-------|-------|-------------|
-| 1-10 | Vendor | 10 | Y | Codice produttore |
-| 11-40 | VendorOrderNumber | 30 | Y | Numero ordine |
-| 41-60 | CustomerTraceabilityCode | 20 | Y | MIN_ID farmacia |
-| 61-76 | VAT code | 16 | Y | P.IVA cliente |
-| 77-126 | CustomerName1 | 50 | Y | Ragione sociale |
-| 127-176 | CustomerName2 | 50 | N | Ragione sociale 2 |
-| 177-226 | Address | 50 | N | Indirizzo |
-| 227-236 | CodeCity | 10 | N | CAP |
-| 237-286 | City | 50 | N | Città |
-| 287-289 | Province | 3 | N | Provincia |
-| 290-299 | OrderDate | 10 | Y | Data ordine (GG/MM/AAAA) |
-| 300-309 | EstDeliveryDate | 10 | Y | Data consegna |
-| 310-359 | AgentName | 50 | N | Nome agente |
-| 360-372 | Payment1 | 13 | N | Data + giorni dilazione |
-| 373-416 | Payment2/3 | 44 | N | Altri pagamenti |
-| 417-456 | OfferCodes | 40 | N | Codici offerta |
-| 457 | ForceCheck | 1 | N | S/N |
-| 458-657 | OrderAnnotation | 200 | Y | Note ordine |
-| 658-857 | BOT_Annotation | 200 | Y | Note DDT |
+### TO_T - TESTATA (869 caratteri)
+
+| Pos | Campo | Lung. | Obbl. | Formato | Note |
+|-----|-------|-------|-------|---------|------|
+| 1-10 | Vendor | 10 | Y | String | `{PREFIX}_{DISTRIB}` es: HAL_FARVI |
+| 11-40 | VendorOrderNumber | 30 | Y | String | Numero ordine, ljust |
+| 41-60 | CustomerTraceabilityCode | 20 | Y | String | **MIN_ID senza zeri iniziali, ljust** (es: `10905` non `000010905`) |
+| 61-76 | VAT code | 16 | Y | String | P.IVA, ljust |
+| 77-126 | CustomerName1 | 50 | Y | String | Ragione sociale, **UPPERCASE** |
+| 127-176 | CustomerName2 | 50 | N | String | Ragione sociale 2, **UPPERCASE** |
+| 177-226 | Address | 50 | N | String | Indirizzo, **UPPERCASE** |
+| 227-236 | CodeCity | 10 | N | String | CAP |
+| 237-286 | City | 50 | N | String | Città, **UPPERCASE** |
+| 287-289 | Province | 3 | N | String | Provincia, **UPPERCASE** |
+| 290-299 | OrderDate | 10 | Y | Date | GG/MM/AAAA |
+| 300-309 | EstDeliveryDate | 10 | Y | Date | GG/MM/AAAA |
+| 310-359 | AgentName | 50 | N | String | Nome agente, **UPPERCASE** |
+| 360-369 | DataPagamento1 | 10 | N | Date | GG/MM/AAAA o spazi |
+| 370-379 | ImportoPagamento1 | 10 | N | Float 7.2 | **`0000000.00`** (7 int + "." + 2 dec) |
+| 380-382 | GgDilazionePagamento1 | 3 | N | Int 3.0 | Es: `090` per 90 giorni |
+| 383-392 | DataPagamento2 | 10 | N | Date | GG/MM/AAAA o spazi |
+| 393-402 | ImportoPagamento2 | 10 | N | Float 7.2 | **`0000000.00`** |
+| 403-405 | GgDilazionePagamento2 | 3 | N | Int 3.0 | Default `000` |
+| 406-415 | DataPagamento3 | 10 | N | Date | GG/MM/AAAA o spazi |
+| 416-425 | ImportoPagamento3 | 10 | N | Float 7.2 | **`0000000.00`** |
+| 426-428 | GgDilazionePagamento3 | 3 | N | Int 3.0 | Default `000` |
+| 429-448 | CodOffertaCliente | 20 | N | String | Codice offerta cliente |
+| 449-468 | CodOffertaVendor | 20 | N | String | Codice offerta vendor |
+| 469 | ForceCheck | 1 | N | Char | **Default ` ` (spazio)**, oppure S/N |
+| 470-669 | OrderAnnotation | 200 | N | String | **Default: numero progressivo + " STANDARD"** |
+| 670-869 | BOT_Annotation | 200 | N | String | Note DDT |
+
+**FORMATO FLOAT 7.2:** 10 caratteri totali = 7 interi + "." + 2 decimali → `0000000.00`
+
+**ESEMPIO TRACCIATO VALIDO:**
+```
+HAL_FARVI 271952954                      10905              00407890672     PATRONI DR. PIERLUIGI                                                                               CORSO S. GIORGIO 83                               64100     TERAMO                                            TE 20/01/202623/01/2026GRILLO FABIO                                                          0000000.00090          0000000.00000          0000000.00000                                        00000000000000001099 STANDARD
+```
 
 ### TO_D - DETTAGLIO
 
