@@ -530,6 +530,8 @@ async def conferma_riga(
 ) -> Dict[str, Any]:
     """
     Conferma singola riga per inserimento in tracciato.
+
+    v11.3: Blocca conferma se data_consegna > 30 giorni da oggi.
     """
     try:
         result = conferma_singola_riga(
@@ -538,7 +540,7 @@ async def conferma_riga(
             operatore=request.operatore,
             note=request.note
         )
-        
+
         if not result['success']:
             if result.get('richiede_supervisione'):
                 return {
@@ -549,8 +551,18 @@ async def conferma_riga(
                     "tipo_anomalia": result.get('tipo_anomalia'),
                     "redirect_url": f"/supervisione/{result.get('id_supervisione')}"
                 }
+            # v11.3: Data consegna bloccante
+            if result.get('data_consegna_bloccante'):
+                return {
+                    "success": False,
+                    "message": result.get('error'),
+                    "data_consegna_bloccante": True,
+                    "data_consegna": result.get('data_consegna'),
+                    "data_limite": result.get('data_limite'),
+                    "giorni_mancanti": result.get('giorni_mancanti')
+                }
             raise HTTPException(status_code=400, detail=result.get('error', 'Errore conferma'))
-        
+
         return {
             "success": True,
             "id_dettaglio": id_dettaglio,
@@ -570,6 +582,8 @@ async def conferma_ordine_completo_endpoint(
 ) -> Dict[str, Any]:
     """
     Conferma tutte le righe confermabili di un ordine.
+
+    v11.3: Esclude automaticamente righe con data_consegna > 30 giorni da oggi.
     """
     try:
         result = conferma_ordine_completo(
@@ -578,16 +592,29 @@ async def conferma_ordine_completo_endpoint(
             forza_conferma=request.forza_conferma,
             note=request.note
         )
-        
+
+        # v11.3: Costruisci messaggio dettagliato
+        msgs = [f"Confermate {result['confermate']} righe"]
+
+        bloccate_supervisione = result.get('bloccate_supervisione', [])
+        bloccate_data = result.get('bloccate_data_consegna', [])
+
+        if bloccate_supervisione:
+            msgs.append(f"{len(bloccate_supervisione)} richiedono supervisione")
+
+        if bloccate_data:
+            msgs.append(f"{len(bloccate_data)} bloccate per data consegna oltre 30 giorni")
+
         return {
             "success": True,
             "id_testata": id_testata,
             "righe_confermate": result['confermate'],
             "righe_bloccate": result['bloccate'],
+            "righe_bloccate_supervisione": bloccate_supervisione,
+            "righe_bloccate_data_consegna": bloccate_data,
             "righe_gia_confermate": result['gia_confermate'],
             "ordine_completo": result['ordine_completo'],
-            "message": f"Confermate {result['confermate']} righe" + 
-                       (f", {len(result['bloccate'])} richiedono supervisione" if result['bloccate'] else "")
+            "message": ", ".join(msgs)
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -1,17 +1,106 @@
 # =============================================================================
-# SERV.O v7.0 - ORDERS FULFILLMENT
+# SERV.O v11.3 - ORDERS FULFILLMENT
 # =============================================================================
 # Funzioni per conferma righe, evasioni parziali, supervisione
 # Estratto da ordini.py per modularità
+# v11.3: Validazione data consegna (max 30 giorni)
 # =============================================================================
 
 import json
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, date, timedelta
 
 from ...database_pg import get_db, log_operation
 from ...utils import calcola_q_totale
 from .queries import get_stato_righe_ordine
+
+
+# =============================================================================
+# VALIDAZIONE DATA CONSEGNA (v11.3)
+# =============================================================================
+# Le righe con data_consegna > 30 giorni da oggi NON possono essere confermate.
+# Questo serve a evitare l'export di ordini con date di consegna troppo lontane.
+# =============================================================================
+
+MAX_GIORNI_CONSEGNA = 30  # Massimo giorni di anticipo per conferma
+
+
+def _parse_data_consegna(data_val) -> Optional[date]:
+    """
+    Converte data_consegna_riga in oggetto date.
+    Accetta: datetime.date, datetime.datetime, stringa DD/MM/YYYY, YYYY-MM-DD.
+    """
+    if not data_val:
+        return None
+
+    if isinstance(data_val, date) and not isinstance(data_val, datetime):
+        return data_val
+
+    if isinstance(data_val, datetime):
+        return data_val.date()
+
+    # Stringa
+    data_str = str(data_val).strip()
+    if not data_str:
+        return None
+
+    # DD/MM/YYYY
+    try:
+        return datetime.strptime(data_str, '%d/%m/%Y').date()
+    except ValueError:
+        pass
+
+    # YYYY-MM-DD (ISO)
+    try:
+        return datetime.strptime(data_str, '%Y-%m-%d').date()
+    except ValueError:
+        pass
+
+    return None
+
+
+def _verifica_data_consegna(data_consegna_riga) -> Dict[str, Any]:
+    """
+    Verifica se la data consegna è entro 30 giorni da oggi.
+
+    Returns:
+        {
+            'valida': bool,
+            'data_consegna': date o None,
+            'data_limite': date,
+            'giorni_mancanti': int (se non valida)
+        }
+    """
+    oggi = date.today()
+    data_limite = oggi + timedelta(days=MAX_GIORNI_CONSEGNA)
+
+    data_consegna = _parse_data_consegna(data_consegna_riga)
+
+    if data_consegna is None:
+        # Se non c'è data consegna, considera valida (usa oggi come default)
+        return {
+            'valida': True,
+            'data_consegna': None,
+            'data_limite': data_limite,
+            'giorni_mancanti': 0
+        }
+
+    if data_consegna <= data_limite:
+        return {
+            'valida': True,
+            'data_consegna': data_consegna,
+            'data_limite': data_limite,
+            'giorni_mancanti': 0
+        }
+
+    # Data troppo lontana
+    giorni_mancanti = (data_consegna - data_limite).days
+    return {
+        'valida': False,
+        'data_consegna': data_consegna,
+        'data_limite': data_limite,
+        'giorni_mancanti': giorni_mancanti
+    }
 
 
 # =============================================================================
@@ -26,13 +115,15 @@ def conferma_singola_riga(
 ) -> Dict[str, Any]:
     """
     Conferma una singola riga per inserimento in tracciato.
+
+    v11.3: Blocca conferma se data_consegna_riga > 30 giorni da oggi.
     """
     db = get_db()
 
     riga = db.execute("""
         SELECT id_dettaglio, id_testata, stato_riga, richiede_supervisione,
                id_supervisione, tipo_riga, is_espositore, q_venduta, q_originale,
-               q_sconto_merce, q_omaggio
+               q_sconto_merce, q_omaggio, data_consegna_riga
         FROM ORDINI_DETTAGLIO
         WHERE id_dettaglio = ? AND id_testata = ?
     """, (id_dettaglio, id_testata)).fetchone()
@@ -49,6 +140,22 @@ def conferma_singola_riga(
 
     if riga['stato_riga'] in ('CONFERMATO', 'IN_TRACCIATO', 'ESPORTATO'):
         return {'success': False, 'error': 'Riga già confermata o esportata'}
+
+    # v11.3: Verifica data consegna (max 30 giorni da oggi)
+    verifica_data = _verifica_data_consegna(riga.get('data_consegna_riga'))
+    if not verifica_data['valida']:
+        data_consegna = verifica_data['data_consegna']
+        data_limite = verifica_data['data_limite']
+        giorni_mancanti = verifica_data['giorni_mancanti']
+        return {
+            'success': False,
+            'error': f'Data consegna {data_consegna.strftime("%d/%m/%Y")} supera il limite di {MAX_GIORNI_CONSEGNA} giorni. '
+                     f'Confermabile dal {(data_consegna - timedelta(days=MAX_GIORNI_CONSEGNA)).strftime("%d/%m/%Y")}',
+            'data_consegna_bloccante': True,
+            'data_consegna': data_consegna.isoformat(),
+            'data_limite': data_limite.isoformat(),
+            'giorni_mancanti': giorni_mancanti
+        }
 
     if riga['richiede_supervisione'] and riga['stato_riga'] != 'SUPERVISIONATO':
         return {
@@ -82,13 +189,20 @@ def conferma_ordine_completo(
     forza_conferma: bool = False,
     note: Optional[str] = None
 ) -> Dict[str, Any]:
-    """Conferma tutte le righe confermabili di un ordine."""
+    """
+    Conferma tutte le righe confermabili di un ordine.
+
+    v11.3: Esclude righe con data_consegna_riga > 30 giorni da oggi.
+    Queste righe restano in stato ESTRATTO/PARZIALE e possono essere confermate
+    solo quando la data consegna rientra nei 30 giorni.
+    """
     db = get_db()
     now = datetime.now().isoformat()
 
     righe = db.execute("""
         SELECT id_dettaglio, stato_riga, richiede_supervisione, tipo_riga,
-               q_venduta, q_sconto_merce, q_omaggio, q_originale, q_residua
+               q_venduta, q_sconto_merce, q_omaggio, q_originale, q_residua,
+               data_consegna_riga
         FROM ORDINI_DETTAGLIO
         WHERE id_testata = ? AND (is_child = FALSE OR is_child IS NULL)
         ORDER BY n_riga
@@ -96,6 +210,7 @@ def conferma_ordine_completo(
 
     confermate = 0
     bloccate = []
+    bloccate_data_consegna = []  # v11.3: righe bloccate per data consegna
     gia_confermate = 0
     gia_esportate = 0
 
@@ -113,6 +228,19 @@ def conferma_ordine_completo(
 
         if riga['stato_riga'] in ('CONFERMATO', 'IN_TRACCIATO'):
             gia_confermate += 1
+            continue
+
+        # v11.3: Verifica data consegna (max 30 giorni da oggi)
+        verifica_data = _verifica_data_consegna(riga.get('data_consegna_riga'))
+        if not verifica_data['valida']:
+            data_consegna = verifica_data['data_consegna']
+            bloccate_data_consegna.append({
+                'id_dettaglio': riga['id_dettaglio'],
+                'tipo_riga': riga['tipo_riga'],
+                'motivo': f'Data consegna {data_consegna.strftime("%d/%m/%Y")} oltre {MAX_GIORNI_CONSEGNA} giorni',
+                'data_consegna': data_consegna.isoformat(),
+                'confermabile_dal': (data_consegna - timedelta(days=MAX_GIORNI_CONSEGNA)).strftime('%d/%m/%Y')
+            })
             continue
 
         if riga['richiede_supervisione'] and riga['stato_riga'] != 'SUPERVISIONATO':
@@ -143,12 +271,17 @@ def conferma_ordine_completo(
     _aggiorna_contatori_ordine(id_testata)
     db.commit()
 
+    # v11.3: Combina bloccate (supervisione) e bloccate_data_consegna
+    tutte_bloccate = bloccate + bloccate_data_consegna
+
     return {
         'confermate': confermate,
-        'bloccate': bloccate,
+        'bloccate': tutte_bloccate,
+        'bloccate_supervisione': bloccate,
+        'bloccate_data_consegna': bloccate_data_consegna,
         'gia_confermate': gia_confermate,
         'gia_esportate': gia_esportate,
-        'ordine_completo': len(bloccate) == 0 and confermate + gia_confermate + gia_esportate == len(righe)
+        'ordine_completo': len(tutte_bloccate) == 0 and confermate + gia_confermate + gia_esportate == len(righe)
     }
 
 
