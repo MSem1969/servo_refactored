@@ -8,7 +8,7 @@ import re
 from datetime import date, datetime
 
 # Lunghezza righe secondo schema EDI
-TO_T_LENGTH = 857   # Testata (calcolato da schema)
+TO_T_LENGTH = 869   # Testata (v11.3: corretto da 857)
 TO_D_LENGTH = 344   # Dettaglio (calcolato da schema)
 
 # Codice produttore default (fallback)
