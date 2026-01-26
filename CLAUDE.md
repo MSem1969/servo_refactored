@@ -78,9 +78,9 @@ frontend/src/
 | 416-425 | ImportoPagamento3 | 10 | N | Float 7.2 | **`0000000.00`** |
 | 426-428 | GgDilazionePagamento3 | 3 | N | Int 3.0 | Default `000` |
 | 429-448 | CodOffertaCliente | 20 | N | String | Codice offerta cliente |
-| 449-468 | CodOffertaVendor | 20 | N | String | Codice offerta vendor |
+| 449-468 | CodOffertaVendor | 20 | N | String | **Default: `1000` rjust** (allineato a destra) |
 | 469 | ForceCheck | 1 | N | Char | **Default ` ` (spazio)**, oppure S/N |
-| 470-669 | OrderAnnotation | 200 | N | String | **Default: numero progressivo + " STANDARD"** |
+| 470-669 | OrderAnnotation | 200 | N | String | **Default: `STANDARD`** |
 | 670-869 | BOT_Annotation | 200 | N | String | Note DDT |
 
 **FORMATO FLOAT 7.2:** 10 caratteri totali = 7 interi + "." + 2 decimali → `0000000.00`
