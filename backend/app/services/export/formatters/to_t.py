@@ -6,6 +6,7 @@
 # =============================================================================
 
 import re
+from datetime import date
 from typing import Dict, Any
 
 from .common import (
@@ -104,6 +105,10 @@ def generate_to_t_line(data: Dict[str, Any]) -> str:
     data_ordine = format_date_edi(data.get('data_ordine', ''))
     data_consegna = format_date_edi(data.get('data_consegna', ''))
 
+    # Se data consegna vuota, usa data odierna
+    if not data_consegna or data_consegna.strip() == '':
+        data_consegna = date.today().strftime('%d/%m/%Y')
+
     # Dilazione pagamento (default 90 gg)
     dilazione = data.get('gg_dilazione_1') or data.get('condizioni_pagamento') or 90
     try:
@@ -191,8 +196,9 @@ def generate_to_t_line(data: Dict[str, Any]) -> str:
     # Pos 429-448: CodOffertaCliente (20) - vuoto
     line += ' ' * 20
 
-    # Pos 449-468: CodOffertaVendor (20) - "1000" allineato a destra
-    line += '1000'.rjust(20)
+    # Pos 449-468: CodOffertaVendor (20) - "1000" con zeri anteposti
+    cod_offerta = data.get('cod_offerta_vendor') or '1000'
+    line += str(cod_offerta).zfill(20)[:20]
 
     # Pos 469: ForceCheck (1) - default spazio
     force_check = data.get('forza_controllo', '')
