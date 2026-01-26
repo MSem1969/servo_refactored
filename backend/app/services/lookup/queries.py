@@ -1,7 +1,8 @@
 # =============================================================================
-# SERV.O v8.1 - LOOKUP QUERIES
+# SERV.O v11.3 - LOOKUP QUERIES
 # =============================================================================
 # Query database e operazioni batch per lookup
+# v11.3: Verifica caratteri corrotti prima di sovrascrivere dati estratti
 # =============================================================================
 
 from typing import Dict, Any, List
@@ -11,6 +12,43 @@ from ...utils import normalize_piva
 
 from .matching import lookup_farmacia
 from .scoring import fuzzy_match_full
+
+
+# =============================================================================
+# UTILITY - RILEVAMENTO CARATTERI CORROTTI (MOJIBAKE)
+# =============================================================================
+
+def _has_corrupted_chars(text: str) -> bool:
+    """
+    Verifica se un testo contiene caratteri corrotti tipici del mojibake UTF-8.
+
+    Pattern comuni di mojibake (UTF-8 interpretato come Latin-1):
+    - Â¿, Â°, Â\u0093, Â\u0094 (caratteri speciali corrotti)
+    - Ã¨, Ã¬, Ã², Ã¹, Ã  (accenti gravi corrotti)
+    - Ã©, Ã³ (accenti acuti corrotti)
+
+    Args:
+        text: Testo da verificare
+
+    Returns:
+        True se contiene caratteri corrotti
+    """
+    if not text:
+        return False
+
+    # Pattern mojibake comuni
+    corrupted_patterns = [
+        'Â¿', 'Â°', 'Â\u0093', 'Â\u0094', 'Â\u0092',  # Caratteri speciali
+        'Ã¨', 'Ã¬', 'Ã²', 'Ã¹', 'Ã ',  # Accenti gravi
+        'Ã©', 'Ã³', 'Ã¡', 'Ã­', 'Ãº',  # Accenti acuti
+        'Ã€', 'Ã‰', 'Ã"', 'Ã™', 'ÃŒ',  # Maiuscole accentate
+    ]
+
+    for pattern in corrupted_patterns:
+        if pattern in text:
+            return True
+
+    return False
 
 
 # =============================================================================
@@ -82,12 +120,15 @@ def popola_header_da_anagrafica(id_testata: int, operatore: str = None) -> bool:
         'fonte_anagrafica': ordine['fonte_anagrafica'] if 'fonte_anagrafica' in ordine.keys() else None
     }
 
+    # v11.3: Verifica caratteri corrotti - usa valore anagrafica solo se pulito
+    # MIN_ID viene sempre preso dall'anagrafica (è l'obiettivo principale del lookup)
+    # Gli altri campi vengono presi dall'anagrafica solo se non corrotti
     nuovi_valori = {
-        'codice_ministeriale_estratto': farm_data['min_id'] or '',
-        'cap': farm_data['cap'] or '',
-        'citta': farm_data['citta'] or '',
-        'provincia': farm_data['provincia'] or '',
-        'indirizzo': farm_data['indirizzo'] or ''
+        'codice_ministeriale_estratto': farm_data['min_id'] or '',  # MIN_ID sempre dall'anagrafica
+        'cap': farm_data['cap'] or '' if not _has_corrupted_chars(farm_data.get('cap') or '') else '',
+        'citta': farm_data['citta'] or '' if not _has_corrupted_chars(farm_data.get('citta') or '') else '',
+        'provincia': farm_data['provincia'] or '' if not _has_corrupted_chars(farm_data.get('provincia') or '') else '',
+        'indirizzo': farm_data['indirizzo'] or '' if not _has_corrupted_chars(farm_data.get('indirizzo') or '') else ''
     }
 
     # Identifica campi modificati
