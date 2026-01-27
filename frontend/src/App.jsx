@@ -434,28 +434,6 @@ const DashboardPage = ({ onNavigate }) => {
             </p>
           </div>
 
-          {/* Righe Estratte */}
-          <div className="bg-white p-5 rounded-xl border border-slate-200">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 bg-cyan-100 rounded-lg flex items-center justify-center text-lg">
-                📝
-              </div>
-              <p className="text-sm font-medium text-slate-600">Righe Estratte</p>
-            </div>
-            <p className="text-3xl font-bold text-slate-800">{oggi.righe || 0}</p>
-          </div>
-
-          {/* Righe Esportate */}
-          <div className="bg-white p-5 rounded-xl border border-slate-200">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center text-lg">
-                📤
-              </div>
-              <p className="text-sm font-medium text-slate-600">Esportate</p>
-            </div>
-            <p className="text-3xl font-bold text-emerald-600">{oggi.righe_evase || 0}</p>
-          </div>
-
           {/* Clienti */}
           <div className="bg-white p-5 rounded-xl border border-slate-200">
             <div className="flex items-center gap-3 mb-3">
@@ -465,6 +443,17 @@ const DashboardPage = ({ onNavigate }) => {
               <p className="text-sm font-medium text-slate-600">Clienti</p>
             </div>
             <p className="text-3xl font-bold text-slate-800">{oggi.clienti || 0}</p>
+          </div>
+
+          {/* Righe Estratte */}
+          <div className="bg-white p-5 rounded-xl border border-slate-200">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 bg-cyan-100 rounded-lg flex items-center justify-center text-lg">
+                📝
+              </div>
+              <p className="text-sm font-medium text-slate-600">Righe Estratte</p>
+            </div>
+            <p className="text-3xl font-bold text-slate-800">{oggi.righe || 0}</p>
           </div>
 
           {/* Anomalie */}
@@ -478,6 +467,17 @@ const DashboardPage = ({ onNavigate }) => {
             <p className={`text-3xl font-bold ${oggi.anomalie_aperte > 0 ? 'text-amber-600' : 'text-slate-800'}`}>
               {oggi.anomalie_aperte || 0}
             </p>
+          </div>
+
+          {/* Righe Esportate */}
+          <div className="bg-white p-5 rounded-xl border border-slate-200">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center text-lg">
+                📤
+              </div>
+              <p className="text-sm font-medium text-slate-600">Esportate</p>
+            </div>
+            <p className="text-3xl font-bold text-emerald-600">{oggi.righe_evase || 0}</p>
           </div>
         </div>
 
