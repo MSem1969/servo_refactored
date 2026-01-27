@@ -286,3 +286,30 @@ track_from_user(current_user, Sezione.DATABASE, Azione.CONFIRM,
 2. Pattern si ripeterà? → Generalizza
 3. Caso isolato? → Documenta eccezione
 4. Uniforma: error handling, response format, componenti UI
+
+---
+
+## Comunicazione con l'Utente (FONDAMENTALE)
+
+**Principio guida:** Ogni volta che il sistema impedisce un'operazione per SCELTA (non per errore), DEVE comunicarlo chiaramente all'utente.
+
+### Regole
+
+1. **Mai operazioni silenziose** - Se un'azione non viene eseguita, l'utente deve sapere PERCHÉ
+2. **Distinguere errori da blocchi voluti** - Errore di sistema ≠ Regola di business
+3. **Messaggi chiari e azionabili** - Spiegare cosa è successo E come risolvere
+4. **Contesto completo** - Mostrare quante righe/elementi sono stati bloccati e perché
+
+### Esempi
+
+```
+❌ SBAGLIATO: (silenzio, nessuna riga confermata)
+❌ SBAGLIATO: "Errore nella conferma"
+✅ CORRETTO: "5 righe NON confermate: data consegna oltre 30 giorni. Modificare la data per confermarle."
+```
+
+### Implementazione
+
+- **Backend**: Restituire sempre dettagli strutturati (es. `righe_bloccate_data_consegna: [...]`)
+- **Frontend**: Mostrare alert/toast con messaggio esplicativo
+- **Log**: Registrare il motivo del blocco per audit
