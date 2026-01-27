@@ -363,7 +363,7 @@ const LoginPage = ({ onLogin, initialResetToken }) => {
 };
 
 // ============================================
-// DASHBOARD PAGE WITH TABS
+// DASHBOARD PAGE WITH TABS (v11.3: Stats giornaliere)
 // ============================================
 const DashboardPage = ({ onNavigate }) => {
   const [activeTab, setActiveTab] = useState("statistiche");
@@ -373,8 +373,12 @@ const DashboardPage = ({ onNavigate }) => {
   useEffect(() => {
     const loadStats = async () => {
       try {
-        const response = await dashboardApi.getStats();
-        setStats(response);
+        // v11.3: Usa nuovo endpoint /ordini/stats per stats dettagliate
+        const { ordiniApi } = await import('./api');
+        const response = await ordiniApi.getStats();
+        if (response.success) {
+          setStats(response.data);
+        }
       } catch (err) {
         console.error("Error loading stats:", err);
       } finally {
@@ -385,69 +389,95 @@ const DashboardPage = ({ onNavigate }) => {
     loadStats();
   }, []);
 
-  // Tab Statistiche content
+  // v11.3: Formatta valore in euro
+  const formatEuro = (value) => {
+    return new Intl.NumberFormat('it-IT', {
+      style: 'currency',
+      currency: 'EUR',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0
+    }).format(value || 0);
+  };
+
+  // Tab Statistiche content - v11.3: Stats giornaliere in matrice
   const StatisticheTab = () => {
     if (loading) {
       return <Loading text="Caricamento statistiche..." />;
     }
 
+    const oggi = stats?.oggi || {};
+
     return (
       <div className="space-y-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <div className="bg-white p-6 rounded-xl border border-slate-200">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                📊
+        {/* Titolo sezione */}
+        <div className="flex items-center gap-2">
+          <span className="text-lg">📅</span>
+          <h2 className="text-lg font-bold text-slate-800">Attività di Oggi</h2>
+          <span className="text-sm text-slate-500">
+            ({new Date().toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })})
+          </span>
+        </div>
+
+        {/* Stats Cards - Matrice giornaliera */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          {/* Ordini */}
+          <div className="bg-white p-5 rounded-xl border border-slate-200">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center text-lg">
+                📋
               </div>
-              <div>
-                <p className="text-sm text-slate-600">Ordini Totali</p>
-                <p className="text-2xl font-bold text-slate-800">
-                  {stats?.ordini_totali || 0}
-                </p>
-              </div>
+              <p className="text-sm font-medium text-slate-600">Ordini</p>
             </div>
+            <p className="text-3xl font-bold text-slate-800">{oggi.ordini || 0}</p>
+            <p className="text-xs text-slate-500 mt-1">
+              Valore: {formatEuro(oggi.valore_ordinato)}
+            </p>
           </div>
 
-          <div className="bg-white p-6 rounded-xl border border-slate-200">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center">
-                ✓
+          {/* Righe Estratte */}
+          <div className="bg-white p-5 rounded-xl border border-slate-200">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 bg-cyan-100 rounded-lg flex items-center justify-center text-lg">
+                📝
               </div>
-              <div>
-                <p className="text-sm text-slate-600">Validati</p>
-                <p className="text-2xl font-bold text-slate-800">
-                  {stats?.validati || 0}
-                </p>
-              </div>
+              <p className="text-sm font-medium text-slate-600">Righe Estratte</p>
             </div>
+            <p className="text-3xl font-bold text-slate-800">{oggi.righe || 0}</p>
           </div>
 
-          <div className="bg-white p-6 rounded-xl border border-slate-200">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center">
-                !
-              </div>
-              <div>
-                <p className="text-sm text-slate-600">Anomalie</p>
-                <p className="text-2xl font-bold text-slate-800">
-                  {stats?.anomalie || 0}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white p-6 rounded-xl border border-slate-200">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center">
+          {/* Righe Esportate */}
+          <div className="bg-white p-5 rounded-xl border border-slate-200">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center text-lg">
                 📤
               </div>
-              <div>
-                <p className="text-sm text-slate-600">Esportati</p>
-                <p className="text-2xl font-bold text-slate-800">
-                  {stats?.esportati || 0}
-                </p>
-              </div>
+              <p className="text-sm font-medium text-slate-600">Esportate</p>
             </div>
+            <p className="text-3xl font-bold text-emerald-600">{oggi.righe_evase || 0}</p>
+          </div>
+
+          {/* Clienti */}
+          <div className="bg-white p-5 rounded-xl border border-slate-200">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center text-lg">
+                🏪
+              </div>
+              <p className="text-sm font-medium text-slate-600">Clienti</p>
+            </div>
+            <p className="text-3xl font-bold text-slate-800">{oggi.clienti || 0}</p>
+          </div>
+
+          {/* Anomalie */}
+          <div className="bg-white p-5 rounded-xl border border-slate-200">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="w-10 h-10 bg-amber-100 rounded-lg flex items-center justify-center text-lg">
+                ⚠️
+              </div>
+              <p className="text-sm font-medium text-slate-600">Anomalie</p>
+            </div>
+            <p className={`text-3xl font-bold ${oggi.anomalie_aperte > 0 ? 'text-amber-600' : 'text-slate-800'}`}>
+              {oggi.anomalie_aperte || 0}
+            </p>
           </div>
         </div>
 

@@ -193,8 +193,8 @@ async def ordini_stats() -> Dict[str, Any]:
     v11.3: Ritorna statistiche ordini per dashboard.
 
     Include:
-    - totali: conteggi totali per stato
-    - oggi: conteggi giornalieri per stato
+    - totali: conteggi totali per stato + valore + righe + clienti
+    - oggi: conteggi giornalieri per stato + valore + righe + clienti
     - anomalie_aperte: totale anomalie aperte
     """
     from ..database_pg import get_db
@@ -229,6 +229,48 @@ async def ordini_stats() -> Dict[str, Any]:
         "SELECT COUNT(*) FROM ANOMALIE WHERE stato IN ('APERTA', 'IN_GESTIONE') AND data_creazione::date = CURRENT_DATE"
     ).fetchone()[0]
 
+    # v11.3: Righe estratte (totali e oggi)
+    righe_totali = db.execute("SELECT COUNT(*) FROM ORDINI_DETTAGLIO").fetchone()[0]
+    righe_oggi = db.execute("""
+        SELECT COUNT(*) FROM ORDINI_DETTAGLIO d
+        JOIN ORDINI_TESTATA t ON d.id_testata = t.id_testata
+        WHERE t.data_estrazione::date = CURRENT_DATE
+    """).fetchone()[0]
+
+    # v11.3: Righe evase (totali e oggi) - q_evasa > 0
+    righe_evase_totali = db.execute(
+        "SELECT COUNT(*) FROM ORDINI_DETTAGLIO WHERE COALESCE(q_evasa, 0) > 0"
+    ).fetchone()[0]
+    righe_evase_oggi = db.execute("""
+        SELECT COUNT(*) FROM ORDINI_DETTAGLIO d
+        JOIN ORDINI_TESTATA t ON d.id_testata = t.id_testata
+        WHERE COALESCE(d.q_evasa, 0) > 0 AND t.data_estrazione::date = CURRENT_DATE
+    """).fetchone()[0]
+
+    # v11.3: Clienti unici (totali e oggi) - count distinct partita_iva
+    clienti_totali = db.execute(
+        "SELECT COUNT(DISTINCT partita_iva_estratta) FROM ORDINI_TESTATA WHERE partita_iva_estratta IS NOT NULL"
+    ).fetchone()[0]
+    clienti_oggi = db.execute("""
+        SELECT COUNT(DISTINCT partita_iva_estratta) FROM ORDINI_TESTATA
+        WHERE partita_iva_estratta IS NOT NULL AND data_estrazione::date = CURRENT_DATE
+    """).fetchone()[0]
+
+    # v11.3: Valore ordinato (totali e oggi) - sum(q_venduta * prezzo_netto)
+    valore_totale_row = db.execute("""
+        SELECT COALESCE(SUM(COALESCE(d.q_venduta, 0) * COALESCE(d.prezzo_netto, 0)), 0) as valore
+        FROM ORDINI_DETTAGLIO d
+    """).fetchone()
+    valore_totale = float(valore_totale_row['valore']) if valore_totale_row else 0
+
+    valore_oggi_row = db.execute("""
+        SELECT COALESCE(SUM(COALESCE(d.q_venduta, 0) * COALESCE(d.prezzo_netto, 0)), 0) as valore
+        FROM ORDINI_DETTAGLIO d
+        JOIN ORDINI_TESTATA t ON d.id_testata = t.id_testata
+        WHERE t.data_estrazione::date = CURRENT_DATE
+    """).fetchone()
+    valore_oggi = float(valore_oggi_row['valore']) if valore_oggi_row else 0
+
     return {
         "success": True,
         "data": {
@@ -241,6 +283,10 @@ async def ordini_stats() -> Dict[str, Any]:
                 "evaso": totali_per_stato.get('EVASO', 0),
                 "archiviato": totali_per_stato.get('ARCHIVIATO', 0),
                 "anomalie_aperte": anomalie_totali,
+                "righe": righe_totali,
+                "righe_evase": righe_evase_totali,
+                "clienti": clienti_totali,
+                "valore_ordinato": valore_totale,
             },
             "oggi": {
                 "ordini": sum(oggi_per_stato.values()),
@@ -251,6 +297,10 @@ async def ordini_stats() -> Dict[str, Any]:
                 "evaso": oggi_per_stato.get('EVASO', 0),
                 "archiviato": oggi_per_stato.get('ARCHIVIATO', 0),
                 "anomalie_aperte": anomalie_oggi,
+                "righe": righe_oggi,
+                "righe_evase": righe_evase_oggi,
+                "clienti": clienti_oggi,
+                "valore_ordinato": valore_oggi,
             }
         }
     }
