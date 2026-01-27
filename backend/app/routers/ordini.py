@@ -227,7 +227,7 @@ async def ordini_stats() -> Dict[str, Any]:
         "SELECT COUNT(*) FROM ANOMALIE WHERE stato IN ('APERTA', 'IN_GESTIONE')"
     ).fetchone()[0]
     anomalie_oggi = db.execute(
-        "SELECT COUNT(*) FROM ANOMALIE WHERE stato IN ('APERTA', 'IN_GESTIONE') AND data_creazione::date = CURRENT_DATE"
+        "SELECT COUNT(*) FROM ANOMALIE WHERE stato IN ('APERTA', 'IN_GESTIONE') AND data_rilevazione::date = CURRENT_DATE"
     ).fetchone()[0]
 
     # v11.3: Righe estratte (totali e oggi)

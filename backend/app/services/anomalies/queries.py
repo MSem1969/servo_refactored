@@ -81,7 +81,7 @@ def get_anomalie(
                 WHEN 'ATTENZIONE' THEN 3
                 ELSE 4
             END,
-            a.data_creazione DESC
+            a.data_rilevazione DESC
         LIMIT %s OFFSET %s
     """
     params.extend([limit, offset])
@@ -117,7 +117,7 @@ def get_anomalie_by_ordine(id_testata: int) -> List[Dict]:
                 WHEN 'ATTENZIONE' THEN 3
                 ELSE 4
             END,
-            a.data_creazione DESC
+            a.data_rilevazione DESC
     """, (id_testata,)).fetchall()
 
     return [dict(row) for row in rows]
@@ -140,7 +140,7 @@ def get_anomalie_critiche(limit: int = 10) -> List[Dict]:
         AND a.livello IN ('CRITICO', 'ERRORE')
         ORDER BY
             CASE a.livello WHEN 'CRITICO' THEN 1 ELSE 2 END,
-            a.data_creazione DESC
+            a.data_rilevazione DESC
         LIMIT %s
     """, (limit,)).fetchall()
 
@@ -223,12 +223,12 @@ def get_anomalie_stats() -> Dict[str, Any]:
     # Trend ultima settimana
     rows = db.execute("""
         SELECT
-            DATE(data_creazione) as giorno,
+            DATE(data_rilevazione) as giorno,
             COUNT(*) as create_count,
             SUM(CASE WHEN stato IN ('RISOLTA', 'IGNORATA') THEN 1 ELSE 0 END) as resolved_count
         FROM anomalie
-        WHERE data_creazione >= CURRENT_DATE - INTERVAL '7 days'
-        GROUP BY DATE(data_creazione)
+        WHERE data_rilevazione >= CURRENT_DATE - INTERVAL '7 days'
+        GROUP BY DATE(data_rilevazione)
         ORDER BY giorno
     """).fetchall()
     stats['trend_settimana'] = [dict(row) for row in rows]

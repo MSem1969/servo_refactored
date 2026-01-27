@@ -508,7 +508,7 @@ def get_dashboard_stats() -> Dict[str, Any]:
         'oggi': {
             'ordini': db.execute("SELECT COUNT(*) FROM ORDINI_TESTATA WHERE data_estrazione::date = CURRENT_DATE").fetchone()[0],
             'anomalie_aperte': db.execute(
-                "SELECT COUNT(*) FROM ANOMALIE WHERE stato IN ('APERTA', 'IN_GESTIONE') AND data_creazione::date = CURRENT_DATE"
+                "SELECT COUNT(*) FROM ANOMALIE WHERE stato IN ('APERTA', 'IN_GESTIONE') AND data_rilevazione::date = CURRENT_DATE"
             ).fetchone()[0],
             'pdf_elaborati': db.execute(
                 "SELECT COUNT(*) FROM ACQUISIZIONI WHERE stato = 'ELABORATO' AND data_acquisizione::date = CURRENT_DATE"
