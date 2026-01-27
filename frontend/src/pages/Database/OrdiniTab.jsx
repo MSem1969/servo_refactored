@@ -35,7 +35,8 @@ export default function OrdiniTab({
   onOpenOrdine,
   onShowPdf,
   onArchiviaOrdine,
-  onClearFilters
+  onClearFilters,
+  viewedOrders = new Set()  // v11.3: Set di ID ordini già visualizzati
 }) {
   // Stato ordinamento
   const [sortField, setSortField] = useState(null);
@@ -131,13 +132,14 @@ export default function OrdiniTab({
           {sortedOrdini.map((ordine) => {
             const isSelected = selected.includes(ordine.id_testata);
             const rowHighlight = getRowHighlightClass(ordine.data_consegna, ordine.data_ordine);
+            const isViewed = viewedOrders.has(ordine.id_testata);
 
             return (
               <tr
                 key={ordine.id_testata}
                 className={`hover:bg-slate-50 cursor-pointer ${rowHighlight} ${
                   selectedOrdine?.id_testata === ordine.id_testata ? 'bg-blue-50' : ''
-                }`}
+                } ${!isViewed ? 'border-l-4 border-l-blue-500 bg-blue-50/30' : 'border-l-4 border-l-transparent'}`}
                 onClick={() => onOpenOrdine(ordine.id_testata)}
               >
                 <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}>

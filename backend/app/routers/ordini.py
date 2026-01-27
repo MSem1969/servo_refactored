@@ -5,7 +5,7 @@
 # v11.0: Archiviazione tramite service layer
 # =============================================================================
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from typing import Dict, Any, List, Optional
@@ -15,6 +15,7 @@ import io
 import os
 from ..database_pg import get_db
 from ..config import config
+from ..auth import get_current_user, get_current_user_optional, UtenteResponse
 
 from ..services.ordini import (
     get_ordini,
@@ -303,6 +304,96 @@ async def ordini_stats() -> Dict[str, Any]:
                 "valore_ordinato": valore_oggi,
             }
         }
+    }
+
+
+# =============================================================================
+# TRACKING VISUALIZZAZIONI ORDINI (v11.3)
+# =============================================================================
+
+@router.get("/viewed")
+async def get_ordini_viewed(
+    current_user: UtenteResponse = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    v11.3: Ritorna lista ID ordini visualizzati dall'utente corrente.
+
+    Usato per mostrare indicatore visivo (bordo sinistro) nella lista ordini.
+    Un ordine è considerato "visto" se l'utente ha aperto il dettaglio.
+    """
+    db = get_db()
+
+    user_id = current_user.id_utente if current_user else None
+    if not user_id:
+        return {"success": True, "data": []}
+
+    # Query ordini visualizzati da questo utente
+    rows = db.execute("""
+        SELECT DISTINCT id_entita
+        FROM operatore_azioni_log
+        WHERE id_operatore = %s
+          AND sezione = 'DATABASE'
+          AND azione = 'VIEW'
+          AND entita = 'ordine'
+          AND id_entita IS NOT NULL
+    """, (user_id,)).fetchall()
+
+    viewed_ids = [row['id_entita'] for row in rows]
+
+    return {
+        "success": True,
+        "data": viewed_ids
+    }
+
+
+@router.post("/{id_testata}/view")
+async def track_ordine_view(
+    id_testata: int,
+    current_user: UtenteResponse = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    v11.3: Traccia visualizzazione dettaglio ordine.
+
+    Chiamato quando utente apre il dettaglio di un ordine.
+    Registra in operatore_azioni_log per tracking attività.
+    """
+    from ..services.tracking import track_action, Sezione, Azione
+
+    db = get_db()
+
+    # Verifica ordine esiste
+    ordine = db.execute(
+        "SELECT id_testata, numero_ordine_vendor FROM ordini_testata WHERE id_testata = %s",
+        (id_testata,)
+    ).fetchone()
+
+    if not ordine:
+        raise HTTPException(status_code=404, detail="Ordine non trovato")
+
+    user_id = current_user.id_utente if current_user else None
+    username = current_user.username if current_user else 'unknown'
+    ruolo = current_user.ruolo if current_user else 'operatore'
+
+    if not user_id:
+        return {"success": True, "tracked": False, "reason": "no_user_id"}
+
+    # Registra visualizzazione
+    track_action(
+        id_operatore=user_id,
+        username=username,
+        ruolo=ruolo,
+        sezione=Sezione.DATABASE,
+        azione=Azione.VIEW,
+        entita='ordine',
+        id_entita=id_testata,
+        parametri={'numero_ordine': ordine['numero_ordine_vendor']},
+        success=True
+    )
+
+    return {
+        "success": True,
+        "tracked": True,
+        "id_testata": id_testata
     }
 
 

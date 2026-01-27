@@ -38,6 +38,9 @@ export function useDatabasePage(currentUser, onOpenOrdine) {
     anomalie_aperte: 0
   });
 
+  // v11.3: View tracking (effetto inbox)
+  const [viewedOrders, setViewedOrders] = useState(new Set());
+
   // PDF Modal
   const [showPdfModal, setShowPdfModal] = useState(false);
   const [pdfToShow, setPdfToShow] = useState(null);
@@ -84,6 +87,38 @@ export function useDatabasePage(currentUser, onOpenOrdine) {
   useEffect(() => {
     loadStats();
   }, [loadStats]);
+
+  // =============================================================================
+  // VIEW TRACKING (v11.3: effetto inbox)
+  // =============================================================================
+
+  const loadViewedOrders = useCallback(async () => {
+    try {
+      const res = await ordiniApi.getViewed();
+      if (res.success && res.data) {
+        setViewedOrders(new Set(res.data));
+      }
+    } catch (err) {
+      // Non bloccare se fallisce (utente non autenticato, ecc.)
+      console.warn('Errore caricamento ordini visualizzati:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadViewedOrders();
+  }, [loadViewedOrders]);
+
+  const trackOrderView = useCallback(async (idTestata) => {
+    // Aggiorna subito localmente per UX istantanea
+    setViewedOrders(prev => new Set([...prev, idTestata]));
+
+    // Poi traccia su server (fire & forget)
+    try {
+      await ordiniApi.trackView(idTestata);
+    } catch (err) {
+      console.warn('Errore tracking visualizzazione:', err);
+    }
+  }, []);
 
   // =============================================================================
   // LOAD ORDINI
@@ -480,6 +515,10 @@ export function useDatabasePage(currentUser, onOpenOrdine) {
 
     // Stats
     stats,
+
+    // v11.3: View tracking
+    viewedOrders,
+    trackOrderView,
 
     // PDF Modal
     showPdfModal,

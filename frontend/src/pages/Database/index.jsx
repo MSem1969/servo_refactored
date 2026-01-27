@@ -40,6 +40,10 @@ export default function DatabasePage({ currentUser, onOpenOrdine }) {
     // Stats
     stats,
 
+    // v11.3: View tracking
+    viewedOrders,
+    trackOrderView,
+
     // PDF Modal
     showPdfModal,
     pdfToShow,
@@ -85,6 +89,12 @@ export default function DatabasePage({ currentUser, onOpenOrdine }) {
     { id: 'anomalie', label: 'Anomalie', count: stats.anomalie_aperte > 0 ? stats.anomalie_aperte : null }
   ];
 
+  // v11.3: Wrapper per onOpenOrdine che traccia la visualizzazione
+  const handleOpenOrdine = (idTestata) => {
+    trackOrderView(idTestata);
+    onOpenOrdine?.(idTestata);
+  };
+
   // Handle archivia ordine singolo
   const handleArchiviaOrdine = async (ordine) => {
     const conferma = window.confirm(
@@ -122,7 +132,7 @@ export default function DatabasePage({ currentUser, onOpenOrdine }) {
                 onClick={() => {
                   if (tab.disabled) return;
                   if (tab.id === 'dettaglio' && selectedOrdine) {
-                    onOpenOrdine?.(selectedOrdine.id_testata);
+                    handleOpenOrdine(selectedOrdine.id_testata);
                   } else {
                     setActiveTab(tab.id);
                   }
@@ -224,10 +234,11 @@ export default function DatabasePage({ currentUser, onOpenOrdine }) {
             selectedOrdine={selectedOrdine}
             onToggleSelect={toggleSelect}
             onSelectAll={selectAll}
-            onOpenOrdine={onOpenOrdine}
+            onOpenOrdine={handleOpenOrdine}
             onShowPdf={showPdf}
             onArchiviaOrdine={handleArchiviaOrdine}
             onClearFilters={clearFilters}
+            viewedOrders={viewedOrders}
           />
         )}
 
@@ -249,23 +260,44 @@ export default function DatabasePage({ currentUser, onOpenOrdine }) {
         )}
       </div>
 
-      {/* Legenda Urgenze */}
+      {/* Legenda */}
       <div className="bg-white rounded-xl border border-slate-200 p-3">
-        <h4 className="text-xs font-semibold text-slate-600 mb-2">
-          Legenda Urgenze Consegna
-        </h4>
-        <div className="flex gap-6 text-xs">
-          <div className="flex items-center gap-2">
-            <span className="w-4 h-4 bg-red-50 border-l-4 border-red-500 rounded"></span>
-            <span className="text-slate-600">🔴 Scaduto (data passata)</span>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Legenda Urgenze */}
+          <div>
+            <h4 className="text-xs font-semibold text-slate-600 mb-2">
+              Urgenze Consegna
+            </h4>
+            <div className="flex gap-6 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="w-4 h-4 bg-red-50 border-l-4 border-red-500 rounded"></span>
+                <span className="text-slate-600">Scaduto</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-4 h-4 bg-amber-50 border-l-4 border-amber-400 rounded"></span>
+                <span className="text-slate-600">Urgente (&lt;2gg)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="flex items-center gap-1 text-emerald-600">●</span>
+                <span className="text-slate-600">Ordinario</span>
+              </div>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="w-4 h-4 bg-amber-50 border-l-4 border-amber-400 rounded"></span>
-            <span className="text-slate-600">🟠 Urgente (meno di 2 gg lavorativi)</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="flex items-center gap-1 text-emerald-600">🟢</span>
-            <span className="text-slate-600">Ordinario (piu di 2 gg lavorativi)</span>
+          {/* Legenda Visualizzazione */}
+          <div>
+            <h4 className="text-xs font-semibold text-slate-600 mb-2">
+              Stato Visualizzazione
+            </h4>
+            <div className="flex gap-6 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="w-4 h-4 bg-blue-50/50 border-l-4 border-blue-500 rounded"></span>
+                <span className="text-slate-600">Da visualizzare</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-4 h-4 bg-white border border-slate-200 rounded"></span>
+                <span className="text-slate-600">Gia visualizzato</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
