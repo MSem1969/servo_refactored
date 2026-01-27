@@ -274,6 +274,9 @@ def get_db() -> PostgreSQLConnection:
     """
     Ritorna connessione al database (compatibile con sqlite3.Connection).
     Usa un wrapper che simula l'interfaccia SQLite.
+
+    IMPORTANTE: Fa rollback automatico di transazioni pendenti per evitare
+    che connessioni "idle in transaction" blocchino le risorse.
     """
     global _connection
 
@@ -284,6 +287,23 @@ def get_db() -> PostgreSQLConnection:
         raw_conn = _pool.getconn()
         raw_conn.autocommit = False
         _connection = PostgreSQLConnection(raw_conn)
+    else:
+        # Reset connessione se ha transazioni pendenti (idle in transaction)
+        # Questo evita che transazioni non chiuse blocchino le risorse
+        try:
+            status = _connection._conn.status
+            if status == psycopg2.extensions.TRANSACTION_STATUS_INTRANS or \
+               status == psycopg2.extensions.TRANSACTION_STATUS_INERROR:
+                _connection._conn.rollback()
+        except Exception:
+            # Se la connessione è corrotta, ricreala
+            try:
+                _pool.putconn(_connection._conn, close=True)
+            except Exception:
+                pass
+            raw_conn = _pool.getconn()
+            raw_conn.autocommit = False
+            _connection = PostgreSQLConnection(raw_conn)
 
     return _connection
 
