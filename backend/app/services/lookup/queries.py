@@ -63,6 +63,10 @@ def popola_header_da_anagrafica(id_testata: int, operatore: str = None) -> bool:
     o id_parafarmacia_lookup), recupera i dati dall'anagrafica e aggiorna
     l'header dell'ordine (MIN_ID, CAP, citta, provincia, indirizzo).
 
+    v11.3:
+    - NON sovrascrive ragione_sociale se già estratta (caso subentro)
+    - Aggiunge lookup su anagrafica_clienti per deposito_riferimento
+
     Args:
         id_testata: ID ordine da aggiornare
         operatore: Username operatore (per audit)
@@ -78,6 +82,7 @@ def popola_header_da_anagrafica(id_testata: int, operatore: str = None) -> bool:
     ordine = db.execute("""
         SELECT id_farmacia_lookup, id_parafarmacia_lookup,
                codice_ministeriale_estratto, cap, citta, provincia, indirizzo,
+               ragione_sociale_1, ragione_sociale_1_estratta, deposito_riferimento,
                fonte_anagrafica
         FROM ordini_testata WHERE id_testata = %s
     """, (id_testata,)).fetchone()
@@ -109,6 +114,20 @@ def popola_header_da_anagrafica(id_testata: int, operatore: str = None) -> bool:
     if not farm_data:
         return False
 
+    min_id = farm_data['min_id'] or ''
+
+    # v11.3: Lookup anagrafica_clienti per deposito_riferimento usando MIN_ID
+    deposito_riferimento = None
+    if min_id:
+        cliente = db.execute("""
+            SELECT deposito_riferimento
+            FROM anagrafica_clienti
+            WHERE min_id = %s
+            LIMIT 1
+        """, (min_id,)).fetchone()
+        if cliente and cliente['deposito_riferimento']:
+            deposito_riferimento = cliente['deposito_riferimento']
+
     # Prepara modifiche per audit
     modifiche = {}
     valori_precedenti = {
@@ -117,19 +136,36 @@ def popola_header_da_anagrafica(id_testata: int, operatore: str = None) -> bool:
         'citta': ordine['citta'],
         'provincia': ordine['provincia'],
         'indirizzo': ordine['indirizzo'],
+        'deposito_riferimento': ordine['deposito_riferimento'],
         'fonte_anagrafica': ordine['fonte_anagrafica'] if 'fonte_anagrafica' in ordine.keys() else None
     }
 
     # v11.3: Verifica caratteri corrotti - usa valore anagrafica solo se pulito
     # MIN_ID viene sempre preso dall'anagrafica (è l'obiettivo principale del lookup)
-    # Gli altri campi vengono presi dall'anagrafica solo se non corrotti
+    # Gli altri campi vengono presi dall'anagrafica SOLO SE VUOTI nell'ordine
+    # Ragione sociale: NON viene mai sovrascritta (caso subentro)
     nuovi_valori = {
-        'codice_ministeriale_estratto': farm_data['min_id'] or '',  # MIN_ID sempre dall'anagrafica
-        'cap': farm_data['cap'] or '' if not _has_corrupted_chars(farm_data.get('cap') or '') else '',
-        'citta': farm_data['citta'] or '' if not _has_corrupted_chars(farm_data.get('citta') or '') else '',
-        'provincia': farm_data['provincia'] or '' if not _has_corrupted_chars(farm_data.get('provincia') or '') else '',
-        'indirizzo': farm_data['indirizzo'] or '' if not _has_corrupted_chars(farm_data.get('indirizzo') or '') else ''
+        'codice_ministeriale_estratto': min_id,  # MIN_ID sempre dall'anagrafica
+        'deposito_riferimento': deposito_riferimento or '',  # Da anagrafica_clienti
     }
+
+    # Popola campi SOLO se vuoti nell'ordine (non sovrascrivere dati estratti)
+    if not ordine['cap'] and farm_data.get('cap') and not _has_corrupted_chars(farm_data.get('cap') or ''):
+        nuovi_valori['cap'] = farm_data['cap']
+    if not ordine['citta'] and farm_data.get('citta') and not _has_corrupted_chars(farm_data.get('citta') or ''):
+        nuovi_valori['citta'] = farm_data['citta']
+    if not ordine['provincia'] and farm_data.get('provincia') and not _has_corrupted_chars(farm_data.get('provincia') or ''):
+        nuovi_valori['provincia'] = farm_data['provincia']
+    if not ordine['indirizzo'] and farm_data.get('indirizzo') and not _has_corrupted_chars(farm_data.get('indirizzo') or ''):
+        nuovi_valori['indirizzo'] = farm_data['indirizzo']
+
+    # v11.3: Ragione sociale - popola SOLO se vuota nell'ordine
+    # Se già estratta, la manteniamo (potrebbe essere subentro con nuova denominazione)
+    ragione_sociale_da_usare = None
+    if not ordine['ragione_sociale_1'] and not ordine['ragione_sociale_1_estratta']:
+        if farm_data.get('ragione_sociale') and not _has_corrupted_chars(farm_data.get('ragione_sociale') or ''):
+            ragione_sociale_da_usare = farm_data['ragione_sociale']
+            nuovi_valori['ragione_sociale_1'] = ragione_sociale_da_usare
 
     # Identifica campi modificati
     for campo, nuovo_val in nuovi_valori.items():
@@ -137,6 +173,7 @@ def popola_header_da_anagrafica(id_testata: int, operatore: str = None) -> bool:
             modifiche[campo] = (valori_precedenti.get(campo), nuovo_val)
 
     # Aggiorna header ordine con dati anagrafica
+    # v11.3: Usa COALESCE per non sovrascrivere valori esistenti
     db.execute("""
         UPDATE ordini_testata
         SET codice_ministeriale_estratto = COALESCE(NULLIF(%s, ''), codice_ministeriale_estratto),
@@ -144,16 +181,20 @@ def popola_header_da_anagrafica(id_testata: int, operatore: str = None) -> bool:
             citta = COALESCE(NULLIF(%s, ''), citta),
             provincia = COALESCE(NULLIF(%s, ''), provincia),
             indirizzo = COALESCE(NULLIF(%s, ''), indirizzo),
+            ragione_sociale_1 = COALESCE(NULLIF(%s, ''), ragione_sociale_1),
+            deposito_riferimento = COALESCE(NULLIF(%s, ''), deposito_riferimento),
             fonte_anagrafica = %s,
             data_modifica_anagrafica = CURRENT_TIMESTAMP,
             operatore_modifica_anagrafica = %s
         WHERE id_testata = %s
     """, (
-        farm_data['min_id'] or '',
-        farm_data['cap'] or '',
-        farm_data['citta'] or '',
-        farm_data['provincia'] or '',
-        farm_data['indirizzo'] or '',
+        min_id,
+        nuovi_valori.get('cap', ''),
+        nuovi_valori.get('citta', ''),
+        nuovi_valori.get('provincia', ''),
+        nuovi_valori.get('indirizzo', ''),
+        ragione_sociale_da_usare or '',
+        deposito_riferimento or '',
         fonte_anagrafica,
         operatore,
         id_testata

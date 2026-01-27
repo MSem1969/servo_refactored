@@ -118,28 +118,84 @@ def extract_opella(text: str, lines: List[str], pdf_path: str = None) -> List[Di
                         break
 
                 if dest_y:
-                    # Estrai le righe successive solo dalla colonna destra
+                    # Estrai le righe successive solo dalla colonna destra fino a "IT"
                     dest_data = []
                     for y_key in sorted(rows_by_y.keys()):
-                        if y_key > dest_y and len(dest_data) < 6:
+                        if y_key > dest_y:
                             right_words = [w for w in rows_by_y[y_key] if w['x0'] >= X_THRESHOLD]
                             if right_words:
                                 right_words = sorted(right_words, key=lambda w: w['x0'])
-                                line_text = ' '.join([w['text'] for w in right_words])
-                                dest_data.append(line_text)
+                                line_text = ' '.join([w['text'] for w in right_words]).strip()
+                                if line_text:
+                                    dest_data.append(line_text)
+                                    # Termina quando troviamo "IT" da solo
+                                    if line_text.strip() == 'IT':
+                                        break
 
-                    # Parse dest_data
-                    if len(dest_data) >= 2:
-                        data['ragione_sociale'] = dest_data[1].strip()[:50]
-                    if len(dest_data) >= 3:
-                        data['indirizzo'] = dest_data[2].strip()[:50]
-                    if len(dest_data) >= 5:
-                        # CAP CITTA PROV
-                        m = re.match(r'(\d{5})\s+(.+?)\s+([A-Z]{2})$', dest_data[4].strip())
-                        if m:
-                            data['cap'] = m.group(1)
-                            data['citta'] = m.group(2).strip()[:50]
-                            data['provincia'] = m.group(3)
+                    # v11.3: Analisi semantica del blocco destinatario
+                    # Pattern per identificare tipo di riga
+                    INDIRIZZO_PATTERN = r'^(VIA|V\.|CORSO|C\.SO|PIAZZA|P\.ZZA|PIAZZALE|P\.LE|VIALE|V\.LE|LARGO|VICOLO|CONTRADA|LOC\.|LOCALITA|FRAZIONE|FRAZ\.|STRADA|S\.DA|VIA\s|C/O)\s'
+                    CAP_CITTA_PATTERN = r'^(\d{5})\s+(.+)'
+                    PROVINCIA_PATTERN = r'^([A-Z]{2})$'
+
+                    ragione_sociale_parts = []
+                    indirizzo = None
+                    cap = None
+                    citta = None
+                    provincia = None
+
+                    for i, line in enumerate(dest_data):
+                        line_upper = line.upper().strip()
+
+                        # Salta "DESTINATARIO" o simili
+                        if 'DESTINATARIO' in line_upper:
+                            continue
+
+                        # Fine blocco con "IT"
+                        if line_upper == 'IT':
+                            # Provincia potrebbe essere nella riga precedente se non già trovata
+                            break
+
+                        # Pattern provincia (2 lettere da sole, es. "NA", "RM")
+                        if re.match(PROVINCIA_PATTERN, line_upper) and len(line_upper) == 2:
+                            provincia = line_upper
+                            continue
+
+                        # Pattern CAP + Città (es. "80100 NAPOLI")
+                        m_cap = re.match(CAP_CITTA_PATTERN, line)
+                        if m_cap:
+                            cap = m_cap.group(1)
+                            resto = m_cap.group(2).strip()
+                            # Controlla se c'è provincia alla fine (es. "NAPOLI NA")
+                            m_prov = re.match(r'(.+?)\s+([A-Z]{2})$', resto)
+                            if m_prov:
+                                citta = m_prov.group(1).strip()
+                                provincia = m_prov.group(2)
+                            else:
+                                citta = resto
+                            continue
+
+                        # Pattern indirizzo (Via, Corso, etc.)
+                        if re.match(INDIRIZZO_PATTERN, line_upper):
+                            indirizzo = line
+                            continue
+
+                        # Altrimenti è parte della ragione sociale
+                        # (solo se non abbiamo ancora trovato indirizzo/cap)
+                        if not indirizzo and not cap:
+                            ragione_sociale_parts.append(line)
+
+                    # Componi ragione sociale
+                    if ragione_sociale_parts:
+                        data['ragione_sociale'] = ' '.join(ragione_sociale_parts).strip()[:100]
+                    if indirizzo:
+                        data['indirizzo'] = indirizzo.strip()[:50]
+                    if cap:
+                        data['cap'] = cap
+                    if citta:
+                        data['citta'] = citta.strip()[:50]
+                    if provincia:
+                        data['provincia'] = provincia
 
                 # === TABELLA PRODOTTI ===
                 tables = page.extract_tables()
@@ -207,24 +263,76 @@ def _extract_opella_text_fallback(text: str, lines: List[str]) -> List[Dict]:
     if m:
         data['data_consegna'] = parse_date(m.group(1))
 
-    # Estrazione destinatario da testo (meno precisa)
+    # Estrazione destinatario da testo con analisi semantica
+    INDIRIZZO_PATTERN = r'^(VIA|V\.|CORSO|C\.SO|PIAZZA|P\.ZZA|PIAZZALE|P\.LE|VIALE|V\.LE|LARGO|VICOLO|CONTRADA|LOC\.|LOCALITA|FRAZIONE|FRAZ\.|STRADA|S\.DA|VIA\s|C/O)\s'
+    CAP_CITTA_PATTERN = r'^(\d{5})\s+(.+)'
+    PROVINCIA_PATTERN = r'^([A-Z]{2})$'
+
     for i, line in enumerate(lines):
-        if 'DESTINATARIO DELLA MERCE' in line:
-            for j in range(i+1, min(i+6, len(lines))):
-                if 'FARMACIA' in lines[j] or 'F.CIA' in lines[j]:
-                    parts = re.split(r'\s{3,}', lines[j])
-                    if len(parts) >= 2:
-                        data['ragione_sociale'] = parts[-1].strip()[:50]
+        if 'DESTINATARIO' in line.upper():
+            ragione_sociale_parts = []
+            indirizzo = None
+            cap = None
+            citta = None
+            provincia = None
+
+            # Analizza righe successive fino a "IT" o max 10 righe
+            for j in range(i+1, min(i+12, len(lines))):
+                current_line = lines[j].strip()
+                if not current_line:
+                    continue
+
+                # Estrai parte destra se c'è separazione con spazi multipli
+                parts = re.split(r'\s{3,}', current_line)
+                if len(parts) >= 2:
+                    current_line = parts[-1].strip()
+
+                line_upper = current_line.upper()
+
+                # Fine blocco
+                if line_upper == 'IT':
+                    break
+
+                # Provincia
+                if re.match(PROVINCIA_PATTERN, line_upper) and len(line_upper) == 2:
+                    provincia = line_upper
+                    continue
+
+                # CAP + Città
+                m_cap = re.match(CAP_CITTA_PATTERN, current_line)
+                if m_cap:
+                    cap = m_cap.group(1)
+                    resto = m_cap.group(2).strip()
+                    m_prov = re.match(r'(.+?)\s+([A-Z]{2})$', resto)
+                    if m_prov:
+                        citta = m_prov.group(1).strip()
+                        provincia = m_prov.group(2)
                     else:
-                        data['ragione_sociale'] = lines[j].strip()[:50]
-                    break
-            for j in range(i+1, min(i+8, len(lines))):
-                m = re.search(r'(\d{5})\s+([A-Z\']+)\s+([A-Z]{2})\s*$', lines[j])
-                if m:
-                    data['cap'] = m.group(1)
-                    data['citta'] = m.group(2)
-                    data['provincia'] = m.group(3)
-                    break
+                        citta = resto
+                    continue
+
+                # Indirizzo
+                if re.match(INDIRIZZO_PATTERN, line_upper):
+                    indirizzo = current_line
+                    continue
+
+                # Ragione sociale (se non abbiamo ancora trovato indirizzo/cap)
+                if not indirizzo and not cap:
+                    if 'FARMACIA' in line_upper or 'F.CIA' in line_upper or \
+                       'SNC' in line_upper or 'SRL' in line_upper or 'SAS' in line_upper or \
+                       'DR.' in line_upper or 'DOTT.' in line_upper or current_line:
+                        ragione_sociale_parts.append(current_line)
+
+            if ragione_sociale_parts:
+                data['ragione_sociale'] = ' '.join(ragione_sociale_parts).strip()[:100]
+            if indirizzo:
+                data['indirizzo'] = indirizzo[:50]
+            if cap:
+                data['cap'] = cap
+            if citta:
+                data['citta'] = citta[:50]
+            if provincia:
+                data['provincia'] = provincia
             break
 
     # Estrazione righe prodotto
