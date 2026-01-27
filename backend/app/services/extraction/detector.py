@@ -59,6 +59,16 @@ def detect_vendor(text: str, filename: str = "") -> Tuple[str, float]:
     if "TRANSFER ORDER" in t and ("DUREX" in t or "NUROFEN" in t or "BENAGOL" in t or "GAVISCON" in t):
         return "RECKITT", 0.85
 
+    # VIATRIS v11.3 - Transfer Order
+    # Pattern distintivi: "ACCESS LEADERSHIP PARTNERSHIP", ordini OR#####, TRACC.F#####
+    if "VIATRIS" in t:
+        return "VIATRIS", 0.95
+    if "ACCESS LEADERSHIP PARTNERSHIP" in t:
+        return "VIATRIS", 0.95
+    # Pattern combinato: OR + TRACC.F (tracking farmacia)
+    if re.search(r'\bOR\d{7,}', t) and "TRACC.F" in t:
+        return "VIATRIS", 0.90
+
     # OPELLA
     if "INFORMAZIONI SULL'ORDINE" in t or "OPELLA" in t:
         return "OPELLA", 0.95
@@ -176,6 +186,7 @@ SUPPORTED_VENDORS = [
     'MENARINI',
     'OPELLA',
     'RECKITT',
+    'VIATRIS',
 ]
 
 def get_supported_vendors() -> list:

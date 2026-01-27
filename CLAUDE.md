@@ -167,7 +167,7 @@ HAL_FARVI 271952954                      10905              00407890672     PATR
 | **LKP-A02** | LOOKUP | Farmacia non trovata |
 | **LKP-A04** | LOOKUP | P.IVA mismatch (subentro) |
 | **LKP-A05** | LOOKUP | Cliente non in anagrafica_clienti |
-| **EXT-A01** | ESTRAZIONE | Vendor non riconosciuto |
+| **EXT-A01** | ESTRAZIONE | Vendor non riconosciuto → **apre ticket CRM automatico** |
 
 ### ORDINARIE (Non Bloccanti)
 
@@ -198,9 +198,21 @@ HAL_FARVI 271952954                      10905              00407890672     PATR
 | **MENARINI** | Attivo | Espositore `--`, chiusura su somma netto |
 | **DOC_GENERICI** | Attivo | Transfer Order, NO prezzi |
 | **CHIESI** | In attesa | Escludere P.IVA 02944970348 |
-| **OPELLA** | In attesa | AIC 7-9 cifre |
+| **OPELLA** | Attivo | AIC 7-9 cifre, padding a 9 cifre |
+| **VIATRIS** | Attivo | Transfer Order, OR+numero, TRACC.F+MIN_ID |
 
 **Detection:** Solo contenuto PDF (nome file ignorato)
+
+### Vendor Non Riconosciuto (v11.3)
+
+Quando un PDF non viene riconosciuto (vendor UNKNOWN):
+1. Viene creata anomalia **EXT-A01** (bloccante)
+2. Viene aperto **ticket CRM automatico**:
+   - Oggetto: "ANALISI NUOVO DOCUMENTO"
+   - Categoria: assistenza
+   - Priorità: alta
+   - PDF allegato
+3. L'ordine viene comunque elaborato con estrattore generico
 
 ---
 

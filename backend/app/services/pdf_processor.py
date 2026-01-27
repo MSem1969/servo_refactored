@@ -77,6 +77,94 @@ from .supervisione import (
 )
 from .espositore import CODICI_ANOMALIA, LOOKUP_SCORE_GRAVE, LOOKUP_SCORE_ORDINARIA
 from .listini import arricchisci_ordine_con_listino
+from .crm.tickets.commands import create_ticket
+from .crm.attachments import save_attachment
+
+
+# =============================================================================
+# v11.3: TICKET AUTOMATICO PER VENDOR NON RICONOSCIUTO
+# =============================================================================
+
+SYSTEM_USER_ID = 1  # Admin user per ticket automatici
+
+
+def _crea_ticket_vendor_sconosciuto(
+    db,
+    filename: str,
+    file_content: bytes,
+    id_acquisizione: int,
+    confidence: float
+) -> Optional[int]:
+    """
+    Crea automaticamente un ticket CRM quando un documento non viene riconosciuto.
+
+    v11.3: Apre ticket di assistenza tecnica per analisi nuovo documento.
+
+    Args:
+        db: Connessione database
+        filename: Nome file originale
+        file_content: Contenuto binario del PDF
+        id_acquisizione: ID acquisizione collegata
+        confidence: Confidence score del detection
+
+    Returns:
+        ID ticket creato o None se errore
+    """
+    try:
+        # Crea ticket
+        ticket_data = {
+            'categoria': 'assistenza',
+            'oggetto': 'ANALISI NUOVO DOCUMENTO',
+            'contenuto': f"""RICHIESTA AUTOMATICA - VENDOR NON RICONOSCIUTO
+
+Il sistema ha ricevuto un documento PDF che non è stato possibile classificare.
+
+**Dettagli:**
+- File: {filename}
+- ID Acquisizione: {id_acquisizione}
+- Confidence detection: {confidence:.1%}
+- Data/Ora: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
+
+**Azione richiesta:**
+Analizzare il documento allegato per determinare se:
+1. È un nuovo vendor da implementare
+2. È un formato variante di un vendor esistente
+3. È un documento non gestibile dal sistema
+
+Il documento originale è allegato a questo ticket.""",
+            'priorita': 'alta',
+            'pagina_origine': 'upload',
+            'pagina_dettaglio': f'Acquisizione #{id_acquisizione}'
+        }
+
+        result = create_ticket(db, ticket_data, SYSTEM_USER_ID)
+
+        if not result.get('success'):
+            print(f"⚠️ Errore creazione ticket vendor sconosciuto: {result.get('error')}")
+            return None
+
+        ticket_id = result['id_ticket']
+
+        # Allega il PDF al ticket
+        attach_result = save_attachment(
+            db,
+            ticket_id,
+            file_content,
+            filename,
+            'application/pdf',
+            SYSTEM_USER_ID
+        )
+
+        if not attach_result.get('success'):
+            print(f"⚠️ Errore allegato ticket: {attach_result.get('error')}")
+            # Ticket creato ma senza allegato - non è critico
+
+        print(f"✅ Ticket #{ticket_id} creato per documento non riconosciuto: {filename}")
+        return ticket_id
+
+    except Exception as e:
+        print(f"⚠️ Errore creazione ticket vendor sconosciuto: {e}")
+        return None
 
 
 # =============================================================================
@@ -194,9 +282,13 @@ def process_pdf(
 
         # v6.2: Vendor UNKNOWN non blocca più l'elaborazione
         # L'ordine viene inserito con anomalia bloccante EXT-A01
+        # v11.3: Crea anche ticket CRM automatico per analisi
         is_vendor_unknown = vendor == "UNKNOWN"
         if is_vendor_unknown:
             result['anomalie'].append(f'Vendor non riconosciuto - estrattore generico (confidence: {confidence})')
+            # v11.3: Crea ticket CRM per assistenza tecnica
+            # Nota: la creazione del ticket avviene PRIMA dell'inserimento acquisizione
+            # per garantire che il PDF venga allegato anche se l'elaborazione fallisce
         
         # =====================================================================
         # 4. OTTIENI/CREA VENDOR ID
@@ -239,7 +331,20 @@ def process_pdf(
         id_acquisizione = cursor.fetchone()[0]
         db.commit()
         result['id_acquisizione'] = id_acquisizione
-        
+
+        # =====================================================================
+        # 5.5 v11.3: TICKET AUTOMATICO PER VENDOR SCONOSCIUTO
+        # =====================================================================
+        if is_vendor_unknown:
+            ticket_id = _crea_ticket_vendor_sconosciuto(
+                db, filename, file_content, id_acquisizione, confidence
+            )
+            if ticket_id:
+                result['ticket_assistenza'] = ticket_id
+                result['anomalie'].append(
+                    f'Ticket assistenza #{ticket_id} creato per analisi documento'
+                )
+
         # =====================================================================
         # 6. GESTIONE DUPLICATO PDF
         # =====================================================================
