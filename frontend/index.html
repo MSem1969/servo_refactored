@@ -16,6 +16,137 @@
     <meta property="og:type" content="website" />
 
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📋</text></svg>">
+
+    <!-- Structured Data JSON-LD -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "Organization",
+          "@id": "#organization",
+          "name": "INTESA scs a r.l. ONLUS",
+          "url": "https://servo.ai",
+          "logo": "https://servo.ai/logo.png",
+          "contactPoint": {
+            "@type": "ContactPoint",
+            "telephone": "+39-380-720-7004",
+            "contactType": "sales",
+            "availableLanguage": ["Italian", "English"],
+            "areaServed": ["IT", "EU"]
+          },
+          "sameAs": []
+        },
+        {
+          "@type": "SoftwareApplication",
+          "name": "SERV.O ai",
+          "alternateName": "Service Operations AI",
+          "applicationCategory": "BusinessApplication",
+          "operatingSystem": "Web Browser",
+          "offers": {
+            "@type": "Offer",
+            "price": "0",
+            "priceCurrency": "EUR",
+            "availability": "https://schema.org/ContactForPrice"
+          },
+          "provider": {
+            "@id": "#organization"
+          },
+          "description": "SERV.O ai trasforma flussi informativi analogici in digitali per la supply chain farmaceutica. Estrazione automatica ordini da PDF, generazione tracciati EDI ministeriali, gestione anomalie con supervisione ML, sincronizzazione anagrafica farmacie dal Ministero della Salute.",
+          "featureList": [
+            "Estrazione automatica ordini da PDF multi-vendor",
+            "Generazione tracciati EDI TO_T/TO_D",
+            "Machine Learning per risoluzione anomalie",
+            "Sincronizzazione anagrafica Ministero Salute",
+            "Dashboard real-time gestione ordini",
+            "Sistema ticketing integrato"
+          ],
+          "screenshot": "https://servo.ai/screenshot.png",
+          "softwareVersion": "11.3"
+        },
+        {
+          "@type": "Service",
+          "@id": "#service",
+          "name": "Digitalizzazione Supply Chain Farmaceutica",
+          "description": "Servizio di orchestrazione e digitalizzazione dei flussi informativi per la distribuzione farmaceutica. Conversione automatica documenti analogici (PDF ordini) in formati digitali standardizzati (tracciati EDI ministeriali). Integrazione con grossisti, farmacie e parafarmacie.",
+          "provider": {
+            "@id": "#organization"
+          },
+          "areaServed": {
+            "@type": "Country",
+            "name": "Italy"
+          },
+          "serviceType": "Digital Transformation",
+          "audience": {
+            "@type": "Audience",
+            "audienceType": "Distributori farmaceutici, Grossisti, Cooperative farmaceutiche"
+          }
+        },
+        {
+          "@type": "WebApplication",
+          "name": "SERV.O ai",
+          "url": "https://servo.ai",
+          "browserRequirements": "Requires JavaScript. Requires HTML5.",
+          "applicationCategory": "Healthcare Supply Chain Management",
+          "inLanguage": ["it", "en"],
+          "isAccessibleForFree": false,
+          "creator": {
+            "@id": "#organization"
+          },
+          "keywords": "supply chain farmaceutica, digitalizzazione ordini, EDI farmaceutico, gestione ordini farmacie, tracciati ministeriali, AI healthcare, pharmaceutical logistics, order management"
+        },
+        {
+          "@type": "ContactPage",
+          "name": "Richiedi Demo SERV.O ai",
+          "description": "Contattaci per una demo gratuita e scopri come SERV.O ai può ottimizzare la tua supply chain farmaceutica",
+          "mainEntity": {
+            "@type": "ContactPoint",
+            "telephone": "+39-380-720-7004",
+            "contactType": "customer service",
+            "availableLanguage": ["Italian", "English"],
+            "contactOption": "TollFree"
+          }
+        },
+        {
+          "@type": "FAQPage",
+          "mainEntity": [
+            {
+              "@type": "Question",
+              "name": "Cos'è SERV.O ai?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "SERV.O ai è una piattaforma AI-powered per la digitalizzazione della supply chain farmaceutica. Automatizza l'estrazione di ordini da documenti PDF e genera tracciati EDI conformi alle specifiche ministeriali italiane."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "What is SERV.O ai?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "SERV.O ai is an AI-powered platform for pharmaceutical supply chain digitalization. It automates order extraction from PDF documents and generates EDI files compliant with Italian ministerial specifications."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Quali vendor sono supportati?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "SERV.O ai supporta i principali vendor farmaceutici: Angelini, Bayer, Chiesi, Codifi, Cooper, Doc Generici, Menarini, Opella, Reckitt, Viatris. Nuovi vendor vengono aggiunti continuamente."
+              }
+            },
+            {
+              "@type": "Question",
+              "name": "Come richiedere una demo?",
+              "acceptedAnswer": {
+                "@type": "Answer",
+                "text": "Per richiedere una demo gratuita di SERV.O ai, contattare il numero +39 380 720 7004. Il nostro team risponde in italiano e inglese."
+              }
+            }
+          ]
+        }
+      ]
+    }
+    </script>
   </head>
   <body>
     <div id="root"></div>
