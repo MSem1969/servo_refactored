@@ -955,7 +955,9 @@ async def risolvi_anomalia_deposito(
 
     L'operatore può:
     1. Selezionare un cliente esistente dal dropdown (opzionale)
-    2. Assegnare manualmente il codice deposito (CT o CL)
+    2. Assegnare manualmente il codice deposito (qualsiasi codice valido)
+
+    **Nota:** Solo i depositi CT e CL sono abilitati per la generazione tracciati.
 
     ## Effetti
 
@@ -971,23 +973,19 @@ async def risolvi_anomalia_deposito(
         "deposito_riferimento": "CT",
         "id_cliente": 123,
         "operatore": "mario.rossi",
-        "note": "Deposito Catania assegnato manualmente"
+        "note": "Deposito assegnato manualmente"
     }
     ```
+
+    **Depositi abilitati per tracciati:** CT, CL
     """
     from ..database_pg import get_db
 
     if not request.deposito_riferimento or not request.deposito_riferimento.strip():
         raise HTTPException(status_code=400, detail="Codice deposito obbligatorio")
 
-    # v11.3: Valida che deposito sia CT o CL
-    DEPOSITI_VALIDI = ('CT', 'CL')
+    # v11.3: Normalizza deposito in uppercase
     deposito_input = request.deposito_riferimento.strip().upper()
-    if deposito_input not in DEPOSITI_VALIDI:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Deposito '{request.deposito_riferimento}' non valido. Valori ammessi: {', '.join(DEPOSITI_VALIDI)}"
-        )
 
     db = get_db()
 
