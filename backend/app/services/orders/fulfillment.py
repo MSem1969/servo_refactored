@@ -263,9 +263,10 @@ def conferma_ordine_completo(
                 confermato_da = ?,
                 data_conferma = ?,
                 note_supervisione = COALESCE(note_supervisione || ' | ', '') || ?,
-                q_residua = ?
+                q_residua = ?,
+                q_da_evadere = ?
             WHERE id_dettaglio = ?
-        """, (operatore, now, note or 'Conferma batch', q_da_esportare, riga['id_dettaglio']))
+        """, (operatore, now, note or 'Conferma batch', q_da_esportare, q_da_esportare, riga['id_dettaglio']))
         confermate += 1
 
     _aggiorna_contatori_ordine(id_testata)
