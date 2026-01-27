@@ -474,15 +474,22 @@ def sync_farmacie(
                 else:
                     result.invariate += 1
             else:
-                db.execute("""
+                # Usa ON CONFLICT per evitare che errori singoli rompano la transazione
+                cursor = db.execute("""
                     INSERT INTO anagrafica_farmacie
                     (min_id, partita_iva, ragione_sociale, indirizzo, cap, citta,
                      provincia, regione, codice_farmacia_asl, data_inizio_validita,
                      attiva, fonte_dati, data_import)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE, %s, CURRENT_TIMESTAMP)
+                    ON CONFLICT (min_id) DO NOTHING
                 """, (min_id, piva, ragione_sociale, indirizzo, cap, citta,
                       provincia, regione, cod_farmacia_asl, data_inizio, fonte))
-                result.nuove += 1
+                # rowcount = 1 se inserito, 0 se conflitto (record già esistente)
+                if cursor.rowcount > 0:
+                    result.nuove += 1
+                else:
+                    # Record esiste già nel DB ma non era in existing (inconsistenza)
+                    result.errori += 1
 
         except Exception as e:
             result.errori += 1
@@ -663,16 +670,23 @@ def sync_parafarmacie(
                 else:
                     result.invariate += 1
             else:
-                db.execute("""
+                # Usa ON CONFLICT per evitare che errori singoli rompano la transazione
+                cursor = db.execute("""
                     INSERT INTO anagrafica_parafarmacie
                     (codice_sito, partita_iva, sito_logistico, indirizzo, cap, citta,
                      provincia, regione, codice_comune, codice_provincia, codice_regione,
                      data_inizio_validita, latitudine, longitudine, attiva, fonte_dati, data_import)
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, TRUE, %s, CURRENT_TIMESTAMP)
+                    ON CONFLICT (codice_sito) DO NOTHING
                 """, (codice_sito, piva, sito_logistico, indirizzo, cap, citta, provincia,
                       regione, codice_comune, codice_provincia, codice_regione, data_inizio,
                       latitudine, longitudine, fonte))
-                result.nuove += 1
+                # rowcount = 1 se inserito, 0 se conflitto (record già esistente)
+                if cursor.rowcount > 0:
+                    result.nuove += 1
+                else:
+                    # Record esiste già nel DB ma non era in existing (inconsistenza)
+                    result.errori += 1
 
         except Exception as e:
             result.errori += 1

@@ -83,6 +83,7 @@ def _format_sync_email(result: SyncAllResult) -> tuple:
     # Tabella Farmacie
     if result.farmacie:
         f = result.farmacie
+        download_status = "Scaricato" if f.downloaded else "Non modificato (304)"
         body += f"""
         <h3>Farmacie</h3>
         <table>
@@ -95,15 +96,18 @@ def _format_sync_email(result: SyncAllResult) -> tuple:
             <tr><td>Subentri (cambio P.IVA)</td><td class="{'warning highlight' if f.subentri > 0 else ''}">{f.subentri}</td></tr>
             <tr><td>Chiuse</td><td class="{'warning highlight' if f.chiuse > 0 else ''}">{f.chiuse}</td></tr>
             <tr><td>Invariate</td><td>{f.invariate}</td></tr>
+            <tr><td>Errori</td><td class="{'error' if f.errori > 0 else ''}">{f.errori}</td></tr>
+            <tr><td>Totale JSON</td><td>{f.totale_json}</td></tr>
             <tr><td>Totale DB</td><td><strong>{f.totale_db}</strong></td></tr>
             <tr><td>Durata</td><td>{f.durata_secondi:.1f} sec</td></tr>
         </table>
-        <p><small>Fonte: {f.url or 'N/A'}</small></p>
+        <p><small>Fonte: {f.url or 'N/A'} ({download_status})</small></p>
         """
 
     # Tabella Parafarmacie
     if result.parafarmacie:
         p = result.parafarmacie
+        download_status = "Scaricato" if p.downloaded else "Non modificato (304)"
         body += f"""
         <h3>Parafarmacie</h3>
         <table>
@@ -116,10 +120,12 @@ def _format_sync_email(result: SyncAllResult) -> tuple:
             <tr><td>Subentri (cambio P.IVA)</td><td class="{'warning highlight' if p.subentri > 0 else ''}">{p.subentri}</td></tr>
             <tr><td>Chiuse</td><td class="{'warning highlight' if p.chiuse > 0 else ''}">{p.chiuse}</td></tr>
             <tr><td>Invariate</td><td>{p.invariate}</td></tr>
+            <tr><td>Errori</td><td class="{'error' if p.errori > 0 else ''}">{p.errori}</td></tr>
+            <tr><td>Totale JSON</td><td>{p.totale_json}</td></tr>
             <tr><td>Totale DB</td><td><strong>{p.totale_db}</strong></td></tr>
             <tr><td>Durata</td><td>{p.durata_secondi:.1f} sec</td></tr>
         </table>
-        <p><small>Fonte: {p.url or 'N/A'}</small></p>
+        <p><small>Fonte: {p.url or 'N/A'} ({download_status})</small></p>
         """
 
     # Note su subentri
@@ -128,6 +134,16 @@ def _format_sync_email(result: SyncAllResult) -> tuple:
         <div style="background-color: #fef3c7; padding: 15px; border-radius: 5px; margin: 15px 0;">
             <strong>Attenzione:</strong> Rilevati {result.farmacie.subentri} subentri (cambi P.IVA).
             Verificare eventuali anomalie LKP-A04 sugli ordini in corso.
+        </div>
+        """
+
+    # Avviso errori
+    total_errors = (result.farmacie.errori if result.farmacie else 0) + (result.parafarmacie.errori if result.parafarmacie else 0)
+    if total_errors > 0:
+        body += f"""
+        <div style="background-color: #fee2e2; padding: 15px; border-radius: 5px; margin: 15px 0;">
+            <strong style="color: #dc2626;">Errori rilevati:</strong> {total_errors} record non processati.
+            Verificare i log per dettagli (possibili duplicati o constraint violation).
         </div>
         """
 
