@@ -180,6 +180,12 @@ def conferma_singola_riga(
 
     _aggiorna_contatori_ordine(id_testata)
     db.commit()
+
+    # Log operazione per tracking produttività
+    log_operation('CONFERMA_RIGA', 'ORDINI_DETTAGLIO', id_dettaglio,
+                 f"Riga confermata per tracciato. Ordine: {id_testata}",
+                 operatore=operatore)
+
     return {'success': True, 'q_residua': q_totale}
 
 
@@ -272,6 +278,12 @@ def conferma_ordine_completo(
     _aggiorna_contatori_ordine(id_testata)
     db.commit()
 
+    # Log operazione per tracking produttività (solo se righe confermate)
+    if confermate > 0:
+        log_operation('CONFERMA_ORDINE', 'ORDINI_TESTATA', id_testata,
+                     f"Confermate {confermate} righe",
+                     operatore=operatore)
+
     # v11.3: Combina bloccate (supervisione) e bloccate_data_consegna
     tutte_bloccate = bloccate + bloccate_data_consegna
 
@@ -354,7 +366,7 @@ def registra_evasione(
     _aggiorna_contatori_ordine(id_testata)
     db.commit()
 
-    log_operation('IMPOSTA_DA_EVADERE', 'ORDINI_DETTAGLIO', id_dettaglio,
+    log_operation('REGISTRA_EVASIONE', 'ORDINI_DETTAGLIO', id_dettaglio,
                  f"q_da_evadere={q_da_evadere}, stato={nuovo_stato}",
                  operatore=operatore)
 

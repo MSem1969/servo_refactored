@@ -106,6 +106,14 @@ const VendorBadge = ({
       name: 'Reckitt',
       acronym: 'REC',
       icon: '💗'
+    },
+    VIATRIS: {
+      bg: 'bg-cyan-100',
+      text: 'text-cyan-700',
+      border: 'border-cyan-200',
+      name: 'Viatris',
+      acronym: 'VIA',
+      icon: '💠'
     }
   };
   

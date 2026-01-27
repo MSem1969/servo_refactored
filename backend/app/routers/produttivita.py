@@ -154,11 +154,11 @@ def _get_contatori_operatore(db, id_operatore: int, data_rif: date) -> Dict[str,
     """
     Recupera contatori operazioni per un operatore in una data.
 
-    Operazioni tracciate:
+    v11.3: Operazioni tracciate:
     - ordini_validati: VALIDA_TRACCIATO (ordini validati con generazione tracciato)
     - righe_modificate: MODIFICA_RIGA
     - anomalie_verificate: APPROVA_SUPERVISIONE, RIFIUTA_SUPERVISIONE, MODIFICA_SUPERVISIONE
-    - righe_confermate: REGISTRA_EVASIONE
+    - righe_confermate: CONFERMA_RIGA, REGISTRA_EVASIONE
     - tracciati_generati: VALIDA_TRACCIATO
     """
     cursor = db.execute("""
@@ -166,7 +166,7 @@ def _get_contatori_operatore(db, id_operatore: int, data_rif: date) -> Dict[str,
             COUNT(CASE WHEN tipo_operazione = 'VALIDA_TRACCIATO' THEN 1 END) as ordini_validati,
             COUNT(CASE WHEN tipo_operazione = 'MODIFICA_RIGA' THEN 1 END) as righe_modificate,
             COUNT(CASE WHEN tipo_operazione IN ('APPROVA_SUPERVISIONE', 'RIFIUTA_SUPERVISIONE', 'MODIFICA_SUPERVISIONE') THEN 1 END) as anomalie_verificate,
-            COUNT(CASE WHEN tipo_operazione = 'REGISTRA_EVASIONE' THEN 1 END) as righe_confermate,
+            COUNT(CASE WHEN tipo_operazione IN ('CONFERMA_RIGA', 'REGISTRA_EVASIONE') THEN 1 END) as righe_confermate,
             COUNT(CASE WHEN tipo_operazione = 'VALIDA_TRACCIATO' THEN 1 END) as tracciati_generati
         FROM log_operazioni
         WHERE id_operatore = %s AND DATE(timestamp) = %s

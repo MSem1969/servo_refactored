@@ -151,6 +151,13 @@ def modifica_riga_dettaglio(
     """, params)
 
     db.commit()
+
+    # Log operazione per tracking produttività
+    campi_mod = list(modifiche.keys())
+    log_operation('MODIFICA_RIGA', 'ORDINI_DETTAGLIO', id_dettaglio,
+                 f"Modificati: {', '.join(campi_mod)}. Ordine: {id_testata}",
+                 operatore=operatore)
+
     return {'success': True}
 
 

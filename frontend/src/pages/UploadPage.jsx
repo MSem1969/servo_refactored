@@ -727,9 +727,9 @@ const UploadPage = () => {
           oppure clicca per selezionare
         </p>
 
-        {/* Vendor badges supportati - v11.2 + COOPER + RECKITT */}
+        {/* Vendor badges supportati - v11.3 + VIATRIS */}
         <div className="flex flex-wrap justify-center gap-2">
-          {["DOC_GENERICI", "CODIFI", "COOPER", "MENARINI", "OPELLA", "CHIESI", "ANGELINI", "BAYER", "RECKITT"].map(
+          {["DOC_GENERICI", "CODIFI", "COOPER", "MENARINI", "OPELLA", "CHIESI", "ANGELINI", "BAYER", "RECKITT", "VIATRIS"].map(
             (vendor) => (
               <VendorBadge key={vendor} vendor={vendor} size="xs" />
             )
