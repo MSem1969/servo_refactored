@@ -482,6 +482,17 @@ def get_dashboard_stats() -> Dict[str, Any]:
         ORDER BY giorno
     """).fetchall()
 
+    # v11.3: Stats giornaliere (oggi)
+    oggi_per_stato = {}
+    rows_oggi = db.execute("""
+        SELECT stato, COUNT(*) as count
+        FROM ORDINI_TESTATA
+        WHERE data_estrazione::date = CURRENT_DATE
+        GROUP BY stato
+    """).fetchall()
+    for row in rows_oggi:
+        oggi_per_stato[row['stato']] = row['count']
+
     return {
         'totali': {
             'ordini': db.execute("SELECT COUNT(*) FROM ORDINI_TESTATA").fetchone()[0],
@@ -492,6 +503,17 @@ def get_dashboard_stats() -> Dict[str, Any]:
             'pdf_elaborati': db.execute(
                 "SELECT COUNT(*) FROM ACQUISIZIONI WHERE stato = 'ELABORATO'"
             ).fetchone()[0],
+        },
+        # v11.3: Stats giornaliere
+        'oggi': {
+            'ordini': db.execute("SELECT COUNT(*) FROM ORDINI_TESTATA WHERE data_estrazione::date = CURRENT_DATE").fetchone()[0],
+            'anomalie_aperte': db.execute(
+                "SELECT COUNT(*) FROM ANOMALIE WHERE stato IN ('APERTA', 'IN_GESTIONE') AND data_creazione::date = CURRENT_DATE"
+            ).fetchone()[0],
+            'pdf_elaborati': db.execute(
+                "SELECT COUNT(*) FROM ACQUISIZIONI WHERE stato = 'ELABORATO' AND data_acquisizione::date = CURRENT_DATE"
+            ).fetchone()[0],
+            'per_stato': oggi_per_stato,
         },
         'ordini_per_stato': ordini_per_stato,
         'ordini_per_vendor': ordini_per_vendor,

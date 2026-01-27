@@ -58,6 +58,34 @@ export function useDatabasePage(currentUser, onOpenOrdine) {
   const [loadingAnomaliaDetail, setLoadingAnomaliaDetail] = useState(false);
 
   // =============================================================================
+  // LOAD STATS (v11.3: da backend, non calcolato localmente)
+  // =============================================================================
+
+  const loadStats = useCallback(async () => {
+    try {
+      const res = await ordiniApi.getStats();
+      if (res.success && res.data) {
+        // Usa stats totali dal backend
+        const totali = res.data.totali || {};
+        setStats({
+          ordini: totali.ordini || 0,
+          confermati: totali.confermato || 0,
+          parzEvaso: totali.parz_evaso || 0,
+          evaso: totali.evaso || 0,
+          archiviati: totali.archiviato || 0,
+          anomalie_aperte: totali.anomalie_aperte || 0
+        });
+      }
+    } catch (err) {
+      console.error('Errore caricamento stats:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadStats();
+  }, [loadStats]);
+
+  // =============================================================================
   // LOAD ORDINI
   // =============================================================================
 
@@ -75,15 +103,6 @@ export function useDatabasePage(currentUser, onOpenOrdine) {
       if (res.success) {
         const ordiniData = res.data || [];
         setOrdini(ordiniData);
-
-        setStats(prev => ({
-          ...prev,
-          ordini: ordiniData.length,
-          confermati: ordiniData.filter(o => o.stato === 'CONFERMATO').length,
-          parzEvaso: ordiniData.filter(o => o.stato === 'PARZ_EVASO').length,
-          evaso: ordiniData.filter(o => o.stato === 'EVASO').length,
-          archiviati: ordiniData.filter(o => o.stato === 'ARCHIVIATO').length
-        }));
       }
     } catch (err) {
       console.error('Errore caricamento ordini:', err);
@@ -97,23 +116,13 @@ export function useDatabasePage(currentUser, onOpenOrdine) {
   }, [loadOrdini]);
 
   // =============================================================================
-  // LOAD ANOMALIE COUNT
+  // LOAD ANOMALIE COUNT (legacy - now included in loadStats)
   // =============================================================================
 
   const loadAnomalieCount = useCallback(async () => {
-    try {
-      const res = await anomalieApi.getList({ stato: 'APERTA' });
-      if (res.success) {
-        setStats(prev => ({ ...prev, anomalie_aperte: (res.data || []).length }));
-      }
-    } catch (err) {
-      console.error('Errore caricamento conteggio anomalie:', err);
-    }
+    // v11.3: Anomalie count is now loaded via loadStats
+    // Keeping this for backward compatibility but it's a no-op
   }, []);
-
-  useEffect(() => {
-    loadAnomalieCount();
-  }, [loadAnomalieCount]);
 
   // =============================================================================
   // LOAD ANOMALIE LIST

@@ -14,6 +14,9 @@ export const ordiniApi = {
     return api.get(`/ordini?${params}`).then(r => r.data);
   },
 
+  // v11.3: Stats ordini (totali + oggi)
+  getStats: () => api.get('/ordini/stats').then(r => r.data),
+
   getDetail: (id) => api.get(`/ordini/${id}`).then(r => r.data),
   getRighe: (id) => api.get(`/ordini/${id}/righe`).then(r => r.data),
   getRigheAll: (id) => api.get(`/ordini/${id}/righe?include_children=true`).then(r => r.data),

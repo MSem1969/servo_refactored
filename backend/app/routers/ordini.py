@@ -187,6 +187,75 @@ async def lista_ordini(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.get("/stats")
+async def ordini_stats() -> Dict[str, Any]:
+    """
+    v11.3: Ritorna statistiche ordini per dashboard.
+
+    Include:
+    - totali: conteggi totali per stato
+    - oggi: conteggi giornalieri per stato
+    - anomalie_aperte: totale anomalie aperte
+    """
+    from ..database_pg import get_db
+    db = get_db()
+
+    # Stats totali per stato
+    totali_per_stato = {}
+    rows = db.execute("""
+        SELECT stato, COUNT(*) as count
+        FROM ORDINI_TESTATA
+        GROUP BY stato
+    """).fetchall()
+    for row in rows:
+        totali_per_stato[row['stato'] or 'NULL'] = row['count']
+
+    # Stats oggi per stato
+    oggi_per_stato = {}
+    rows_oggi = db.execute("""
+        SELECT stato, COUNT(*) as count
+        FROM ORDINI_TESTATA
+        WHERE data_estrazione::date = CURRENT_DATE
+        GROUP BY stato
+    """).fetchall()
+    for row in rows_oggi:
+        oggi_per_stato[row['stato'] or 'NULL'] = row['count']
+
+    # Anomalie aperte totali e oggi
+    anomalie_totali = db.execute(
+        "SELECT COUNT(*) FROM ANOMALIE WHERE stato IN ('APERTA', 'IN_GESTIONE')"
+    ).fetchone()[0]
+    anomalie_oggi = db.execute(
+        "SELECT COUNT(*) FROM ANOMALIE WHERE stato IN ('APERTA', 'IN_GESTIONE') AND data_creazione::date = CURRENT_DATE"
+    ).fetchone()[0]
+
+    return {
+        "success": True,
+        "data": {
+            "totali": {
+                "ordini": sum(totali_per_stato.values()),
+                "estratto": totali_per_stato.get('ESTRATTO', 0),
+                "confermato": totali_per_stato.get('CONFERMATO', 0),
+                "anomalia": totali_per_stato.get('ANOMALIA', 0),
+                "parz_evaso": totali_per_stato.get('PARZ_EVASO', 0),
+                "evaso": totali_per_stato.get('EVASO', 0),
+                "archiviato": totali_per_stato.get('ARCHIVIATO', 0),
+                "anomalie_aperte": anomalie_totali,
+            },
+            "oggi": {
+                "ordini": sum(oggi_per_stato.values()),
+                "estratto": oggi_per_stato.get('ESTRATTO', 0),
+                "confermato": oggi_per_stato.get('CONFERMATO', 0),
+                "anomalia": oggi_per_stato.get('ANOMALIA', 0),
+                "parz_evaso": oggi_per_stato.get('PARZ_EVASO', 0),
+                "evaso": oggi_per_stato.get('EVASO', 0),
+                "archiviato": oggi_per_stato.get('ARCHIVIATO', 0),
+                "anomalie_aperte": anomalie_oggi,
+            }
+        }
+    }
+
+
 @router.get("/stati")
 async def lista_stati() -> Dict[str, Any]:
     """
