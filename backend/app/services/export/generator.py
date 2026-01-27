@@ -75,6 +75,12 @@ def generate_tracciati_per_ordine(
         """, (id_testata,)).fetchone()
         ordine_dict['deposito_riferimento'] = deposito_row['deposito_riferimento'] if deposito_row else None
 
+        # v11.3: Verifica deposito_riferimento - solo CT e CL sono abilitati per tracciati
+        DEPOSITI_ABILITATI = ('CT', 'CL')
+        deposito = ordine_dict.get('deposito_riferimento')
+        if not deposito or deposito.upper() not in DEPOSITI_ABILITATI:
+            continue  # Skip ordini senza deposito valido
+
         # Verifica se ordine puo essere esportato (nessuna supervisione pending)
         if not può_emettere_tracciato(id_testata):
             continue
@@ -215,6 +221,20 @@ def valida_e_genera_tracciato(
         SELECT deposito_riferimento FROM ordini_testata WHERE id_testata = %s
     """, (id_testata,)).fetchone()
     ordine_dict['deposito_riferimento'] = deposito_row['deposito_riferimento'] if deposito_row else None
+
+    # v11.3: Verifica deposito_riferimento - solo CT e CL sono abilitati per tracciati
+    DEPOSITI_ABILITATI = ('CT', 'CL')
+    deposito = ordine_dict.get('deposito_riferimento')
+    if not deposito:
+        return {
+            'success': False,
+            'error': 'Deposito di riferimento non specificato. Impossibile generare tracciato.'
+        }
+    if deposito.upper() not in DEPOSITI_ABILITATI:
+        return {
+            'success': False,
+            'error': f'Deposito "{deposito}" non abilitato per generazione tracciati. Depositi validi: {", ".join(DEPOSITI_ABILITATI)}'
+        }
 
     # 1a. Verifica stato ordine - blocca generazione per stati non validi
     stato_ordine = ordine_dict.get('stato', 'ESTRATTO')
