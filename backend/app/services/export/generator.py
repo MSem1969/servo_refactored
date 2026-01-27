@@ -6,6 +6,7 @@
 
 import os
 import re
+import time
 from typing import Dict, Any, List
 from datetime import datetime
 
@@ -94,12 +95,24 @@ def generate_tracciati_per_ordine(
             ORDER BY d.n_riga
         """, (id_testata,)).fetchall()
 
-        # Sanitizza numero ordine per nome file
-        safe_num = re.sub(r'[^a-zA-Z0-9_-]', '_', str(numero_ordine))
-        filename_t = f"TO_T_{vendor}_{safe_num}.TXT"
-        filename_d = f"TO_D_{vendor}_{safe_num}.TXT"
+        # v11.3: Nome file con formato TO_T_AAMMGG_HHMMSS.txt
+        # Anti-collisione: se file esiste, aspetta 1 sec e rigenera
+        timestamp = datetime.now().strftime('%y%m%d_%H%M%S')
+        filename_t = f"TO_T_{timestamp}.txt"
+        filename_d = f"TO_D_{timestamp}.txt"
         path_t = os.path.join(output_dir, filename_t)
         path_d = os.path.join(output_dir, filename_d)
+
+        max_retries = 5
+        retry_count = 0
+        while (os.path.exists(path_t) or os.path.exists(path_d)) and retry_count < max_retries:
+            time.sleep(1)
+            timestamp = datetime.now().strftime('%y%m%d_%H%M%S')
+            filename_t = f"TO_T_{timestamp}.txt"
+            filename_d = f"TO_D_{timestamp}.txt"
+            path_t = os.path.join(output_dir, filename_t)
+            path_d = os.path.join(output_dir, filename_d)
+            retry_count += 1
 
         # Genera TO_T (una sola riga per questo ordine)
         line_t = generate_to_t_line(ordine_dict)
@@ -381,14 +394,27 @@ def valida_e_genera_tracciato(
     numero_ordine = ordine_dict['numero_ordine']
     vendor = ordine_dict['vendor']
 
-    # Nome file con timestamp per evitare sovrascritture
-    safe_num = re.sub(r'[^a-zA-Z0-9_-]', '_', str(numero_ordine))
-    filename_t = f"TO_T_{vendor}_{safe_num}_{timestamp}.TXT"
-    filename_d = f"TO_D_{vendor}_{safe_num}_{timestamp}.TXT"
-
+    # v11.3: Nome file con formato TO_T_AAMMGG_HHMMSS.txt
+    # Verifica collisione: se file esiste, aspetta 1 sec e rigenera timestamp
     os.makedirs(config.OUTPUT_DIR, exist_ok=True)
+
+    timestamp = datetime.now().strftime('%y%m%d_%H%M%S')
+    filename_t = f"TO_T_{timestamp}.txt"
+    filename_d = f"TO_D_{timestamp}.txt"
     path_t = os.path.join(config.OUTPUT_DIR, filename_t)
     path_d = os.path.join(config.OUTPUT_DIR, filename_d)
+
+    # Anti-collisione: se file esiste, aspetta e rigenera
+    max_retries = 5
+    retry_count = 0
+    while (os.path.exists(path_t) or os.path.exists(path_d)) and retry_count < max_retries:
+        time.sleep(1)
+        timestamp = datetime.now().strftime('%y%m%d_%H%M%S')
+        filename_t = f"TO_T_{timestamp}.txt"
+        filename_d = f"TO_D_{timestamp}.txt"
+        path_t = os.path.join(config.OUTPUT_DIR, filename_t)
+        path_d = os.path.join(config.OUTPUT_DIR, filename_d)
+        retry_count += 1
 
     # Genera TO_T (testata)
     line_t = generate_to_t_line(ordine_dict)
@@ -424,12 +450,13 @@ def valida_e_genera_tracciato(
             f.write('\r\n')
 
     # 5. Registra esportazione
+    # v11.3: nome_tracciato_generato usa timestamp (es: 260127_143052)
     cursor = db.execute("""
         INSERT INTO ESPORTAZIONI
         (nome_tracciato_generato, data_tracciato, nome_file_to_t, nome_file_to_d,
          num_testate, num_dettagli, stato)
         VALUES (?, date('now'), ?, ?, 1, ?, 'GENERATO')
-    """, (f"{vendor}_{safe_num}_{timestamp}", filename_t, filename_d, len(lines_d)))
+    """, (timestamp, filename_t, filename_d, len(lines_d)))
 
     id_esportazione = cursor.lastrowid
 
