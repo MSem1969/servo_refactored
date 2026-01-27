@@ -289,6 +289,33 @@ track_from_user(current_user, Sezione.DATABASE, Azione.CONFIRM,
 
 ---
 
+## Debug e Fix (METODOLOGIA)
+
+**Approccio retroattivo:** In fase di debug e fix, verificare SEMPRE prioritariamente gli impatti dei commit precedenti rispetto a una fase in cui il sistema funzionava.
+
+### Domande chiave all'utente
+
+1. **"Prima funzionava?"** - Stabilire se è una regressione o un bug preesistente
+2. **"Da quando non funziona?"** - Identificare il timeframe per correlare con i commit
+
+### Processo di debug
+
+1. **Analisi retroattiva dei commit** (`git log`, `git show`, `git diff`)
+   - Confrontare il codice attuale con la versione funzionante
+   - Verificare ogni modifica nel file/funzione coinvolta
+   - Attenzione a "fix" che introducono nuovi bug (es. fix per problema A che rompe funzionalità B)
+
+2. **Se l'analisi retroattiva non evidenzia problemi** → Verifica generale
+   - Controllare log del backend
+   - Query dirette sul database per verificare lo stato
+   - Test delle API isolate (curl, python -c)
+
+### Esempio reale
+
+Il fix per "idle in transaction" faceva rollback su `TRANSACTION_STATUS_INTRANS` (transazione attiva normale), annullando tutti gli UPDATE. La correzione: rollback solo su `TRANSACTION_STATUS_INERROR`.
+
+---
+
 ## Comunicazione con l'Utente (FONDAMENTALE)
 
 **Principio guida:** Ogni volta che il sistema impedisce un'operazione per SCELTA (non per errore), DEVE comunicarlo chiaramente all'utente.
