@@ -275,14 +275,13 @@ def conferma_ordine_completo(
         """, (operatore, now, note or 'Conferma batch', q_da_esportare, q_da_esportare, riga['id_dettaglio']))
         confermate += 1
 
+        # v11.3 FIX: Log CONFERMA_RIGA per ogni riga (per tracking produttività)
+        log_operation('CONFERMA_RIGA', 'ORDINI_DETTAGLIO', riga['id_dettaglio'],
+                     f"Riga confermata (batch). Ordine: {id_testata}",
+                     operatore=operatore)
+
     _aggiorna_contatori_ordine(id_testata)
     db.commit()
-
-    # Log operazione per tracking produttività (solo se righe confermate)
-    if confermate > 0:
-        log_operation('CONFERMA_ORDINE', 'ORDINI_TESTATA', id_testata,
-                     f"Confermate {confermate} righe",
-                     operatore=operatore)
 
     # v11.3: Combina bloccate (supervisione) e bloccate_data_consegna
     tutte_bloccate = bloccate + bloccate_data_consegna
