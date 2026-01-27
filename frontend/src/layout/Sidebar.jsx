@@ -40,7 +40,7 @@ const Sidebar = ({
   onPageChange,
   currentUser,
   onLogout,
-  version = 'v11.0',
+  version = 'v11.3',
   collapsed = false,
   onUserUpdate
 }) => {

@@ -50,7 +50,7 @@ from .routers.utenti import router as utenti_router
 async def lifespan(app: FastAPI):
     """Gestisce startup e shutdown dell'applicazione."""
     # Startup
-    print("🚀 SERV.O v8.2 - Avvio...")
+    print("🚀 SERV.O v11.3 - Avvio...")
 
     # Crea directories
     os.makedirs(config.UPLOAD_DIR, exist_ok=True)
