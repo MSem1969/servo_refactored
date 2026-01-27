@@ -269,59 +269,41 @@ export function useOrdineDetail(ordineId, currentUser) {
   // =============================================================================
 
   const confermaTutto = useCallback(async () => {
-    let righeGiaImpostate = 0;
-    let righeDaImpostare = [];
-
-    righe.forEach(r => {
-      // Salta righe con stato finale (ARCHIVIATO, EVASO)
-      if (r.stato_riga === 'ARCHIVIATO' || r.stato_riga === 'EVASO') return;
-
-      const qVenduta = r.q_venduta || r.q_ordinata || r.quantita || 0;
-      const qScontoMerce = r.q_sconto_merce || 0;
-      const qOmaggio = r.q_omaggio || 0;
-      const qTotale = qVenduta + qScontoMerce + qOmaggio;
-      const qEvasa = r.q_evasa || 0;
-      const qResiduo = qTotale - qEvasa;
-      const qDaEvadere = r.q_da_evadere || 0;
-
-      if (qResiduo <= 0) return;
-
-      if (qDaEvadere > 0) {
-        righeGiaImpostate++;
-      } else {
-        righeDaImpostare.push({ riga: r, qResiduo });
-      }
-    });
-
-    if (righeDaImpostare.length === 0 && righeGiaImpostate === 0) {
-      alert('Tutte le righe sono già completamente evase.');
-      return;
-    }
-
-    if (righeDaImpostare.length === 0) {
-      alert(`Tutte le righe con residuo hanno già "Da Evadere" impostato (${righeGiaImpostate} righe).`);
-      return;
-    }
-
-    if (righeGiaImpostate > 0) {
-      const conferma = window.confirm(
-        `Verranno impostate ${righeDaImpostare.length} righe con tutto il residuo.\n\n` +
-        `${righeGiaImpostate} righe con "Da Evadere" già impostato verranno PRESERVATE.\n\n` +
-        `Continuare?`
-      );
-      if (!conferma) return;
-    }
-
+    // v11.3: Usa l'API conferma-tutto che gestisce anche il blocco per data consegna
     try {
-      for (const { riga, qResiduo } of righeDaImpostare) {
-        const idRiga = riga.id_dettaglio || riga.id;
-        await ordiniApi.registraEvasione(ordineId, idRiga, qResiduo, currentUser?.username || 'admin');
+      const result = await ordiniApi.confermaOrdineCompleto(
+        ordineId,
+        currentUser?.username || 'admin',
+        false, // forza_conferma
+        null   // note
+      );
+
+      if (result.success) {
+        // Costruisci messaggio dettagliato
+        let msg = result.message || `Confermate ${result.righe_confermate || 0} righe.`;
+
+        // v11.3: Mostra alert per righe bloccate per data consegna
+        const bloccateData = result.righe_bloccate_data_consegna || [];
+        if (bloccateData.length > 0) {
+          msg += `\n\n⚠️ ATTENZIONE: ${bloccateData.length} righe NON confermate perché hanno data di consegna oltre 30 giorni da oggi.`;
+          msg += `\n\nModificare la data di consegna per poterle confermare.`;
+        }
+
+        // Mostra anche righe che richiedono supervisione
+        const bloccateSupervisione = result.righe_bloccate_supervisione || [];
+        if (bloccateSupervisione.length > 0) {
+          msg += `\n\n${bloccateSupervisione.length} righe richiedono supervisione.`;
+        }
+
+        alert(msg);
+        await loadOrdine();
+      } else {
+        setError(result.error || 'Errore nella conferma');
       }
-      await loadOrdine();
     } catch (err) {
       setError(err.response?.data?.detail || 'Errore nella conferma');
     }
-  }, [ordineId, currentUser, righe, loadOrdine]);
+  }, [ordineId, currentUser, loadOrdine]);
 
   const ripristinaTutto = useCallback(async () => {
     const righeConfermate = righe.filter(r => r.stato_riga === 'CONFERMATO' || (r.q_da_evadere || 0) > 0);
