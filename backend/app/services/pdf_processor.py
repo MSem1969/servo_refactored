@@ -821,6 +821,57 @@ def _insert_order(
                     f"Ordine {order_data.get('numero_ordine')}: deposito di riferimento mancante (P.IVA: {piva_estratta}) - richiede impostazione manuale"
                 )
 
+    # 8. ANOMALIA DEP-A01 (v11.3 FIX): Farmacia trovata via lookup ma senza deposito
+    # Caso: P.IVA non estratta ma farmacia trovata via MIN_ID o ragione sociale
+    # Se abbiamo id_farmacia_lookup ma deposito_riferimento è ancora NULL
+    if not piva_estratta and (id_farm or id_parafarm) and not deposito_riferimento:
+        # Cerca la P.IVA dalla farmacia/parafarmacia trovata
+        piva_lookup = None
+        if id_farm:
+            farm_row = db.execute(
+                "SELECT partita_iva FROM ANAGRAFICA_FARMACIE WHERE id_farmacia = %s",
+                (id_farm,)
+            ).fetchone()
+            piva_lookup = farm_row['partita_iva'] if farm_row else None
+        elif id_parafarm:
+            para_row = db.execute(
+                "SELECT partita_iva FROM ANAGRAFICA_PARAFARMACIE WHERE id_parafarmacia = %s",
+                (id_parafarm,)
+            ).fetchone()
+            piva_lookup = para_row['partita_iva'] if para_row else None
+
+        cursor = db.execute("""
+            INSERT INTO ANOMALIE
+            (id_testata, tipo_anomalia, livello, codice_anomalia,
+             descrizione, valore_anomalo, richiede_supervisione)
+            VALUES (%s, 'DEPOSITO', 'ERRORE', 'DEP-A01', %s, %s, TRUE)
+            RETURNING id_anomalia
+        """, (
+            id_testata,
+            CODICI_ANOMALIA['DEP-A01'],
+            f"P.IVA: {piva_lookup or 'N/D'} - Farmacia trovata via lookup ma deposito non determinabile"
+        ))
+        id_anomalia_dep = cursor.fetchone()[0]
+
+        # Crea supervisione per DEP-A01
+        anomalia_dep = {
+            'tipo_anomalia': 'DEPOSITO',
+            'codice_anomalia': 'DEP-A01',
+            'vendor': vendor or 'UNKNOWN',
+            'partita_iva_estratta': piva_lookup or '',
+            'ragione_sociale_estratta': order_data.get('ragione_sociale', ''),
+            'citta_estratta': order_data.get('citta', ''),
+            'depositi_validi': 'CT, CL',
+            'id_farmacia_lookup': id_farm,
+            'id_parafarmacia_lookup': id_parafarm,
+        }
+        crea_richiesta_supervisione(id_testata, id_anomalia_dep, anomalia_dep)
+
+        richiede_supervisione = True
+        result['anomalie'].append(
+            f"Ordine {order_data.get('numero_ordine')}: deposito di riferimento mancante (farmacia trovata via lookup) - richiede impostazione manuale"
+        )
+
     # Inserisci righe dettaglio (con gestione parent-child espositori)
     # v10.6: Propaga data_consegna dalla testata alle righe che non hanno data propria
     data_consegna_testata = order_data.get('data_consegna', '')
@@ -1106,7 +1157,26 @@ def _insert_order(
     # Se almeno un'anomalia richiede supervisione, blocca ordine
     if richiede_supervisione:
         blocca_ordine_per_supervisione(id_testata)
-    
+    # =========================================================================
+    # v11.3 FIX: AGGIORNA STATO ORDINE SE CI SONO ANOMALIE BLOCCANTI
+    # =========================================================================
+    # Check finale: se ci sono anomalie ERRORE/CRITICO aperte, stato = ANOMALIA
+    anomalie_bloccanti = db.execute("""
+        SELECT COUNT(*) as cnt FROM anomalie
+        WHERE id_testata = %s
+        AND stato IN ('APERTA', 'IN_GESTIONE')
+        AND livello IN ('ERRORE', 'CRITICO')
+    """, (id_testata,)).fetchone()
+
+    if anomalie_bloccanti and anomalie_bloccanti['cnt'] > 0:
+        db.execute("""
+            UPDATE ordini_testata
+            SET stato = 'ANOMALIA'
+            WHERE id_testata = %s
+            AND stato NOT IN ('EVASO', 'ARCHIVIATO')
+        """, (id_testata,))
+        result['stato'] = 'ANOMALIA'
+
     db.commit()
     return result
 

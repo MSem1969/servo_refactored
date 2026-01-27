@@ -125,6 +125,7 @@ async def lista_tipi() -> Dict[str, Any]:
         "success": True,
         "data": [
             {"code": "LOOKUP", "label": "Lookup farmacia fallito", "severity": "error"},
+            {"code": "DEPOSITO", "label": "Deposito mancante", "severity": "error"},
             {"code": "ESPOSITORE", "label": "Riga espositore/banco", "severity": "info"},
             {"code": "CHILD", "label": "Riga child (ignorata)", "severity": "info"},
             {"code": "NO_AIC", "label": "Codice AIC mancante", "severity": "warning"},
