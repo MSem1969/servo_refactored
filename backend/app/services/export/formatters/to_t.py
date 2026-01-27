@@ -66,7 +66,7 @@ def generate_to_t_line(data: Dict[str, Any]) -> str:
     Pos       Campo                    Lung.  Formato
     1-10      Vendor                   10     String
     11-40     VendorOrderNumber        30     String
-    41-60     CustomerTraceabilityCode 20     String (MIN_ID senza zeri, ljust)
+    41-60     CustomerTraceabilityCode 20     String (spazio + MIN_ID 5 cifre zfill + ljust)
     61-76     VAT code                 16     String
     77-126    CustomerName1            50     String UPPERCASE
     127-176   CustomerName2            50     String UPPERCASE
@@ -97,9 +97,11 @@ def generate_to_t_line(data: Dict[str, Any]) -> str:
     deposito = data.get('deposito_riferimento') or data.get('deposito') or ''
     vendor_code = get_vendor_code(vendor, deposito)
 
-    # MIN_ID senza zeri iniziali
+    # MIN_ID con padding a 5 cifre (zfill)
     min_id_raw = str(data.get('min_id') or data.get('anag_min_id') or '').strip()
-    min_id = _strip_leading_zeros(min_id_raw)
+    # Rimuovi eventuali zeri iniziali e poi riformatta a 5 cifre
+    min_id_clean = min_id_raw.lstrip('0') or '0'
+    min_id = min_id_clean.zfill(5)  # Es: 100 -> 00100, 10905 -> 10905
 
     # Date in formato GG/MM/AAAA
     data_ordine = format_date_edi(data.get('data_ordine', ''))
@@ -129,8 +131,9 @@ def generate_to_t_line(data: Dict[str, Any]) -> str:
     # Pos 11-40: VendorOrderNumber (30)
     line += str(data.get('numero_ordine') or data.get('numero_ordine_vendor') or '').ljust(30)[:30]
 
-    # Pos 41-60: CustomerTraceabilityCode/MIN_ID (20) - SENZA ZERI INIZIALI, LJUST
-    line += min_id.ljust(20)[:20]
+    # Pos 41-60: CustomerTraceabilityCode/MIN_ID (20)
+    # Pos 41: spazio, Pos 42-46: MIN_ID 5 cifre zfill, Pos 47-60: spazi
+    line += ' ' + min_id.ljust(19)[:19]
 
     # Pos 61-76: VAT code/P.IVA (16)
     line += str(data.get('partita_iva') or '').ljust(16)[:16]

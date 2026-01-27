@@ -57,7 +57,7 @@ frontend/src/
 |-----|-------|-------|-------|---------|------|
 | 1-10 | Vendor | 10 | Y | String | `{PREFIX}_{DISTRIB}` es: HAL_FARVI |
 | 11-40 | VendorOrderNumber | 30 | Y | String | Numero ordine, ljust |
-| 41-60 | CustomerTraceabilityCode | 20 | Y | String | **MIN_ID senza zeri iniziali, ljust** (es: `10905` non `000010905`) |
+| 41-60 | CustomerTraceabilityCode | 20 | Y | String | **Pos 41: spazio, Pos 42-46: MIN_ID zfill(5), resto spazi** (es: ` 00100`, ` 10905`) |
 | 61-76 | VAT code | 16 | Y | String | P.IVA, ljust |
 | 77-126 | CustomerName1 | 50 | Y | String | Ragione sociale, **UPPERCASE** |
 | 127-176 | CustomerName2 | 50 | N | String | Ragione sociale 2, **UPPERCASE** |
