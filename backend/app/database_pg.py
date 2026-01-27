@@ -528,8 +528,9 @@ def get_operatore_id_by_username(username: str) -> Optional[int]:
     if not username:
         return None
     db = get_db()
+    # v11.3: Confronto case-insensitive per username
     row = db.execute(
-        "SELECT id_operatore FROM operatori WHERE username = %s",
+        "SELECT id_operatore FROM operatori WHERE LOWER(username) = LOWER(%s)",
         (username,)
     ).fetchone()
     return row['id_operatore'] if row else None
