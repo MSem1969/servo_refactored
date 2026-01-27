@@ -935,25 +935,27 @@ async def get_contatori_aic() -> Dict[str, Any]:
 
 
 # =============================================================================
-# RISOLUZIONE LKP-A05: ASSEGNAZIONE MANUALE DEPOSITO (v10.6)
+# RISOLUZIONE LKP-A05/DEP-A01: ASSEGNAZIONE MANUALE DEPOSITO (v11.3)
 # =============================================================================
 
-@router.post("/dettaglio/{id_anomalia}/risolvi-deposito", summary="Risolvi LKP-A05 con deposito manuale")
+@router.post("/dettaglio/{id_anomalia}/risolvi-deposito", summary="Risolvi anomalie deposito (LKP-A05, DEP-A01)")
 async def risolvi_anomalia_deposito(
     id_anomalia: int,
     request: CorrezioneDepositoRequest
 ) -> Dict[str, Any]:
     """
-    Risolve anomalia LKP-A05 (Cliente non in anagrafica) assegnando manualmente il deposito.
+    Risolve anomalie relative al deposito assegnando manualmente il deposito di riferimento.
 
-    Con logging dettagliato per debug.
+    v11.3: Supporta sia LKP-A05 (cliente non in anagrafica) che DEP-A01 (deposito mancante).
 
     ## Quando usare
 
-    Quando un ordine ha anomalia LKP-A05 perché la P.IVA del cliente non è presente
-    in `anagrafica_clienti`, l'operatore può:
-    1. Selezionare un cliente esistente dal dropdown
-    2. Assegnare manualmente il codice deposito
+    - **LKP-A05**: P.IVA cliente non presente in `anagrafica_clienti`
+    - **DEP-A01**: Cliente in anagrafica ma senza deposito_riferimento assegnato
+
+    L'operatore può:
+    1. Selezionare un cliente esistente dal dropdown (opzionale)
+    2. Assegnare manualmente il codice deposito (CT o CL)
 
     ## Effetti
 
@@ -966,10 +968,10 @@ async def risolvi_anomalia_deposito(
 
     ```json
     {
-        "deposito_riferimento": "001",
+        "deposito_riferimento": "CT",
         "id_cliente": 123,
         "operatore": "mario.rossi",
-        "note": "Cliente verificato telefonicamente"
+        "note": "Deposito Catania assegnato manualmente"
     }
     ```
     """
@@ -977,6 +979,15 @@ async def risolvi_anomalia_deposito(
 
     if not request.deposito_riferimento or not request.deposito_riferimento.strip():
         raise HTTPException(status_code=400, detail="Codice deposito obbligatorio")
+
+    # v11.3: Valida che deposito sia CT o CL
+    DEPOSITI_VALIDI = ('CT', 'CL')
+    deposito_input = request.deposito_riferimento.strip().upper()
+    if deposito_input not in DEPOSITI_VALIDI:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Deposito '{request.deposito_riferimento}' non valido. Valori ammessi: {', '.join(DEPOSITI_VALIDI)}"
+        )
 
     db = get_db()
 
@@ -1009,11 +1020,14 @@ async def risolvi_anomalia_deposito(
         tipo_anomalia = anomalia.get('tipo_anomalia', '') or ''
         descrizione = anomalia.get('descrizione', '') or ''
 
-        # Accetta LKP-A05, anomalie LOOKUP, o anomalie con "deposito" nella descrizione
+        # v11.3: Accetta LKP-A05, DEP-A01, anomalie LOOKUP/DEPOSITO, o anomalie con "deposito" nella descrizione
         is_deposito_anomaly = (
             codice_anomalia == 'LKP-A05' or
+            codice_anomalia == 'DEP-A01' or
             codice_anomalia.startswith('LKP-') or
+            codice_anomalia.startswith('DEP-') or
             tipo_anomalia == 'LOOKUP' or
+            tipo_anomalia == 'DEPOSITO' or
             'deposito' in descrizione.lower() or
             'cliente' in descrizione.lower()
         )
@@ -1028,7 +1042,7 @@ async def risolvi_anomalia_deposito(
         if not id_testata:
             raise HTTPException(status_code=400, detail="Anomalia non collegata a un ordine")
 
-        # 2. Aggiorna ordini_testata con deposito manuale
+        # 2. Aggiorna ordini_testata con deposito manuale (v11.3: usa valore normalizzato)
         db.execute("""
             UPDATE ordini_testata
             SET deposito_riferimento = %s,
@@ -1036,7 +1050,7 @@ async def risolvi_anomalia_deposito(
                 note_cliente_manuale = %s
             WHERE id_testata = %s
         """, (
-            request.deposito_riferimento.strip(),
+            deposito_input,  # v11.3: uppercase, validato CT/CL
             request.id_cliente,
             request.note,
             id_testata

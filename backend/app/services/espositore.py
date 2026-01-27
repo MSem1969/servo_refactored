@@ -50,6 +50,8 @@ CODICI_ANOMALIA = {
     'PRICE-A01': 'Prodotto in vendita senza prezzo - verifica obbligatoria',
     # Anomalie AIC (v9.0)
     'AIC-A01': 'Codice AIC mancante o non valido - verifica obbligatoria',
+    # Anomalie Deposito (v11.3)
+    'DEP-A01': 'Deposito di riferimento mancante - impostazione manuale obbligatoria',
 }
 
 FASCE_SUPERVISIONE_OBBLIGATORIA = {'ALTO', 'CRITICO'}

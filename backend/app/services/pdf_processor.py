@@ -787,6 +787,39 @@ def _insert_order(
             result['anomalie'].append(
                 f"Ordine {order_data.get('numero_ordine')}: cliente non trovato in anagrafica clienti (P.IVA: {piva_estratta}) - richiede supervisione"
             )
+        else:
+            # 7. ANOMALIA DEP-A01: Cliente in anagrafica ma senza deposito (v11.3 - ERRORE bloccante)
+            # Se il cliente è in anagrafica ma non ha deposito_riferimento assegnato
+            if not deposito_riferimento:
+                cursor = db.execute("""
+                    INSERT INTO ANOMALIE
+                    (id_testata, tipo_anomalia, livello, codice_anomalia,
+                     descrizione, valore_anomalo, richiede_supervisione)
+                    VALUES (%s, 'DEPOSITO', 'ERRORE', 'DEP-A01', %s, %s, TRUE)
+                    RETURNING id_anomalia
+                """, (
+                    id_testata,
+                    CODICI_ANOMALIA['DEP-A01'],
+                    f"P.IVA: {piva_estratta} - Cliente senza deposito assegnato"
+                ))
+                id_anomalia_dep = cursor.fetchone()[0]
+
+                # Crea supervisione per DEP-A01 (tipo LOOKUP per gestione unificata)
+                anomalia_dep = {
+                    'tipo_anomalia': 'DEPOSITO',
+                    'codice_anomalia': 'DEP-A01',
+                    'vendor': vendor or 'UNKNOWN',
+                    'partita_iva_estratta': piva_estratta,
+                    'ragione_sociale_estratta': order_data.get('ragione_sociale', ''),
+                    'citta_estratta': order_data.get('citta', ''),
+                    'depositi_validi': 'CT, CL',
+                }
+                crea_richiesta_supervisione(id_testata, id_anomalia_dep, anomalia_dep)
+
+                richiede_supervisione = True
+                result['anomalie'].append(
+                    f"Ordine {order_data.get('numero_ordine')}: deposito di riferimento mancante (P.IVA: {piva_estratta}) - richiede impostazione manuale"
+                )
 
     # Inserisci righe dettaglio (con gestione parent-child espositori)
     # v10.6: Propaga data_consegna dalla testata alle righe che non hanno data propria
