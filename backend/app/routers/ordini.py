@@ -239,13 +239,13 @@ async def ordini_stats() -> Dict[str, Any]:
     """).fetchone()[0]
 
     # v11.3: Righe evase (totali e oggi) - q_evasa > 0
+    # FIX: usa ultima_esportazione per contare righe esportate oggi (non data_estrazione ordine)
     righe_evase_totali = db.execute(
         "SELECT COUNT(*) FROM ORDINI_DETTAGLIO WHERE COALESCE(q_evasa, 0) > 0"
     ).fetchone()[0]
     righe_evase_oggi = db.execute("""
-        SELECT COUNT(*) FROM ORDINI_DETTAGLIO d
-        JOIN ORDINI_TESTATA t ON d.id_testata = t.id_testata
-        WHERE COALESCE(d.q_evasa, 0) > 0 AND t.data_estrazione::date = CURRENT_DATE
+        SELECT COUNT(*) FROM ORDINI_DETTAGLIO
+        WHERE COALESCE(q_evasa, 0) > 0 AND ultima_esportazione::date = CURRENT_DATE
     """).fetchone()[0]
 
     # v11.3: Clienti unici (totali e oggi) - count distinct partita_iva
