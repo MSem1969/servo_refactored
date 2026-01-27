@@ -288,12 +288,12 @@ def get_db() -> PostgreSQLConnection:
         raw_conn.autocommit = False
         _connection = PostgreSQLConnection(raw_conn)
     else:
-        # Reset connessione se ha transazioni pendenti (idle in transaction)
-        # Questo evita che transazioni non chiuse blocchino le risorse
+        # Reset connessione SOLO se in stato di ERRORE
+        # NON fare rollback su INTRANS - è uno stato normale durante una transazione!
+        # Il rollback su INTRANS annullava le modifiche fatte nella stessa transazione.
         try:
             status = _connection._conn.status
-            if status == psycopg2.extensions.TRANSACTION_STATUS_INTRANS or \
-               status == psycopg2.extensions.TRANSACTION_STATUS_INERROR:
+            if status == psycopg2.extensions.TRANSACTION_STATUS_INERROR:
                 _connection._conn.rollback()
         except Exception:
             # Se la connessione è corrotta, ricreala
