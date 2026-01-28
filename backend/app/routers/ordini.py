@@ -1031,7 +1031,8 @@ async def modifica_header_ordine(
             WHERE id_testata = %s
         """, tuple(params))
 
-        # 7. Risolvi anomalie LKP correlate (se P.IVA o MIN_ID modificati)
+        # 7. Risolvi anomalie LKP e DEP correlate (se P.IVA, MIN_ID o deposito modificati)
+        # v11.4: Aggiunto DEP-A01 (deposito mancante)
         anomalie_risolte = 0
         if request.partita_iva or request.min_id or request.deposito_riferimento:
             result = db.execute("""
@@ -1040,7 +1041,7 @@ async def modifica_header_ordine(
                     note_risoluzione = %s,
                     data_risoluzione = CURRENT_TIMESTAMP
                 WHERE id_testata = %s
-                  AND codice_anomalia IN ('LKP-A01', 'LKP-A02', 'LKP-A03', 'LKP-A04', 'LKP-A05')
+                  AND codice_anomalia IN ('LKP-A01', 'LKP-A02', 'LKP-A03', 'LKP-A04', 'LKP-A05', 'DEP-A01')
                   AND stato IN ('APERTA', 'IN_GESTIONE')
             """, (
                 f"[MANUALE] Header modificato da {request.operatore}. {request.note or ''}",

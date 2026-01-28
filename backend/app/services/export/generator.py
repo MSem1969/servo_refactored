@@ -262,14 +262,16 @@ def valida_e_genera_tracciato(
             'error': f'Ordine in stato {stato_label}. Impossibile generare tracciato. Risolvere le anomalie prima di procedere.'
         }
 
-    # 1b. Verifica supervisioni pending - blocco anche se stato non è PENDING_REVIEW
+    # v11.4: Verifica supervisioni pending - blocco anche se stato non è PENDING_REVIEW
+    # Inclusa supervisione_prezzo
     supervisioni_pending = db.execute("""
         SELECT
             (SELECT COUNT(*) FROM supervisione_espositore WHERE id_testata = %s AND stato = 'PENDING') +
             (SELECT COUNT(*) FROM supervisione_listino WHERE id_testata = %s AND stato = 'PENDING') +
             (SELECT COUNT(*) FROM supervisione_lookup WHERE id_testata = %s AND stato = 'PENDING') +
-            (SELECT COUNT(*) FROM supervisione_aic WHERE id_testata = %s AND stato = 'PENDING') as total
-    """, (id_testata, id_testata, id_testata, id_testata)).fetchone()
+            (SELECT COUNT(*) FROM supervisione_aic WHERE id_testata = %s AND stato = 'PENDING') +
+            (SELECT COUNT(*) FROM supervisione_prezzo WHERE id_testata = %s AND stato = 'PENDING') as total
+    """, (id_testata, id_testata, id_testata, id_testata, id_testata)).fetchone()
 
     if supervisioni_pending and supervisioni_pending['total'] > 0:
         return {

@@ -359,6 +359,8 @@ def _approva_supervisioni_collegate(db, id_anomalia: int, operatore: str) -> int
     """
     Approva tutte le supervisioni collegate a un'anomalia.
 
+    v11.4: Inclusa supervisione_prezzo
+
     Returns:
         Numero supervisioni approvate
     """
@@ -400,6 +402,17 @@ def _approva_supervisioni_collegate(db, id_anomalia: int, operatore: str) -> int
     # Supervisione AIC
     result = db.execute("""
         UPDATE supervisione_aic
+        SET stato = 'APPROVED',
+            operatore = %s,
+            timestamp_decisione = CURRENT_TIMESTAMP,
+            note = COALESCE(note || ' - ', '') || '[AUTO] Risolto da anomalia'
+        WHERE id_anomalia = %s AND stato = 'PENDING'
+    """, (operatore, id_anomalia))
+    count += result.rowcount if hasattr(result, 'rowcount') else 0
+
+    # v11.4: Supervisione prezzo
+    result = db.execute("""
+        UPDATE supervisione_prezzo
         SET stato = 'APPROVED',
             operatore = %s,
             timestamp_decisione = CURRENT_TIMESTAMP,
@@ -548,10 +561,10 @@ def _sblocca_ordine_se_possibile(db, id_testata: int):
         WHERE id_testata = %s AND stato IN ('APERTA', 'IN_GESTIONE')
     """, (id_testata,)).fetchone()
 
-    # Conta supervisioni pending
+    # v11.4: Conta supervisioni pending su tutte le tabelle (inclusa prezzo)
     sup_count = 0
     for table in ['supervisione_espositore', 'supervisione_listino',
-                  'supervisione_lookup', 'supervisione_aic']:
+                  'supervisione_lookup', 'supervisione_aic', 'supervisione_prezzo']:
         try:
             row = db.execute(f"""
                 SELECT COUNT(*) as cnt FROM {table}

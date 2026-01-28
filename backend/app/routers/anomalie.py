@@ -1090,16 +1090,20 @@ async def risolvi_anomalia_deposito(
         """, (id_testata,)).fetchone()[0]
 
         if anomalie_aperte == 0:
-            # Verifica anche supervisioni pending
+            # v11.4: Verifica supervisioni pending su TUTTE le tabelle
             sup_pending = db.execute("""
                 SELECT COUNT(*) FROM (
                     SELECT id_supervisione FROM supervisione_espositore WHERE id_testata = %s AND stato = 'PENDING'
                     UNION ALL
+                    SELECT id_supervisione FROM supervisione_listino WHERE id_testata = %s AND stato = 'PENDING'
+                    UNION ALL
                     SELECT id_supervisione FROM supervisione_lookup WHERE id_testata = %s AND stato = 'PENDING'
                     UNION ALL
                     SELECT id_supervisione FROM supervisione_aic WHERE id_testata = %s AND stato = 'PENDING'
+                    UNION ALL
+                    SELECT id_supervisione FROM supervisione_prezzo WHERE id_testata = %s AND stato = 'PENDING'
                 ) sub
-            """, (id_testata, id_testata, id_testata)).fetchone()[0]
+            """, (id_testata, id_testata, id_testata, id_testata, id_testata)).fetchone()[0]
 
             if sup_pending == 0:
                 db.execute("""

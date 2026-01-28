@@ -741,6 +741,16 @@ def import_anagrafica_clienti(
         log_operation('IMPORT_CLIENTI', 'ANAGRAFICA_CLIENTI', None,
                      f"Importati {result['importate']} clienti, aggiornati {result['aggiornati']} da {result['fonte']}")
 
+        # v11.4: Revisione automatica ordini con deposito mancante
+        # Dopo l'import, cerca ordini con DEP-A01 e prova a risolverli
+        revisione = revisiona_ordini_deposito_mancante()
+        if revisione.get('anomalie_risolte', 0) > 0:
+            result['revisione_ordini'] = {
+                'ordini_revisionati': revisione['ordini_revisionati'],
+                'depositi_trovati': revisione['depositi_trovati'],
+                'anomalie_risolte': revisione['anomalie_risolte']
+            }
+
     except Exception as e:
         result['error'] = str(e)
 
@@ -786,3 +796,189 @@ def clear_anagrafica_clienti() -> int:
     log_operation('CLEAR_CLIENTI', 'ANAGRAFICA_CLIENTI', None,
                  f"Eliminati {count} clienti")
     return count
+
+
+# =============================================================================
+# v11.4: REVISIONE AUTOMATICA ORDINI CON DEPOSITO MANCANTE
+# =============================================================================
+
+def revisiona_ordini_deposito_mancante() -> Dict[str, Any]:
+    """
+    Revisiona ordini con anomalie DEP-A01 (deposito mancante) dopo import anagrafica.
+
+    Cerca ordini in stato ANOMALIA/PENDING_REVIEW con anomalie DEP-A01 o LKP-A05 aperte,
+    e prova a trovare il deposito in anagrafica_clienti usando P.IVA e/o MIN_ID.
+
+    Logica di matching con score:
+    - Match esatto su P.IVA + MIN_ID entrambi presenti → score 100
+    - Match su MIN_ID esatto → score 90
+    - Match su P.IVA esatta → score 80
+
+    Se trova un cliente con deposito_riferimento e score >= 80, aggiorna l'ordine
+    e risolve l'anomalia automaticamente.
+
+    Returns:
+        Dict con statistiche: ordini_revisionati, depositi_trovati, anomalie_risolte
+    """
+    db = get_db()
+
+    result = {
+        'ordini_revisionati': 0,
+        'depositi_trovati': 0,
+        'anomalie_risolte': 0,
+        'errori': 0,
+        'dettagli': []
+    }
+
+    try:
+        # Cerca ordini con anomalie DEP-A01 o LKP-A05 aperte
+        ordini = db.execute("""
+            SELECT DISTINCT
+                ot.id_testata,
+                ot.partita_iva_estratta,
+                ot.codice_ministeriale_estratto as min_id,
+                ot.ragione_sociale_1,
+                ot.numero_ordine_vendor,
+                a.id_anomalia,
+                a.codice_anomalia
+            FROM ordini_testata ot
+            JOIN anomalie a ON ot.id_testata = a.id_testata
+            WHERE a.codice_anomalia IN ('DEP-A01', 'LKP-A05')
+              AND a.stato IN ('APERTA', 'IN_GESTIONE')
+              AND ot.stato IN ('ANOMALIA', 'PENDING_REVIEW')
+              AND ot.deposito_riferimento IS NULL
+            ORDER BY ot.id_testata
+        """).fetchall()
+
+        for ordine in ordini:
+            result['ordini_revisionati'] += 1
+
+            piva = (ordine['partita_iva_estratta'] or '').strip()
+            min_id = (ordine['min_id'] or '').strip()
+
+            if not piva and not min_id:
+                continue
+
+            # Cerca in anagrafica_clienti con scoring
+            cliente = None
+            score = 0
+
+            # 1. Match esatto su entrambi (P.IVA + MIN_ID)
+            if piva and min_id:
+                cliente = db.execute("""
+                    SELECT deposito_riferimento, partita_iva, min_id, ragione_sociale_1
+                    FROM anagrafica_clienti
+                    WHERE partita_iva = %s AND min_id = %s
+                      AND deposito_riferimento IS NOT NULL
+                      AND deposito_riferimento != ''
+                    LIMIT 1
+                """, (piva, min_id)).fetchone()
+                if cliente:
+                    score = 100
+
+            # 2. Match su MIN_ID esatto
+            if not cliente and min_id:
+                cliente = db.execute("""
+                    SELECT deposito_riferimento, partita_iva, min_id, ragione_sociale_1
+                    FROM anagrafica_clienti
+                    WHERE min_id = %s
+                      AND deposito_riferimento IS NOT NULL
+                      AND deposito_riferimento != ''
+                    LIMIT 1
+                """, (min_id,)).fetchone()
+                if cliente:
+                    score = 90
+
+            # 3. Match su P.IVA esatta
+            if not cliente and piva:
+                cliente = db.execute("""
+                    SELECT deposito_riferimento, partita_iva, min_id, ragione_sociale_1
+                    FROM anagrafica_clienti
+                    WHERE partita_iva = %s
+                      AND deposito_riferimento IS NOT NULL
+                      AND deposito_riferimento != ''
+                    LIMIT 1
+                """, (piva,)).fetchone()
+                if cliente:
+                    score = 80
+
+            # Se trovato con score >= 80, aggiorna ordine e risolvi anomalia
+            if cliente and score >= 80:
+                deposito = cliente['deposito_riferimento']
+
+                try:
+                    # Aggiorna ordine con deposito
+                    db.execute("""
+                        UPDATE ordini_testata
+                        SET deposito_riferimento = %s
+                        WHERE id_testata = %s
+                    """, (deposito, ordine['id_testata']))
+
+                    result['depositi_trovati'] += 1
+
+                    # Risolvi anomalia DEP-A01/LKP-A05
+                    db.execute("""
+                        UPDATE anomalie
+                        SET stato = 'RISOLTA',
+                            data_risoluzione = CURRENT_TIMESTAMP,
+                            note_risoluzione = %s
+                        WHERE id_testata = %s
+                          AND codice_anomalia IN ('DEP-A01', 'LKP-A05')
+                          AND stato IN ('APERTA', 'IN_GESTIONE')
+                    """, (
+                        f'[AUTO] Deposito {deposito} assegnato da anagrafica_clienti (score: {score}%)',
+                        ordine['id_testata']
+                    ))
+
+                    result['anomalie_risolte'] += 1
+
+                    # Approva supervisioni collegate
+                    for table in ['supervisione_espositore', 'supervisione_listino',
+                                  'supervisione_lookup', 'supervisione_aic', 'supervisione_prezzo']:
+                        db.execute(f"""
+                            UPDATE {table}
+                            SET stato = 'APPROVED',
+                                operatore = 'SISTEMA',
+                                timestamp_decisione = CURRENT_TIMESTAMP,
+                                note = COALESCE(note || ' - ', '') || '[AUTO] Risolto da import anagrafica'
+                            WHERE id_testata = %s AND stato = 'PENDING'
+                        """, (ordine['id_testata'],))
+
+                    # Sblocca ordine se non ci sono altre anomalie bloccanti
+                    anomalie_aperte = db.execute("""
+                        SELECT COUNT(*) FROM anomalie
+                        WHERE id_testata = %s
+                          AND stato IN ('APERTA', 'IN_GESTIONE')
+                          AND livello IN ('ERRORE', 'CRITICO')
+                    """, (ordine['id_testata'],)).fetchone()[0]
+
+                    if anomalie_aperte == 0:
+                        db.execute("""
+                            UPDATE ordini_testata
+                            SET stato = 'ESTRATTO'
+                            WHERE id_testata = %s AND stato IN ('ANOMALIA', 'PENDING_REVIEW')
+                        """, (ordine['id_testata'],))
+
+                    result['dettagli'].append({
+                        'id_testata': ordine['id_testata'],
+                        'numero_ordine': ordine['numero_ordine_vendor'],
+                        'deposito_assegnato': deposito,
+                        'score': score,
+                        'match_type': 'PIVA+MIN_ID' if score == 100 else ('MIN_ID' if score == 90 else 'PIVA')
+                    })
+
+                except Exception as e:
+                    result['errori'] += 1
+                    result['ultimo_errore'] = str(e)
+
+        db.commit()
+
+        if result['anomalie_risolte'] > 0:
+            log_operation('REVISIONE_DEPOSITI', 'ORDINI_TESTATA', None,
+                         f"Revisionati {result['ordini_revisionati']} ordini, "
+                         f"risolte {result['anomalie_risolte']} anomalie deposito")
+
+    except Exception as e:
+        result['error'] = str(e)
+
+    return result

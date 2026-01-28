@@ -132,18 +132,18 @@ def update_anomalia_stato(
     ruolo: str = None
 ) -> bool:
     """
-    Aggiorna stato anomalia con gestione ruoli per supervisioni.
+    Aggiorna stato anomalia con approvazione automatica supervisioni.
 
-    v11.2: Gestione ruoli per risoluzione supervisioni:
-    - SUPERVISORE/ADMIN → risolve anomalia + supervisione collegata
-    - OPERATORE → risolve anomalia ma supervisione resta PENDING
+    v11.4: Le supervisioni vengono SEMPRE approvate quando l'anomalia viene risolta,
+    indipendentemente dal ruolo dell'operatore. La supervisione NON deve mai
+    bloccare la risoluzione delle anomalie.
 
     Args:
         id_anomalia: ID anomalia
         nuovo_stato: Nuovo stato (APERTA, IN_GESTIONE, RISOLTA, IGNORATA)
         note: Note risoluzione
         operatore: Username operatore (opzionale)
-        ruolo: Ruolo operatore (operatore/supervisore/admin) - determina se aggiornare supervisioni
+        ruolo: Ruolo operatore (per logging)
 
     Returns:
         True se aggiornato con successo
@@ -151,10 +151,6 @@ def update_anomalia_stato(
     stati_validi = ['APERTA', 'IN_GESTIONE', 'RISOLTA', 'IGNORATA']
     if nuovo_stato not in stati_validi:
         return False
-
-    # v11.2: Determina se l'utente può risolvere supervisioni
-    ruoli_supervisione = ['supervisore', 'admin']
-    puo_risolvere_supervisioni = ruolo and ruolo.lower() in ruoli_supervisione
 
     db = get_db()
 
@@ -180,110 +176,122 @@ def update_anomalia_stato(
             WHERE id_anomalia = %s
         """, (nuovo_stato, nota_anomalia, id_anomalia))
 
-        # v11.2: Aggiorna supervisioni SOLO se SUPERVISORE o ADMIN
-        if puo_risolvere_supervisioni:
-            # v10.4: Recupera pattern signatures PRIMA di aggiornare (per ML learning)
-            sup_esp = db.execute("""
-                SELECT pattern_signature FROM supervisione_espositore
-                WHERE id_anomalia = %s AND stato = 'PENDING'
-            """, (id_anomalia,)).fetchall()
+        # v11.4: Approvazione automatica supervisioni - SEMPRE, indipendentemente dal ruolo
+        # Recupera pattern signatures PRIMA di aggiornare (per ML learning)
+        sup_esp = db.execute("""
+            SELECT pattern_signature FROM supervisione_espositore
+            WHERE id_anomalia = %s AND stato = 'PENDING'
+        """, (id_anomalia,)).fetchall()
 
-            sup_lst = db.execute("""
-                SELECT pattern_signature FROM supervisione_listino
-                WHERE id_anomalia = %s AND stato = 'PENDING'
-            """, (id_anomalia,)).fetchall()
+        sup_lst = db.execute("""
+            SELECT pattern_signature FROM supervisione_listino
+            WHERE id_anomalia = %s AND stato = 'PENDING'
+        """, (id_anomalia,)).fetchall()
 
-            sup_lkp = db.execute("""
-                SELECT pattern_signature FROM supervisione_lookup
-                WHERE id_anomalia = %s AND stato = 'PENDING'
-            """, (id_anomalia,)).fetchall()
+        sup_lkp = db.execute("""
+            SELECT pattern_signature FROM supervisione_lookup
+            WHERE id_anomalia = %s AND stato = 'PENDING'
+        """, (id_anomalia,)).fetchall()
 
-            sup_aic = db.execute("""
-                SELECT pattern_signature, codice_aic_assegnato FROM supervisione_aic
-                WHERE id_anomalia = %s AND stato = 'PENDING'
-            """, (id_anomalia,)).fetchall()
+        sup_aic = db.execute("""
+            SELECT pattern_signature, codice_aic_assegnato FROM supervisione_aic
+            WHERE id_anomalia = %s AND stato = 'PENDING'
+        """, (id_anomalia,)).fetchall()
 
-            # Aggiorna supervisioni collegate su TUTTE le tabelle
-            sup_stato = 'APPROVED' if nuovo_stato == 'RISOLTA' else 'REJECTED'
-            nota_sup = f'Risolto da anomalia ({ruolo}): {note or ""}'
+        # v11.4: Aggiungi supervisione_prezzo
+        sup_prezzo = db.execute("""
+            SELECT pattern_signature FROM supervisione_prezzo
+            WHERE id_anomalia = %s AND stato = 'PENDING'
+        """, (id_anomalia,)).fetchall()
 
-            db.execute("""
-                UPDATE supervisione_espositore
-                SET stato = %s,
-                    operatore = %s,
-                    timestamp_decisione = CURRENT_TIMESTAMP,
-                    note = COALESCE(note || ' - ', '') || %s
-                WHERE id_anomalia = %s AND stato = 'PENDING'
-            """, (sup_stato, operatore, nota_sup, id_anomalia))
+        # Aggiorna supervisioni collegate su TUTTE le tabelle (inclusa prezzo)
+        sup_stato = 'APPROVED' if nuovo_stato == 'RISOLTA' else 'REJECTED'
+        nota_sup = f'[AUTO] Risolto da anomalia ({ruolo or "operatore"}): {note or ""}'
 
-            db.execute("""
-                UPDATE supervisione_listino
-                SET stato = %s,
-                    operatore = %s,
-                    timestamp_decisione = CURRENT_TIMESTAMP,
-                    note = COALESCE(note || ' - ', '') || %s
-                WHERE id_anomalia = %s AND stato = 'PENDING'
-            """, (sup_stato, operatore, nota_sup, id_anomalia))
+        db.execute("""
+            UPDATE supervisione_espositore
+            SET stato = %s,
+                operatore = %s,
+                timestamp_decisione = CURRENT_TIMESTAMP,
+                note = COALESCE(note || ' - ', '') || %s
+            WHERE id_anomalia = %s AND stato = 'PENDING'
+        """, (sup_stato, operatore, nota_sup, id_anomalia))
 
-            db.execute("""
-                UPDATE supervisione_lookup
-                SET stato = %s,
-                    operatore = %s,
-                    timestamp_decisione = CURRENT_TIMESTAMP,
-                    note = COALESCE(note || ' - ', '') || %s
-                WHERE id_anomalia = %s AND stato = 'PENDING'
-            """, (sup_stato, operatore, nota_sup, id_anomalia))
+        db.execute("""
+            UPDATE supervisione_listino
+            SET stato = %s,
+                operatore = %s,
+                timestamp_decisione = CURRENT_TIMESTAMP,
+                note = COALESCE(note || ' - ', '') || %s
+            WHERE id_anomalia = %s AND stato = 'PENDING'
+        """, (sup_stato, operatore, nota_sup, id_anomalia))
 
-            db.execute("""
-                UPDATE supervisione_aic
-                SET stato = %s,
-                    operatore = %s,
-                    timestamp_decisione = CURRENT_TIMESTAMP,
-                    note = COALESCE(note || ' - ', '') || %s
-                WHERE id_anomalia = %s AND stato = 'PENDING'
-            """, (sup_stato, operatore, nota_sup, id_anomalia))
+        db.execute("""
+            UPDATE supervisione_lookup
+            SET stato = %s,
+                operatore = %s,
+                timestamp_decisione = CURRENT_TIMESTAMP,
+                note = COALESCE(note || ' - ', '') || %s
+            WHERE id_anomalia = %s AND stato = 'PENDING'
+        """, (sup_stato, operatore, nota_sup, id_anomalia))
 
-            db.commit()
+        db.execute("""
+            UPDATE supervisione_aic
+            SET stato = %s,
+                operatore = %s,
+                timestamp_decisione = CURRENT_TIMESTAMP,
+                note = COALESCE(note || ' - ', '') || %s
+            WHERE id_anomalia = %s AND stato = 'PENDING'
+        """, (sup_stato, operatore, nota_sup, id_anomalia))
 
-            # v10.4: Registra approvazioni pattern ML (solo se RISOLTA)
-            # IMPORTANTE: Deduplica pattern per evitare conteggi multipli
-            if nuovo_stato == 'RISOLTA':
-                from ..supervision.ml import registra_approvazione_pattern, registra_approvazione_pattern_listino
-                from ..supervision.lookup import registra_approvazione_pattern_lookup
-                from ..supervision.aic import _registra_approvazione_pattern_aic
+        # v11.4: Aggiungi supervisione_prezzo
+        db.execute("""
+            UPDATE supervisione_prezzo
+            SET stato = %s,
+                operatore = %s,
+                timestamp_decisione = CURRENT_TIMESTAMP,
+                note = COALESCE(note || ' - ', '') || %s
+            WHERE id_anomalia = %s AND stato = 'PENDING'
+        """, (sup_stato, operatore, nota_sup, id_anomalia))
 
-                # Deduplica pattern signatures
-                seen_esp = set()
-                for row in sup_esp:
-                    ps = row['pattern_signature']
-                    if ps and ps not in seen_esp:
-                        seen_esp.add(ps)
-                        registra_approvazione_pattern(ps, operatore)
+        db.commit()
 
-                seen_lst = set()
-                for row in sup_lst:
-                    ps = row['pattern_signature']
-                    if ps and ps not in seen_lst:
-                        seen_lst.add(ps)
-                        registra_approvazione_pattern_listino(ps, operatore)
+        # Registra approvazioni pattern ML (solo se RISOLTA)
+        # IMPORTANTE: Deduplica pattern per evitare conteggi multipli
+        if nuovo_stato == 'RISOLTA':
+            from ..supervision.ml import registra_approvazione_pattern, registra_approvazione_pattern_listino
+            from ..supervision.lookup import registra_approvazione_pattern_lookup
+            from ..supervision.aic import _registra_approvazione_pattern_aic
 
-                seen_lkp = set()
-                for row in sup_lkp:
-                    ps = row['pattern_signature']
-                    if ps and ps not in seen_lkp:
-                        seen_lkp.add(ps)
-                        registra_approvazione_pattern_lookup(ps, operatore)
+            # Deduplica pattern signatures
+            seen_esp = set()
+            for row in sup_esp:
+                ps = row['pattern_signature']
+                if ps and ps not in seen_esp:
+                    seen_esp.add(ps)
+                    registra_approvazione_pattern(ps, operatore)
 
-                seen_aic = set()
-                for row in sup_aic:
-                    ps = row['pattern_signature']
-                    aic = row.get('codice_aic_assegnato')
-                    if ps and aic and ps not in seen_aic:
-                        seen_aic.add(ps)
-                        _registra_approvazione_pattern_aic(ps, operatore, aic)
-        else:
-            # OPERATORE: solo commit anomalia, supervisioni restano PENDING
-            db.commit()
+            seen_lst = set()
+            for row in sup_lst:
+                ps = row['pattern_signature']
+                if ps and ps not in seen_lst:
+                    seen_lst.add(ps)
+                    registra_approvazione_pattern_listino(ps, operatore)
+
+            seen_lkp = set()
+            for row in sup_lkp:
+                ps = row['pattern_signature']
+                if ps and ps not in seen_lkp:
+                    seen_lkp.add(ps)
+                    registra_approvazione_pattern_lookup(ps, operatore)
+
+            seen_aic = set()
+            for row in sup_aic:
+                ps = row['pattern_signature']
+                aic = row.get('codice_aic_assegnato')
+                if ps and aic and ps not in seen_aic:
+                    seen_aic.add(ps)
+                    _registra_approvazione_pattern_aic(ps, operatore, aic)
 
     else:
         # NOTA: id_operatore_gestione è INTEGER - non possiamo inserire username
@@ -310,24 +318,19 @@ def resolve_anomalia(
     """
     Risolve un'anomalia con dati corretti opzionali.
 
-    v11.2: Aggiunto ruolo per gestione supervisioni.
-    - SUPERVISORE/ADMIN → risolve anomalia + supervisione collegata
-    - OPERATORE → risolve anomalia ma supervisione resta PENDING
+    v11.4: Le supervisioni vengono SEMPRE approvate automaticamente
+    quando l'anomalia viene risolta, indipendentemente dal ruolo.
 
     Args:
         id_anomalia: ID anomalia
         operatore: Username operatore
         note: Note risoluzione
         dati_corretti: Dati corretti (JSON)
-        ruolo: Ruolo operatore (per risoluzione supervisioni)
+        ruolo: Ruolo operatore (per logging)
 
     Returns:
         True se risolto con successo
     """
-    # v11.2: Determina se l'utente può risolvere supervisioni
-    ruoli_supervisione = ['supervisore', 'admin']
-    puo_risolvere_supervisioni = ruolo and ruolo.lower() in ruoli_supervisione
-
     db = get_db()
 
     import json
@@ -343,100 +346,107 @@ def resolve_anomalia(
         WHERE id_anomalia = %s
     """, (f"Operatore: {operatore} ({ruolo or 'N/D'}) - {note or ''}", id_anomalia))
 
-    # v11.2: Aggiorna supervisioni SOLO se SUPERVISORE o ADMIN
-    if puo_risolvere_supervisioni:
-        # v10.4: Aggiorna supervisioni collegate su TUTTE le tabelle e registra pattern ML
-        nota_sup = f'Risolto da anomalia ({ruolo}): {note or ""}'
+    # v11.4: Approvazione automatica supervisioni - SEMPRE
+    nota_sup = f'[AUTO] Risolto da anomalia ({ruolo or "operatore"}): {note or ""}'
 
-        # Recupera pattern signatures PRIMA di aggiornare (per ML learning)
-        sup_esp = db.execute("""
-            SELECT pattern_signature FROM supervisione_espositore
-            WHERE id_anomalia = %s AND stato = 'PENDING'
-        """, (id_anomalia,)).fetchall()
+    # Recupera pattern signatures PRIMA di aggiornare (per ML learning)
+    sup_esp = db.execute("""
+        SELECT pattern_signature FROM supervisione_espositore
+        WHERE id_anomalia = %s AND stato = 'PENDING'
+    """, (id_anomalia,)).fetchall()
 
-        sup_lst = db.execute("""
-            SELECT pattern_signature FROM supervisione_listino
-            WHERE id_anomalia = %s AND stato = 'PENDING'
-        """, (id_anomalia,)).fetchall()
+    sup_lst = db.execute("""
+        SELECT pattern_signature FROM supervisione_listino
+        WHERE id_anomalia = %s AND stato = 'PENDING'
+    """, (id_anomalia,)).fetchall()
 
-        sup_lkp = db.execute("""
-            SELECT pattern_signature FROM supervisione_lookup
-            WHERE id_anomalia = %s AND stato = 'PENDING'
-        """, (id_anomalia,)).fetchall()
+    sup_lkp = db.execute("""
+        SELECT pattern_signature FROM supervisione_lookup
+        WHERE id_anomalia = %s AND stato = 'PENDING'
+    """, (id_anomalia,)).fetchall()
 
-        sup_aic = db.execute("""
-            SELECT pattern_signature, codice_aic_assegnato FROM supervisione_aic
-            WHERE id_anomalia = %s AND stato = 'PENDING'
-        """, (id_anomalia,)).fetchall()
+    sup_aic = db.execute("""
+        SELECT pattern_signature, codice_aic_assegnato FROM supervisione_aic
+        WHERE id_anomalia = %s AND stato = 'PENDING'
+    """, (id_anomalia,)).fetchall()
 
-        # Aggiorna supervisioni
-        db.execute("""
-            UPDATE supervisione_espositore
-            SET stato = 'APPROVED', operatore = %s, timestamp_decisione = CURRENT_TIMESTAMP,
-                note = COALESCE(note || ' - ', '') || %s
-            WHERE id_anomalia = %s AND stato = 'PENDING'
-        """, (operatore, nota_sup, id_anomalia))
+    sup_prezzo = db.execute("""
+        SELECT pattern_signature FROM supervisione_prezzo
+        WHERE id_anomalia = %s AND stato = 'PENDING'
+    """, (id_anomalia,)).fetchall()
 
-        db.execute("""
-            UPDATE supervisione_listino
-            SET stato = 'APPROVED', operatore = %s, timestamp_decisione = CURRENT_TIMESTAMP,
-                note = COALESCE(note || ' - ', '') || %s
-            WHERE id_anomalia = %s AND stato = 'PENDING'
-        """, (operatore, nota_sup, id_anomalia))
+    # Aggiorna supervisioni su TUTTE le tabelle
+    db.execute("""
+        UPDATE supervisione_espositore
+        SET stato = 'APPROVED', operatore = %s, timestamp_decisione = CURRENT_TIMESTAMP,
+            note = COALESCE(note || ' - ', '') || %s
+        WHERE id_anomalia = %s AND stato = 'PENDING'
+    """, (operatore, nota_sup, id_anomalia))
 
-        db.execute("""
-            UPDATE supervisione_lookup
-            SET stato = 'APPROVED', operatore = %s, timestamp_decisione = CURRENT_TIMESTAMP,
-                note = COALESCE(note || ' - ', '') || %s
-            WHERE id_anomalia = %s AND stato = 'PENDING'
-        """, (operatore, nota_sup, id_anomalia))
+    db.execute("""
+        UPDATE supervisione_listino
+        SET stato = 'APPROVED', operatore = %s, timestamp_decisione = CURRENT_TIMESTAMP,
+            note = COALESCE(note || ' - ', '') || %s
+        WHERE id_anomalia = %s AND stato = 'PENDING'
+    """, (operatore, nota_sup, id_anomalia))
 
-        db.execute("""
-            UPDATE supervisione_aic
-            SET stato = 'APPROVED', operatore = %s, timestamp_decisione = CURRENT_TIMESTAMP,
-                note = COALESCE(note || ' - ', '') || %s
-            WHERE id_anomalia = %s AND stato = 'PENDING'
-        """, (operatore, nota_sup, id_anomalia))
+    db.execute("""
+        UPDATE supervisione_lookup
+        SET stato = 'APPROVED', operatore = %s, timestamp_decisione = CURRENT_TIMESTAMP,
+            note = COALESCE(note || ' - ', '') || %s
+        WHERE id_anomalia = %s AND stato = 'PENDING'
+    """, (operatore, nota_sup, id_anomalia))
 
-        db.commit()
+    db.execute("""
+        UPDATE supervisione_aic
+        SET stato = 'APPROVED', operatore = %s, timestamp_decisione = CURRENT_TIMESTAMP,
+            note = COALESCE(note || ' - ', '') || %s
+        WHERE id_anomalia = %s AND stato = 'PENDING'
+    """, (operatore, nota_sup, id_anomalia))
 
-        # v10.4: Registra approvazioni pattern ML
-        # IMPORTANTE: Deduplica pattern per evitare conteggi multipli
-        from ..supervision.ml import registra_approvazione_pattern, registra_approvazione_pattern_listino
-        from ..supervision.lookup import registra_approvazione_pattern_lookup
-        from ..supervision.aic import _registra_approvazione_pattern_aic
+    db.execute("""
+        UPDATE supervisione_prezzo
+        SET stato = 'APPROVED', operatore = %s, timestamp_decisione = CURRENT_TIMESTAMP,
+            note = COALESCE(note || ' - ', '') || %s
+        WHERE id_anomalia = %s AND stato = 'PENDING'
+    """, (operatore, nota_sup, id_anomalia))
 
-        seen_esp = set()
-        for row in sup_esp:
-            ps = row['pattern_signature']
-            if ps and ps not in seen_esp:
-                seen_esp.add(ps)
-                registra_approvazione_pattern(ps, operatore)
+    db.commit()
 
-        seen_lst = set()
-        for row in sup_lst:
-            ps = row['pattern_signature']
-            if ps and ps not in seen_lst:
-                seen_lst.add(ps)
-                registra_approvazione_pattern_listino(ps, operatore)
+    # Registra approvazioni pattern ML
+    # IMPORTANTE: Deduplica pattern per evitare conteggi multipli
+    from ..supervision.ml import registra_approvazione_pattern, registra_approvazione_pattern_listino
+    from ..supervision.lookup import registra_approvazione_pattern_lookup
+    from ..supervision.aic import _registra_approvazione_pattern_aic
 
-        seen_lkp = set()
-        for row in sup_lkp:
-            ps = row['pattern_signature']
-            if ps and ps not in seen_lkp:
-                seen_lkp.add(ps)
-                registra_approvazione_pattern_lookup(ps, operatore)
+    seen_esp = set()
+    for row in sup_esp:
+        ps = row['pattern_signature']
+        if ps and ps not in seen_esp:
+            seen_esp.add(ps)
+            registra_approvazione_pattern(ps, operatore)
 
-        seen_aic = set()
-        for row in sup_aic:
-            ps = row['pattern_signature']
-            aic = row.get('codice_aic_assegnato')
-            if ps and aic and ps not in seen_aic:
-                seen_aic.add(ps)
-                _registra_approvazione_pattern_aic(ps, operatore, aic)
-    else:
-        # OPERATORE: solo commit anomalia, supervisioni restano PENDING
-        db.commit()
+    seen_lst = set()
+    for row in sup_lst:
+        ps = row['pattern_signature']
+        if ps and ps not in seen_lst:
+            seen_lst.add(ps)
+            registra_approvazione_pattern_listino(ps, operatore)
+
+    seen_lkp = set()
+    for row in sup_lkp:
+        ps = row['pattern_signature']
+        if ps and ps not in seen_lkp:
+            seen_lkp.add(ps)
+            registra_approvazione_pattern_lookup(ps, operatore)
+
+    seen_aic = set()
+    for row in sup_aic:
+        ps = row['pattern_signature']
+        aic = row.get('codice_aic_assegnato')
+        if ps and aic and ps not in seen_aic:
+            seen_aic.add(ps)
+            _registra_approvazione_pattern_aic(ps, operatore, aic)
 
     # Recupera id_testata per sblocco
     anomalia = db.execute(
@@ -588,13 +598,20 @@ def _sblocca_ordine_se_possibile(id_testata: int) -> bool:
         WHERE id_testata = %s AND stato = 'PENDING'
     """, (id_testata,)).fetchone()
 
+    # v11.4: Conta supervisioni PREZZO pending
+    sup_prezzo = db.execute("""
+        SELECT COUNT(*) as cnt FROM supervisione_prezzo
+        WHERE id_testata = %s AND stato = 'PENDING'
+    """, (id_testata,)).fetchone()
+
     anomalie_cnt = anomalie_aperte['cnt'] if anomalie_aperte else 0
     sup_esp_cnt = sup_espositore['cnt'] if sup_espositore else 0
     sup_lst_cnt = sup_listino['cnt'] if sup_listino else 0
     sup_lkp_cnt = sup_lookup['cnt'] if sup_lookup else 0
     sup_aic_cnt = sup_aic['cnt'] if sup_aic else 0
+    sup_prezzo_cnt = sup_prezzo['cnt'] if sup_prezzo else 0
 
-    total_blocking = anomalie_cnt + sup_esp_cnt + sup_lst_cnt + sup_lkp_cnt + sup_aic_cnt
+    total_blocking = anomalie_cnt + sup_esp_cnt + sup_lst_cnt + sup_lkp_cnt + sup_aic_cnt + sup_prezzo_cnt
 
     if total_blocking == 0:
         result = db.execute("""

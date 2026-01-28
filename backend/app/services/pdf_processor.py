@@ -746,80 +746,53 @@ def _insert_order(
             f"Ordine {order_data.get('numero_ordine')}: lookup score medio ({lookup_score}%) - verifica consigliata"
         )
 
-    # 6. ANOMALIA LKP-A05: Cliente non trovato in anagrafica_clienti (CRITICO - bloccante) v8.2
-    # v10.5: Aggiunta creazione supervisione per permettere risoluzione
-    # Verifica se la P.IVA estratta esiste in anagrafica_clienti (necessario per deposito di riferimento)
+    # 6. ANOMALIA DEP-A01: Deposito mancante (v11.4 - UNIFICATO)
+    # v11.4: Il deposito mancante NON è un problema di LOOKUP ma di DEPOSITO.
+    # Se lookup score >= 80%, il lookup farmacia è OK - il problema è solo il deposito.
+    # Unificato: sia "cliente non in anagrafica" che "cliente senza deposito" → DEP-A01
     piva_estratta = order_data.get('partita_iva', '').strip()
-    if piva_estratta:
+    if piva_estratta and not deposito_riferimento:
+        # Verifica se cliente esiste in anagrafica_clienti per messaggio descrittivo
         cliente_exists = db.execute("""
             SELECT COUNT(*) FROM anagrafica_clienti
             WHERE partita_iva = %s
         """, (piva_estratta,)).fetchone()[0]
 
         if cliente_exists == 0:
-            cursor = db.execute("""
-                INSERT INTO ANOMALIE
-                (id_testata, tipo_anomalia, livello, codice_anomalia,
-                 descrizione, valore_anomalo, richiede_supervisione)
-                VALUES (%s, 'LOOKUP', 'ERRORE', 'LKP-A05', %s, %s, TRUE)
-                RETURNING id_anomalia
-            """, (
-                id_testata,
-                CODICI_ANOMALIA['LKP-A05'],
-                f"P.IVA: {piva_estratta} - Cliente non in anagrafica, deposito non determinabile"
-            ))
-            id_anomalia_lkp = cursor.fetchone()[0]
-
-            # v10.5: Crea supervisione per LKP-A05
-            anomalia_lkp = {
-                'tipo_anomalia': 'LOOKUP',
-                'codice_anomalia': 'LKP-A05',
-                'vendor': vendor or 'UNKNOWN',
-                'partita_iva_estratta': piva_estratta,
-                'ragione_sociale_estratta': order_data.get('ragione_sociale', ''),
-                'citta_estratta': order_data.get('citta', ''),
-                'lookup_method': lookup_method,
-                'lookup_score': lookup_score,
-            }
-            crea_richiesta_supervisione(id_testata, id_anomalia_lkp, anomalia_lkp)
-
-            richiede_supervisione = True
-            result['anomalie'].append(
-                f"Ordine {order_data.get('numero_ordine')}: cliente non trovato in anagrafica clienti (P.IVA: {piva_estratta}) - richiede supervisione"
-            )
+            descrizione_deposito = f"Cliente non in anagrafica clienti (P.IVA: {piva_estratta}) - deposito non determinabile"
         else:
-            # 7. ANOMALIA DEP-A01: Cliente in anagrafica ma senza deposito (v11.3 - ERRORE bloccante)
-            # Se il cliente è in anagrafica ma non ha deposito_riferimento assegnato
-            if not deposito_riferimento:
-                cursor = db.execute("""
-                    INSERT INTO ANOMALIE
-                    (id_testata, tipo_anomalia, livello, codice_anomalia,
-                     descrizione, valore_anomalo, richiede_supervisione)
-                    VALUES (%s, 'DEPOSITO', 'ERRORE', 'DEP-A01', %s, %s, TRUE)
-                    RETURNING id_anomalia
-                """, (
-                    id_testata,
-                    CODICI_ANOMALIA['DEP-A01'],
-                    f"P.IVA: {piva_estratta} - Cliente senza deposito assegnato"
-                ))
-                id_anomalia_dep = cursor.fetchone()[0]
+            descrizione_deposito = f"Cliente senza deposito assegnato (P.IVA: {piva_estratta})"
 
-                # Crea supervisione per DEP-A01 (tipo LOOKUP per gestione unificata)
-                anomalia_dep = {
-                    'tipo_anomalia': 'DEPOSITO',
-                    'codice_anomalia': 'DEP-A01',
-                    'vendor': vendor or 'UNKNOWN',
-                    'partita_iva_estratta': piva_estratta,
-                    'ragione_sociale_estratta': order_data.get('ragione_sociale', ''),
-                    'citta_estratta': order_data.get('citta', ''),
-                    'depositi_validi': 'CT, CL',
-                }
-                crea_richiesta_supervisione(id_testata, id_anomalia_dep, anomalia_dep)
+        cursor = db.execute("""
+            INSERT INTO ANOMALIE
+            (id_testata, tipo_anomalia, livello, codice_anomalia,
+             descrizione, valore_anomalo, richiede_supervisione)
+            VALUES (%s, 'DEPOSITO', 'ERRORE', 'DEP-A01', %s, %s, TRUE)
+            RETURNING id_anomalia
+        """, (
+            id_testata,
+            CODICI_ANOMALIA['DEP-A01'],
+            descrizione_deposito
+        ))
+        id_anomalia_dep = cursor.fetchone()[0]
 
-                richiede_supervisione = True
-                result['anomalie'].append(
-                    f"Ordine {order_data.get('numero_ordine')}: deposito di riferimento mancante (P.IVA: {piva_estratta}) - richiede impostazione manuale"
-                )
+        # Crea supervisione per DEP-A01
+        anomalia_dep = {
+            'tipo_anomalia': 'DEPOSITO',
+            'codice_anomalia': 'DEP-A01',
+            'vendor': vendor or 'UNKNOWN',
+            'partita_iva_estratta': piva_estratta,
+            'ragione_sociale_estratta': order_data.get('ragione_sociale', ''),
+            'citta_estratta': order_data.get('citta', ''),
+            'depositi_validi': 'CT, CL',
+            'cliente_in_anagrafica': cliente_exists > 0,
+        }
+        crea_richiesta_supervisione(id_testata, id_anomalia_dep, anomalia_dep)
+
+        richiede_supervisione = True
+        result['anomalie'].append(
+            f"Ordine {order_data.get('numero_ordine')}: {descrizione_deposito} - richiede impostazione manuale"
+        )
 
     # 8. ANOMALIA DEP-A01 (v11.3 FIX): Farmacia trovata via lookup ma senza deposito
     # Caso: P.IVA non estratta ma farmacia trovata via MIN_ID o ragione sociale

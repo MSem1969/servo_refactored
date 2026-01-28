@@ -19,6 +19,8 @@ from .legacy import (
     import_anagrafica_clienti,
     get_clienti_stats,
     clear_anagrafica_clienti,
+    # v11.4: Revisione automatica depositi
+    revisiona_ordini_deposito_mancante,
 )
 
 # ---- Funzioni Sync Ministero (v8.2) ----
@@ -53,6 +55,8 @@ __all__ = [
     'import_anagrafica_clienti',
     'get_clienti_stats',
     'clear_anagrafica_clienti',
+    # v11.4: Revisione automatica depositi
+    'revisiona_ordini_deposito_mancante',
     # Sync Ministero (v8.2)
     'TipoAnagrafica',
     'SyncResult',

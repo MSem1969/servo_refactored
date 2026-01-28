@@ -692,13 +692,15 @@ def get_supervisione_listino_by_testata(id_testata: int) -> List[Dict[str, Any]]
 
 
 def count_supervisioni_pending() -> int:
-    """Conta tutte le supervisioni in attesa (espositore + listino + lookup)."""
+    """Conta tutte le supervisioni in attesa (tutte le tabelle)."""
     db = get_db()
     count_esp = db.execute("SELECT COUNT(*) AS cnt FROM supervisione_espositore WHERE stato = 'PENDING'").fetchone()['cnt']
     count_lst = db.execute("SELECT COUNT(*) AS cnt FROM supervisione_listino WHERE stato = 'PENDING'").fetchone()['cnt']
-    # v8.0: Include anche lookup
     count_lkp = db.execute("SELECT COUNT(*) AS cnt FROM supervisione_lookup WHERE stato = 'PENDING'").fetchone()['cnt']
-    return count_esp + count_lst + count_lkp
+    # v11.4: Include anche aic e prezzo
+    count_aic = db.execute("SELECT COUNT(*) AS cnt FROM supervisione_aic WHERE stato = 'PENDING'").fetchone()['cnt']
+    count_prezzo = db.execute("SELECT COUNT(*) AS cnt FROM supervisione_prezzo WHERE stato = 'PENDING'").fetchone()['cnt']
+    return count_esp + count_lst + count_lkp + count_aic + count_prezzo
 
 
 def count_supervisioni_espositore_pending() -> int:

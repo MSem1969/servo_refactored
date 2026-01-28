@@ -150,7 +150,7 @@ class AnomaliaResolver:
         if codice.startswith('AIC-'):
             return self._risolvi_aic(anomalia, params)
 
-        elif codice == 'LKP-A05':
+        elif codice == 'LKP-A05' or codice == 'DEP-A01' or codice.startswith('DEP-'):
             return self._risolvi_deposito(anomalia, params)
 
         elif codice.startswith('LKP-'):
@@ -752,9 +752,9 @@ class AnomaliaResolver:
             WHERE id_anomalia = %s
         """, (f"Operatore: {operatore} - {note or ''}", id_anomalia))
 
-        # Approva supervisioni collegate
+        # v11.4: Approva supervisioni collegate (inclusa prezzo)
         for table in ['supervisione_espositore', 'supervisione_listino',
-                      'supervisione_lookup', 'supervisione_aic']:
+                      'supervisione_lookup', 'supervisione_aic', 'supervisione_prezzo']:
             self.db.execute(f"""
                 UPDATE {table}
                 SET stato = 'APPROVED',
@@ -774,10 +774,10 @@ class AnomaliaResolver:
             AND livello IN ('ERRORE', 'CRITICO')
         """, (id_testata,)).fetchone()
 
-        # Conta supervisioni pending
+        # v11.4: Conta supervisioni pending (inclusa prezzo)
         sup_count = 0
         for table in ['supervisione_espositore', 'supervisione_listino',
-                      'supervisione_lookup', 'supervisione_aic']:
+                      'supervisione_lookup', 'supervisione_aic', 'supervisione_prezzo']:
             row = self.db.execute(f"""
                 SELECT COUNT(*) as cnt FROM {table}
                 WHERE id_testata = %s AND stato = 'PENDING'

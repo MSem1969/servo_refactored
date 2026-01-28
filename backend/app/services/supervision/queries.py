@@ -35,14 +35,15 @@ def può_emettere_tracciato(id_testata: int) -> bool:
     if not ordine or ordine['stato'] in ('PENDING_REVIEW', 'ANOMALIA'):
         return False
 
-    # v10.4: Verifica supervisioni pending su TUTTE le tabelle
+    # v11.4: Verifica supervisioni pending su TUTTE le tabelle (inclusa prezzo)
     pending = db.execute("""
         SELECT
             (SELECT COUNT(*) FROM supervisione_espositore WHERE id_testata = %s AND stato = 'PENDING') +
             (SELECT COUNT(*) FROM supervisione_listino WHERE id_testata = %s AND stato = 'PENDING') +
             (SELECT COUNT(*) FROM supervisione_lookup WHERE id_testata = %s AND stato = 'PENDING') +
-            (SELECT COUNT(*) FROM supervisione_aic WHERE id_testata = %s AND stato = 'PENDING') as total
-    """, (id_testata, id_testata, id_testata, id_testata)).fetchone()
+            (SELECT COUNT(*) FROM supervisione_aic WHERE id_testata = %s AND stato = 'PENDING') +
+            (SELECT COUNT(*) FROM supervisione_prezzo WHERE id_testata = %s AND stato = 'PENDING') as total
+    """, (id_testata, id_testata, id_testata, id_testata, id_testata)).fetchone()
 
     if pending and pending['total'] > 0:
         return False

@@ -56,8 +56,10 @@ ANOMALY_CODES = {
 
 ANOMALY_LEVELS = {
     # Bloccanti (richiedono supervisione)
-    'CRITICO': ['ESP-A01', 'ESP-A02', 'LKP-A01', 'LKP-A02', 'LKP-A04', 'LKP-A05', 'EXT-A01'],
-    'ERRORE': ['ESP-A03', 'ESP-A06', 'AIC-A01', 'LST-A01', 'LST-A02', 'DOCGEN-A04', 'DOCGEN-A09', 'DOCGEN-A10'],
+    # v11.4: Rimosso LKP-A05 (convertito in DEP-A01 - problema deposito, non lookup)
+    'CRITICO': ['ESP-A01', 'ESP-A02', 'LKP-A01', 'LKP-A02', 'LKP-A04', 'EXT-A01'],
+    # v11.4: Aggiunto DEP-A01 (deposito mancante - bloccante)
+    'ERRORE': ['ESP-A03', 'ESP-A06', 'AIC-A01', 'LST-A01', 'LST-A02', 'DOCGEN-A04', 'DOCGEN-A09', 'DOCGEN-A10', 'DEP-A01'],
     # Non bloccanti
     'ATTENZIONE': ['LKP-A03', 'DOCGEN-A08'],
     'INFO': ['DOCGEN-A01', 'DOCGEN-A03'],

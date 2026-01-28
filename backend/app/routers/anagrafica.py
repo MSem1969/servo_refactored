@@ -21,6 +21,8 @@ from ..services.anagrafica import (
     clear_anagrafica_farmacie,
     clear_anagrafica_parafarmacie,
     clear_anagrafica_clienti,
+    # v11.4
+    revisiona_ordini_deposito_mancante,
 )
 
 
@@ -354,5 +356,46 @@ async def clear_clienti(
             "success": True,
             "message": f"Eliminati {count:,} clienti"
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# v11.4: REVISIONE ORDINI CON DEPOSITO MANCANTE
+# =============================================================================
+
+@router.post("/clienti/revisiona-depositi", summary="Revisiona ordini con deposito mancante")
+async def revisiona_depositi() -> Dict[str, Any]:
+    """
+    Revisiona ordini con anomalie DEP-A01 (deposito mancante).
+
+    Cerca ordini in stato ANOMALIA/PENDING_REVIEW con anomalie DEP-A01 aperte,
+    e prova a trovare il deposito in anagrafica_clienti usando P.IVA e/o MIN_ID.
+
+    Logica di matching:
+    - Match esatto su P.IVA + MIN_ID → score 100
+    - Match su MIN_ID esatto → score 90
+    - Match su P.IVA esatta → score 80
+
+    Se trova un cliente con deposito_riferimento e score >= 80, aggiorna l'ordine
+    e risolve l'anomalia automaticamente.
+
+    Questa funzione viene chiamata automaticamente dopo import anagrafica clienti,
+    ma può essere invocata manualmente per ri-processare ordini pendenti.
+    """
+    try:
+        result = revisiona_ordini_deposito_mancante()
+
+        if 'error' in result:
+            raise HTTPException(status_code=500, detail=result['error'])
+
+        return {
+            "success": True,
+            "data": result,
+            "message": f"Revisionati {result['ordini_revisionati']} ordini, "
+                      f"risolte {result['anomalie_risolte']} anomalie deposito"
+        }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
