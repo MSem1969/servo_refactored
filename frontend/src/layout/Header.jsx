@@ -2,32 +2,29 @@
 // HEADER COMPONENT
 // =============================================================================
 // Componente header modulare per barra superiore
-// Gestisce titolo pagina, notifiche, user actions
+// Gestisce titolo pagina, user actions
+// v11.4: Rimosso sistema notifiche mockup (notifiche via ticket CRM)
 // =============================================================================
 
 import React, { useState } from 'react';
-import { Button } from '../common';
 import { utentiApi } from '../api';
 
 /**
  * Componente Header per barra superiore
- * 
+ *
  * LOGICA IMPLEMENTATIVA:
  * - Titolo dinamico basato su pagina corrente
  * - Data formattata localizzata italiana
- * - Sistema notifiche con dropdown
  * - User avatar e info rapide
- * 
+ *
  * INTERRELAZIONI:
  * - Usato in: Layout principale
- * - Dipende da: Button component
  * - Sostituisce: Header hardcoded in App.jsx
- * 
+ *
  * @param {string} title - Titolo pagina corrente
  * @param {string} subtitle - Sottotitolo opzionale
  * @param {Object} currentUser - Dati utente corrente
- * @param {Array} notifications - Array notifiche {id, type, message, timestamp}
- * @param {function} onNotificationClick - Handler click notifica
+ * @param {function} onLogout - Handler logout
  * @param {React.Node} actions - Azioni personalizzate header (opzionale)
  * @param {boolean} showDate - Mostra data corrente (default: true)
  */
@@ -35,7 +32,6 @@ const Header = ({
   title = 'Dashboard',
   subtitle,
   currentUser,
-  // v11.0: notifications e onNotificationClick rimossi - funzionalità non implementata
   onLogout,
   actions,
   showDate = true
@@ -96,9 +92,6 @@ const Header = ({
 
           {/* Right: User Menu */}
           <div className="flex items-center gap-3">
-            {/* v11.0: Notifiche rimosse - funzionalità non implementata */}
-            {/* TODO: Implementare sistema notifiche reale con backend API */}
-
             {/* User Info - Clickable for menu */}
             <div className="relative">
               <button
@@ -162,128 +155,6 @@ const Header = ({
         />
       )}
     </>
-  );
-};
-
-/**
- * Componente NotificationDropdown
- * Dropdown per visualizzare notifiche
- */
-const NotificationDropdown = ({ notifications, onNotificationClick, onClose }) => {
-  
-  // Icone per tipo notifica
-  const getNotificationIcon = (type) => {
-    const icons = {
-      error: '❌',
-      warning: '⚠️',
-      info: 'ℹ️',
-      success: '✅',
-      upload: '📤',
-      order: '📋',
-      anomaly: '🚨',
-    };
-    return icons[type] || 'ℹ️';
-  };
-
-  // Colori per tipo notifica
-  const getNotificationStyle = (type, read) => {
-    const baseStyle = 'p-3 hover:bg-slate-50 cursor-pointer border-l-4 transition-colors';
-    const opacity = read ? 'opacity-70' : '';
-    
-    const colors = {
-      error: 'border-red-500 bg-red-50/50',
-      warning: 'border-amber-500 bg-amber-50/50',
-      info: 'border-blue-500 bg-blue-50/50',
-      success: 'border-emerald-500 bg-emerald-50/50',
-      upload: 'border-purple-500 bg-purple-50/50',
-      order: 'border-indigo-500 bg-indigo-50/50',
-      anomaly: 'border-orange-500 bg-orange-50/50',
-    };
-    
-    return `${baseStyle} ${colors[type] || colors.info} ${opacity}`;
-  };
-
-  return (
-    <div className="absolute top-12 right-0 w-80 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 max-h-96 overflow-hidden">
-      {/* Header */}
-      <div className="p-3 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-        <span className="font-bold text-sm text-slate-800">Notifiche</span>
-        <div className="flex items-center gap-2">
-          {notifications.length > 0 && (
-            <span className="text-xs text-slate-500">
-              {notifications.filter(n => !n.read).length} non lette
-            </span>
-          )}
-          <Button variant="ghost" size="xs" onClick={onClose}>
-            ✕
-          </Button>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="max-h-80 overflow-y-auto">
-        {notifications.length === 0 ? (
-          <div className="p-6 text-center text-slate-500">
-            <div className="text-2xl mb-2">🔕</div>
-            <p className="text-sm">Nessuna notifica</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-slate-100">
-            {notifications.map((notification) => (
-              <div
-                key={notification.id}
-                className={getNotificationStyle(notification.type, notification.read)}
-                onClick={() => onNotificationClick(notification)}
-              >
-                <div className="flex items-start gap-3">
-                  {/* Icon */}
-                  <span className="text-lg mt-0.5">
-                    {getNotificationIcon(notification.type)}
-                  </span>
-                  
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-slate-800 mb-1">
-                      {notification.title || 'Notifica'}
-                    </p>
-                    <p className="text-xs text-slate-600 leading-relaxed">
-                      {notification.message}
-                    </p>
-                    {notification.timestamp && (
-                      <p className="text-xs text-slate-400 mt-2">
-                        {new Date(notification.timestamp).toLocaleString('it-IT')}
-                      </p>
-                    )}
-                  </div>
-                  
-                  {/* Unread indicator */}
-                  {!notification.read && (
-                    <div className="w-2 h-2 bg-blue-500 rounded-full mt-2" />
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Footer Actions */}
-      {notifications.length > 0 && (
-        <div className="p-2 border-t border-slate-100 bg-slate-50">
-          <Button
-            variant="ghost"
-            size="xs"
-            className="w-full"
-            onClick={() => {
-              // Mark all as read logic here
-              onClose();
-            }}
-          >
-            Segna tutte come lette
-          </Button>
-        </div>
-      )}
-    </div>
   );
 };
 
@@ -504,5 +375,5 @@ const PasswordChangeModal = ({ currentUser, onClose }) => {
   );
 };
 
-export { Header, NotificationDropdown, UserMenuDropdown, PasswordChangeModal };
+export { Header, UserMenuDropdown, PasswordChangeModal };
 export default Header;

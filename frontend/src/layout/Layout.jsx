@@ -3,6 +3,7 @@
 // =============================================================================
 // Componente layout principale che combina Sidebar + Header + Content
 // Gestisce responsive, stati loading, errori globali
+// v11.4: Rimosso sistema notifiche mockup (notifiche via ticket CRM)
 // =============================================================================
 
 import React, { useState } from 'react';
@@ -34,8 +35,6 @@ import FloatingWidget from '../components/CrmChatbot/FloatingWidget';
  * @param {function} onPageChange - Handler cambio pagina
  * @param {string} pageTitle - Titolo pagina corrente
  * @param {string} pageSubtitle - Sottotitolo opzionale
- * @param {Array} notifications - Array notifiche
- * @param {function} onNotificationClick - Handler click notifica
  * @param {boolean} loading - Stato loading globale
  * @param {Error} error - Errore globale
  * @param {React.Node} headerActions - Azioni custom header
@@ -49,8 +48,6 @@ const Layout = ({
   onPageChange,
   pageTitle,
   pageSubtitle,
-  notifications = [],
-  onNotificationClick,
   loading = false,
   error = null,
   headerActions,
@@ -111,8 +108,6 @@ const Layout = ({
           title={pageTitle}
           subtitle={pageSubtitle}
           currentUser={currentUser}
-          notifications={notifications}
-          onNotificationClick={onNotificationClick}
           onLogout={onLogout}
           actions={headerActions}
         />

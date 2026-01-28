@@ -1,7 +1,8 @@
 // =============================================================================
-// SERV.O v7.0 - UI CONTEXT
+// SERV.O v11.4 - UI CONTEXT
 // =============================================================================
-// Gestione centralizzata stato UI (navigazione, modali, notifiche)
+// Gestione centralizzata stato UI (navigazione, modali, toast)
+// v11.4: Rimosso sistema notifiche mockup (notifiche via ticket CRM)
 // =============================================================================
 
 import React, { createContext, useContext, useState, useCallback } from 'react';
@@ -17,8 +18,8 @@ export function UIProvider({ children }) {
   const [activeModal, setActiveModal] = useState(null);
   const [modalData, setModalData] = useState(null);
 
-  // Notifiche
-  const [notifications, setNotifications] = useState([]);
+  // Toast temporanei
+  const [toasts, setToasts] = useState([]);
 
   // Loading globale
   const [globalLoading, setGlobalLoading] = useState(false);
@@ -53,42 +54,27 @@ export function UIProvider({ children }) {
     setModalData(null);
   }, []);
 
-  // Notifiche
-  const addNotification = useCallback((notification) => {
-    const id = Date.now();
-    setNotifications(prev => [...prev, { ...notification, id, read: false }]);
-    return id;
-  }, []);
-
-  const markNotificationRead = useCallback((id) => {
-    setNotifications(prev =>
-      prev.map(n => n.id === id ? { ...n, read: true } : n)
-    );
-  }, []);
-
-  const clearNotification = useCallback((id) => {
-    setNotifications(prev => prev.filter(n => n.id !== id));
-  }, []);
-
-  const clearAllNotifications = useCallback(() => {
-    setNotifications([]);
-  }, []);
-
-  // Toast/Alert temporaneo
+  // Toast/Alert temporaneo (auto-rimozione)
   const showToast = useCallback((message, type = 'info', duration = 3000) => {
-    const id = addNotification({
+    const id = Date.now();
+    const toast = {
+      id,
       type,
       title: type === 'error' ? 'Errore' : type === 'success' ? 'Successo' : 'Info',
       message,
       timestamp: new Date().toISOString(),
-    });
+    };
+
+    setToasts(prev => [...prev, toast]);
 
     if (duration > 0) {
-      setTimeout(() => clearNotification(id), duration);
+      setTimeout(() => {
+        setToasts(prev => prev.filter(t => t.id !== id));
+      }, duration);
     }
 
     return id;
-  }, [addNotification, clearNotification]);
+  }, []);
 
   // Loading globale
   const setLoading = useCallback((loading, message = null) => {
@@ -116,13 +102,8 @@ export function UIProvider({ children }) {
     openModal,
     closeModal,
 
-    // Notifiche
-    notifications,
-    unreadCount: notifications.filter(n => !n.read).length,
-    addNotification,
-    markNotificationRead,
-    clearNotification,
-    clearAllNotifications,
+    // Toast temporanei
+    toasts,
     showToast,
 
     // Loading/Error

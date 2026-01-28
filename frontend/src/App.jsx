@@ -634,8 +634,7 @@ export default function App() {
     return 'upload';
   };
 
-  // v11.0: Sistema notifiche rimosso - non funzionante
-  // TODO: Implementare sistema notifiche reale con backend API
+  // v11.4: Sistema notifiche via ticket CRM (admin/supervisore)
 
   // Verifica autenticazione all'avvio
   useEffect(() => {
