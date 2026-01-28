@@ -1125,6 +1125,89 @@ async def modifica_header_ordine(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# =============================================================================
+# SBLOCCA SUPERVISIONI ORDINE (v11.4)
+# =============================================================================
+
+@router.post("/{id_testata}/sblocca-supervisioni")
+async def sblocca_supervisioni_ordine(
+    id_testata: int,
+    operatore: str = Query(..., description="Username operatore")
+) -> Dict[str, Any]:
+    """
+    Approva tutte le supervisioni PENDING di un ordine.
+
+    v11.4: Endpoint di emergenza per sbloccare ordini con supervisioni
+    rimaste in stato PENDING (es. dopo modifica header manuale pre-fix).
+
+    Approva supervisioni in tutte le tabelle:
+    - supervisione_lookup
+    - supervisione_prezzo
+    - supervisione_listino
+    - supervisione_espositore
+    - supervisione_aic
+    """
+    from ..database_pg import get_db, log_operation
+
+    db = get_db()
+
+    try:
+        # Verifica esistenza ordine
+        ordine = db.execute(
+            "SELECT numero_ordine, stato FROM ordini_testata WHERE id_testata = %s",
+            (id_testata,)
+        ).fetchone()
+
+        if not ordine:
+            raise HTTPException(status_code=404, detail="Ordine non trovato")
+
+        # Approva supervisioni in tutte le tabelle
+        supervisioni_approvate = 0
+        nota_sup = f"[SBLOCCO MANUALE] Approvato da {operatore}"
+
+        for sup_table in ['supervisione_lookup', 'supervisione_prezzo', 'supervisione_listino',
+                          'supervisione_espositore', 'supervisione_aic']:
+            try:
+                res = db.execute(f"""
+                    UPDATE {sup_table}
+                    SET stato = 'APPROVED',
+                        resolved_by = %s,
+                        resolved_at = CURRENT_TIMESTAMP,
+                        note_admin = %s
+                    WHERE id_testata = %s AND stato = 'PENDING'
+                """, (operatore, nota_sup, id_testata))
+                if hasattr(res, 'rowcount'):
+                    supervisioni_approvate += res.rowcount
+            except Exception:
+                pass  # Tabella potrebbe non esistere
+
+        log_operation(
+            'SBLOCCO_SUPERVISIONI',
+            'ORDINI_TESTATA',
+            id_testata,
+            f"Approvate {supervisioni_approvate} supervisioni pending",
+            operatore=operatore
+        )
+
+        db.commit()
+
+        return {
+            "success": True,
+            "message": f"Approvate {supervisioni_approvate} supervisioni per ordine {ordine['numero_ordine']}",
+            "data": {
+                "id_testata": id_testata,
+                "numero_ordine": ordine['numero_ordine'],
+                "supervisioni_approvate": supervisioni_approvate
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/{id_testata}/righe/{id_dettaglio}/supervisione")
 async def invia_a_supervisione(
     id_testata: int,
