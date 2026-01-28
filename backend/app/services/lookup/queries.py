@@ -116,15 +116,17 @@ def popola_header_da_anagrafica(id_testata: int, operatore: str = None) -> bool:
 
     min_id = farm_data['min_id'] or ''
 
-    # v11.3: Lookup anagrafica_clienti per deposito_riferimento usando MIN_ID
+    # v11.4: Lookup anagrafica_clienti per deposito_riferimento usando MIN_ID
+    # Normalizza MIN_ID rimuovendo zeri iniziali per matching
     deposito_riferimento = None
     if min_id:
+        min_id_norm = min_id.lstrip('0')
         cliente = db.execute("""
             SELECT deposito_riferimento
             FROM anagrafica_clienti
-            WHERE min_id = %s
+            WHERE LTRIM(min_id, '0') = %s
             LIMIT 1
-        """, (min_id,)).fetchone()
+        """, (min_id_norm,)).fetchone()
         if cliente and cliente['deposito_riferimento']:
             deposito_riferimento = cliente['deposito_riferimento']
 

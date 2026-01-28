@@ -863,29 +863,32 @@ def revisiona_ordini_deposito_mancante() -> Dict[str, Any]:
             cliente = None
             score = 0
 
-            # 1. Match esatto su entrambi (P.IVA + MIN_ID)
-            if piva and min_id:
+            # v11.4: Normalizzazione MIN_ID per matching (rimuovi zeri iniziali)
+            min_id_norm = min_id.lstrip('0') if min_id else ''
+
+            # 1. Match esatto su entrambi (P.IVA + MIN_ID normalizzato)
+            if piva and min_id_norm:
                 cliente = db.execute("""
                     SELECT deposito_riferimento, partita_iva, min_id, ragione_sociale_1
                     FROM anagrafica_clienti
-                    WHERE partita_iva = %s AND min_id = %s
+                    WHERE partita_iva = %s AND LTRIM(min_id, '0') = %s
                       AND deposito_riferimento IS NOT NULL
                       AND deposito_riferimento != ''
                     LIMIT 1
-                """, (piva, min_id)).fetchone()
+                """, (piva, min_id_norm)).fetchone()
                 if cliente:
                     score = 100
 
-            # 2. Match su MIN_ID esatto
-            if not cliente and min_id:
+            # 2. Match su MIN_ID normalizzato
+            if not cliente and min_id_norm:
                 cliente = db.execute("""
                     SELECT deposito_riferimento, partita_iva, min_id, ragione_sociale_1
                     FROM anagrafica_clienti
-                    WHERE min_id = %s
+                    WHERE LTRIM(min_id, '0') = %s
                       AND deposito_riferimento IS NOT NULL
                       AND deposito_riferimento != ''
                     LIMIT 1
-                """, (min_id,)).fetchone()
+                """, (min_id_norm,)).fetchone()
                 if cliente:
                     score = 90
 
