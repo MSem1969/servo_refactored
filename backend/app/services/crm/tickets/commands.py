@@ -1,11 +1,16 @@
 """
 Commands tickets - Operazioni di scrittura.
+
+v11.4: Aggiunta funzione crea_ticket_sistema per notifiche automatiche.
 """
 
 from typing import Dict, Any, Optional
 from datetime import datetime
 
 from ..constants import TicketStatus, is_valid_transition
+
+# ID utente sistema per ticket automatici (admin)
+SYSTEM_USER_ID = 1
 
 
 def create_ticket(db, data: Dict[str, Any], user_id: int) -> Dict[str, Any]:
@@ -204,4 +209,88 @@ def update_ticket(db, ticket_id: int, data: Dict[str, Any],
 
     except Exception as e:
         db.rollback()
+        return {'success': False, 'error': str(e)}
+
+
+# =============================================================================
+# v11.4: TICKET SISTEMA PER NOTIFICHE AUTOMATICHE
+# =============================================================================
+
+def crea_ticket_sistema(
+    db,
+    tipo_alert: str,
+    oggetto: str,
+    contenuto: str,
+    priorita: str = 'normale',
+    contesto: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Crea un ticket di sistema per notifiche automatiche ad admin/supervisore.
+
+    v11.4: Funzione centralizzata per alert di sistema via CRM.
+
+    Args:
+        db: Connessione database
+        tipo_alert: Tipo di alert (es. 'IMPORT', 'ERRORE', 'MONITORAGGIO')
+        oggetto: Oggetto del ticket (verrà prefissato con [SISTEMA])
+        contenuto: Contenuto dettagliato dell'alert
+        priorita: 'bassa', 'normale', 'alta' (default: normale)
+        contesto: Dict opzionale con:
+            - pagina_origine: Pagina che ha generato l'alert
+            - pagina_dettaglio: Dettaglio specifico (es. ID ordine)
+            - dati_extra: Dict con dati aggiuntivi da includere nel contenuto
+
+    Returns:
+        Dict con:
+            - success: bool
+            - id_ticket: int (se success)
+            - error: str (se fallito)
+
+    Esempi di utilizzo:
+        # Alert per errore import anagrafica
+        crea_ticket_sistema(db, 'IMPORT',
+            'Errore import anagrafica clienti',
+            'Fallito import file clienti.csv: formato non valido',
+            priorita='alta',
+            contesto={'pagina_origine': 'anagrafica'})
+
+        # Alert per nuovo ordine da monitoraggio email
+        crea_ticket_sistema(db, 'MONITORAGGIO',
+            'Nuovo ordine ricevuto via email',
+            'Ordine #12345 ricevuto da fornitore@example.com',
+            contesto={'pagina_dettaglio': 'Ordine #12345'})
+    """
+    try:
+        # Costruisci oggetto con prefisso sistema
+        oggetto_completo = f"[SISTEMA - {tipo_alert}] {oggetto}"
+
+        # Costruisci contenuto con eventuali dati extra
+        contenuto_completo = contenuto
+        if contesto and contesto.get('dati_extra'):
+            contenuto_completo += "\n\n--- Dettagli Tecnici ---\n"
+            for k, v in contesto['dati_extra'].items():
+                contenuto_completo += f"• {k}: {v}\n"
+
+        # Dati ticket
+        ticket_data = {
+            'categoria': 'assistenza',
+            'oggetto': oggetto_completo,
+            'contenuto': contenuto_completo,
+            'priorita': priorita,
+            'pagina_origine': contesto.get('pagina_origine') if contesto else None,
+            'pagina_dettaglio': contesto.get('pagina_dettaglio') if contesto else None
+        }
+
+        # Crea ticket usando funzione esistente
+        result = create_ticket(db, ticket_data, SYSTEM_USER_ID)
+
+        if result.get('success'):
+            print(f"✅ Ticket sistema #{result['id_ticket']} creato: {oggetto_completo}")
+        else:
+            print(f"⚠️ Errore creazione ticket sistema: {result.get('error')}")
+
+        return result
+
+    except Exception as e:
+        print(f"❌ Eccezione in crea_ticket_sistema: {e}")
         return {'success': False, 'error': str(e)}

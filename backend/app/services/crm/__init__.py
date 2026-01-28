@@ -1,7 +1,8 @@
 """
-Sistema CRM/Ticketing - SERV.O v8.1
+Sistema CRM/Ticketing - SERV.O v11.4
 
 Gestisce ticket utenti, messaggi e notifiche.
+v11.4: Aggiunta funzione crea_ticket_sistema per notifiche automatiche.
 """
 
 from .constants import TicketStatus, TicketCategory, TicketPriority
@@ -10,7 +11,8 @@ from .tickets import (
     get_ticket_detail,
     create_ticket,
     update_ticket_status,
-    get_ticket_stats
+    get_ticket_stats,
+    crea_ticket_sistema
 )
 from .messages import (
     get_messages,
@@ -35,6 +37,7 @@ __all__ = [
     'create_ticket',
     'update_ticket_status',
     'get_ticket_stats',
+    'crea_ticket_sistema',  # v11.4: notifiche sistema
     # Messages
     'get_messages',
     'add_message',

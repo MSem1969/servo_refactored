@@ -77,16 +77,13 @@ from .supervisione import (
 )
 from .espositore import CODICI_ANOMALIA, LOOKUP_SCORE_GRAVE, LOOKUP_SCORE_ORDINARIA
 from .listini import arricchisci_ordine_con_listino
-from .crm.tickets.commands import create_ticket
+from .crm.tickets.commands import crea_ticket_sistema, SYSTEM_USER_ID
 from .crm.attachments import save_attachment
 
 
 # =============================================================================
-# v11.3: TICKET AUTOMATICO PER VENDOR NON RICONOSCIUTO
+# v11.4: TICKET AUTOMATICO PER VENDOR NON RICONOSCIUTO
 # =============================================================================
-
-SYSTEM_USER_ID = 1  # Admin user per ticket automatici
-
 
 def _crea_ticket_vendor_sconosciuto(
     db,
@@ -98,7 +95,7 @@ def _crea_ticket_vendor_sconosciuto(
     """
     Crea automaticamente un ticket CRM quando un documento non viene riconosciuto.
 
-    v11.3: Apre ticket di assistenza tecnica per analisi nuovo documento.
+    v11.4: Usa funzione centralizzata crea_ticket_sistema.
 
     Args:
         db: Connessione database
@@ -111,19 +108,7 @@ def _crea_ticket_vendor_sconosciuto(
         ID ticket creato o None se errore
     """
     try:
-        # Crea ticket
-        ticket_data = {
-            'categoria': 'assistenza',
-            'oggetto': 'ANALISI NUOVO DOCUMENTO',
-            'contenuto': f"""RICHIESTA AUTOMATICA - VENDOR NON RICONOSCIUTO
-
-Il sistema ha ricevuto un documento PDF che non è stato possibile classificare.
-
-**Dettagli:**
-- File: {filename}
-- ID Acquisizione: {id_acquisizione}
-- Confidence detection: {confidence:.1%}
-- Data/Ora: {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}
+        contenuto = f"""Il sistema ha ricevuto un documento PDF che non è stato possibile classificare.
 
 **Azione richiesta:**
 Analizzare il documento allegato per determinare se:
@@ -131,16 +116,27 @@ Analizzare il documento allegato per determinare se:
 2. È un formato variante di un vendor esistente
 3. È un documento non gestibile dal sistema
 
-Il documento originale è allegato a questo ticket.""",
-            'priorita': 'alta',
-            'pagina_origine': 'upload',
-            'pagina_dettaglio': f'Acquisizione #{id_acquisizione}'
-        }
+Il documento originale è allegato a questo ticket."""
 
-        result = create_ticket(db, ticket_data, SYSTEM_USER_ID)
+        result = crea_ticket_sistema(
+            db,
+            tipo_alert='ESTRAZIONE',
+            oggetto='Analisi nuovo documento',
+            contenuto=contenuto,
+            priorita='alta',
+            contesto={
+                'pagina_origine': 'upload',
+                'pagina_dettaglio': f'Acquisizione #{id_acquisizione}',
+                'dati_extra': {
+                    'File': filename,
+                    'ID Acquisizione': id_acquisizione,
+                    'Confidence detection': f'{confidence:.1%}',
+                    'Data/Ora': datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+                }
+            }
+        )
 
         if not result.get('success'):
-            print(f"⚠️ Errore creazione ticket vendor sconosciuto: {result.get('error')}")
             return None
 
         ticket_id = result['id_ticket']
@@ -159,7 +155,6 @@ Il documento originale è allegato a questo ticket.""",
             print(f"⚠️ Errore allegato ticket: {attach_result.get('error')}")
             # Ticket creato ma senza allegato - non è critico
 
-        print(f"✅ Ticket #{ticket_id} creato per documento non riconosciuto: {filename}")
         return ticket_id
 
     except Exception as e:

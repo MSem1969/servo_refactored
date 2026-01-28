@@ -1,8 +1,9 @@
 # =============================================================================
-# SERV.O v8.2 - MAIL SCHEDULER
+# SERV.O v11.4 - MAIL SCHEDULER
 # =============================================================================
 # Schedulazione automatica controllo email
 # Orari: ogni ora dalle 8:00 alle 18:00, lunedì-venerdì
+# v11.4: Notifica errori via ticket CRM
 # =============================================================================
 
 import os
@@ -19,6 +20,7 @@ from apscheduler.triggers.cron import CronTrigger
 _scheduler: Optional[BackgroundScheduler] = None
 _last_run: Optional[datetime] = None
 _last_result: Optional[Dict[str, Any]] = None
+_consecutive_failures: int = 0  # v11.4: contatore errori consecutivi
 
 
 def _get_mail_monitor_path() -> Path:
@@ -33,12 +35,45 @@ def _get_mail_monitor_path() -> Path:
     return local_path
 
 
+def _notify_mail_failure(error_msg: str):
+    """
+    v11.4: Crea ticket CRM per notificare errore mail monitor.
+    Chiamato dopo 3 errori consecutivi.
+    """
+    try:
+        from ...database_pg import get_db
+        from ..crm.tickets.commands import crea_ticket_sistema
+
+        db = get_db()
+        crea_ticket_sistema(
+            db,
+            tipo_alert='MONITORAGGIO',
+            oggetto='Errore sincronizzazione email',
+            contenuto=f"""Il sistema di monitoraggio email ha riscontrato errori ripetuti.
+
+**Ultimo errore:** {error_msg}
+
+**Azione richiesta:**
+Verificare la connessione al server email e le credenziali IMAP.""",
+            priorita='alta',
+            contesto={
+                'pagina_origine': 'scheduler',
+                'dati_extra': {
+                    'Errori consecutivi': _consecutive_failures,
+                    'Ultimo tentativo': _last_run.isoformat() if _last_run else 'N/A'
+                }
+            }
+        )
+    except Exception as e:
+        print(f"⚠️ Impossibile creare ticket per errore mail: {e}")
+
+
 def _run_mail_sync():
     """
     Esegue il mail_monitor.py per sincronizzare le email.
     Chiamato dallo scheduler agli orari configurati.
     """
-    global _last_run, _last_result
+    global _last_run, _last_result, _consecutive_failures
 
     _last_run = datetime.now()
     print(f"📧 [{_last_run.strftime('%Y-%m-%d %H:%M:%S')}] Mail Monitor - Avvio schedulato...")
@@ -52,6 +87,9 @@ def _run_mail_sync():
             "timestamp": _last_run.isoformat()
         }
         print(f"❌ {_last_result['error']}")
+        _consecutive_failures += 1
+        if _consecutive_failures >= 3:
+            _notify_mail_failure(_last_result['error'])
         return
 
     try:
@@ -73,10 +111,14 @@ def _run_mail_sync():
 
         if result.returncode == 0:
             print(f"✅ Mail Monitor completato con successo")
+            _consecutive_failures = 0  # Reset contatore
         else:
             print(f"⚠️ Mail Monitor terminato con codice {result.returncode}")
             if result.stderr:
                 print(f"   Errore: {result.stderr[:200]}")
+            _consecutive_failures += 1
+            if _consecutive_failures >= 3:
+                _notify_mail_failure(result.stderr[:500] if result.stderr else f"Exit code {result.returncode}")
 
     except subprocess.TimeoutExpired:
         _last_result = {
@@ -85,6 +127,9 @@ def _run_mail_sync():
             "timestamp": _last_run.isoformat()
         }
         print(f"❌ {_last_result['error']}")
+        _consecutive_failures += 1
+        if _consecutive_failures >= 3:
+            _notify_mail_failure(_last_result['error'])
 
     except Exception as e:
         _last_result = {
@@ -93,6 +138,9 @@ def _run_mail_sync():
             "timestamp": _last_run.isoformat()
         }
         print(f"❌ Errore Mail Monitor: {e}")
+        _consecutive_failures += 1
+        if _consecutive_failures >= 3:
+            _notify_mail_failure(str(e))
 
 
 def init_mail_scheduler() -> bool:
