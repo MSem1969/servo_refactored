@@ -1032,8 +1032,9 @@ async def modifica_header_ordine(
         """, tuple(params))
 
         # 7. Risolvi anomalie LKP e DEP correlate (se P.IVA, MIN_ID o deposito modificati)
-        # v11.4: Aggiunto DEP-A01 (deposito mancante)
+        # v11.4: Aggiunto DEP-A01 (deposito mancante) + approvazione supervisioni
         anomalie_risolte = 0
+        supervisioni_approvate = 0
         if request.partita_iva or request.min_id or request.deposito_riferimento:
             result = db.execute("""
                 UPDATE anomalie
@@ -1048,6 +1049,24 @@ async def modifica_header_ordine(
                 id_testata
             ))
             anomalie_risolte = result.rowcount if hasattr(result, 'rowcount') else 0
+
+            # v11.4: Approva anche le supervisioni PENDING correlate (lookup, prezzo)
+            nota_sup = f"[AUTO] Risolto tramite modifica header manuale da {request.operatore}"
+            for sup_table in ['supervisione_lookup', 'supervisione_prezzo', 'supervisione_listino',
+                              'supervisione_espositore', 'supervisione_aic']:
+                try:
+                    res = db.execute(f"""
+                        UPDATE {sup_table}
+                        SET stato = 'APPROVED',
+                            resolved_by = %s,
+                            resolved_at = CURRENT_TIMESTAMP,
+                            note_admin = %s
+                        WHERE id_testata = %s AND stato = 'PENDING'
+                    """, (request.operatore, nota_sup, id_testata))
+                    if hasattr(res, 'rowcount'):
+                        supervisioni_approvate += res.rowcount
+                except Exception:
+                    pass  # Tabella potrebbe non esistere
 
             # Sblocca ordine se non ci sono altre anomalie
             anomalie_aperte = db.execute("""
@@ -1075,6 +1094,7 @@ async def modifica_header_ordine(
                 'valori_originali': valori_originali,
                 'valori_nuovi': {k: v for k, v in field_mapping.items() if v is not None},
                 'anomalie_risolte': anomalie_risolte,
+                'supervisioni_approvate': supervisioni_approvate,
                 'note': request.note
             },
             operatore=request.operatore
@@ -1091,7 +1111,8 @@ async def modifica_header_ordine(
                 "valori_originali": valori_originali,
                 "lookup_method": "MANUALE",
                 "lookup_score": 100,
-                "anomalie_risolte": anomalie_risolte
+                "anomalie_risolte": anomalie_risolte,
+                "supervisioni_approvate": supervisioni_approvate
             }
         }
 
