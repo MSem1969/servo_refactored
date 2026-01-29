@@ -2,6 +2,7 @@
 // SUPERVISIONE API
 // =============================================================================
 // v11.0: TIER 3.2 - Usa buildQueryParams centralizzato
+// v11.4: Aggiunto supporto supervisione anagrafica (LKP + DEP unificati)
 // =============================================================================
 
 import api from './client';
@@ -107,5 +108,22 @@ export const supervisioneApi = {
   getStoricoModificheAic: (codiceAic = null, limit = 50) => {
     const params = buildQueryParams({ codice_aic: codiceAic, limit });
     return api.get(`/supervisione/aic/storico-modifiche?${params}`).then(r => r.data);
+  },
+
+  // === SUPERVISIONE ANAGRAFICA (v11.4) ===
+  getAnagraficaPending: () => api.get('/supervisione/anagrafica/pending').then(r => r.data),
+  getAnagraficaGrouped: () => api.get('/supervisione/anagrafica/grouped').then(r => r.data),
+  getAnagraficaDetail: (id) => api.get(`/supervisione/anagrafica/${id}`).then(r => r.data),
+  salvaCorrezioneAnagrafica: (id, data) =>
+    api.post(`/supervisione/anagrafica/${id}/correzione`, data).then(r => r.data),
+  approvaAnagrafica: (id, data) =>
+    api.post(`/supervisione/anagrafica/${id}/approva`, data).then(r => r.data),
+  rifiutaAnagrafica: (id, operatore, note) => {
+    const params = buildQueryParams({ operatore, note });
+    return api.post(`/supervisione/anagrafica/${id}/rifiuta?${params}`).then(r => r.data);
+  },
+  searchAnagrafica: (query) => {
+    const params = buildQueryParams({ q: query });
+    return api.get(`/supervisione/anagrafica/search?${params}`).then(r => r.data);
   },
 };

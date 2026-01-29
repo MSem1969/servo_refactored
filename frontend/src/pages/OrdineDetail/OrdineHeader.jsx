@@ -31,7 +31,7 @@ function formatDataItaliana(dataStr) {
   return dataStr;
 }
 
-export default function OrdineHeader({ ordine, onBack, onShowPdf, onEditHeader }) {
+export default function OrdineHeader({ ordine, onBack, onShowPdf, onEditHeader, returnToSupervisione }) {
   if (!ordine) return null;
 
   // Verifica se l'ordine è modificabile
@@ -67,7 +67,7 @@ export default function OrdineHeader({ ordine, onBack, onShowPdf, onEditHeader }
             </button>
           )}
           <Button variant="secondary" onClick={onBack}>
-            Torna al Database
+            {returnToSupervisione ? 'Torna a Supervisione ML' : 'Torna al Database'}
           </Button>
           {ordine?.pdf_file && (
             <button

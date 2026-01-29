@@ -590,6 +590,10 @@ export default function App() {
   const [globalLoading, setGlobalLoading] = useState(false);
   const [globalError, setGlobalError] = useState(null);
 
+  // v11.4: Contesto Supervisione ML per ritorno con memoria
+  // Salva: activeTab, viewMode, scrollPosition, selectedPattern
+  const [supervisioneContext, setSupervisioneContext] = useState(null);
+
   // v10.0: Helper per verificare permesso visualizzazione
   const canViewSection = (sezione) => {
     // Admin ha sempre accesso completo
@@ -737,7 +741,15 @@ export default function App() {
           <OrdineDetailPage
             ordineId={pageParams.ordineId}
             currentUser={currentUser}
-            onBack={() => navigateTo("database")}
+            // v11.4: Se arrivo da Supervisione, torno a Supervisione
+            returnToSupervisione={pageParams.returnToSupervisione}
+            onBack={() => {
+              if (pageParams.returnToSupervisione) {
+                navigateTo("supervisione");
+              } else {
+                navigateTo("database");
+              }
+            }}
             onNavigateToSupervisione={(supervisioneId, ordineId) =>
               navigateTo("supervisione", {
                 supervisioneId: supervisioneId,
@@ -754,12 +766,20 @@ export default function App() {
             supervisioneId={pageParams.supervisioneId}
             returnToOrdine={pageParams.returnToOrdine}
             currentUser={currentUser}
+            // v11.4: Ripristina contesto salvato (tab, viewMode, etc.)
+            initialContext={supervisioneContext}
             onReturnToOrdine={(idOrdine) =>
               navigateTo("ordine-detail", { ordineId: idOrdine })
             }
-            onNavigateToOrdine={(idOrdine) =>
-              navigateTo("ordine-detail", { ordineId: idOrdine })
-            }
+            // v11.4: Navigazione con salvataggio contesto per ritorno
+            onNavigateWithReturn={(targetPage, targetParams, context) => {
+              // Salva contesto Supervisione prima di navigare
+              setSupervisioneContext(context);
+              navigateTo(targetPage, {
+                ...targetParams,
+                returnToSupervisione: true
+              });
+            }}
           />
         );
       case "tracciati":

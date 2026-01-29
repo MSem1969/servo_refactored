@@ -1,7 +1,8 @@
 // =============================================================================
-// SERV.O v8.1 - USE SUPERVISIONE HOOK
+// SERV.O v11.4 - USE SUPERVISIONE HOOK
 // =============================================================================
 // Custom hook per gestione stato e logica pagina supervisione ML
+// v11.4: Aggiunto supporto anagrafica modal e nuovo workflow bottoni
 // =============================================================================
 
 import { useState, useCallback } from 'react';
@@ -15,17 +16,19 @@ import { richiestaConfermaSemplice, richiestaInput, richiestaConferma } from '..
  * @param {Object} options.currentUser - Utente corrente
  * @param {number} options.returnToOrdine - ID ordine per ritorno
  * @param {Function} options.onReturnToOrdine - Callback ritorno ordine
+ * @param {Object} options.initialContext - v11.4: Contesto da ripristinare (tab, viewMode)
  */
-export function useSupervisione({ currentUser, returnToOrdine, onReturnToOrdine }) {
+export function useSupervisione({ currentUser, returnToOrdine, onReturnToOrdine, initialContext }) {
   // State principale
   const [supervisioni, setSupervisioni] = useState([]);
   const [groupedSupervisioni, setGroupedSupervisioni] = useState([]);
   const [criteri, setCriteri] = useState([]);
-  const [storico, setStorico] = useState([]);
+  // const [storico, setStorico] = useState([]); // v11.4: Rimosso - tab non utilizzato
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('pending');
-  const [viewMode, setViewMode] = useState('grouped');
+  // v11.4: Ripristina contesto se presente (ritorno da altra pagina)
+  const [activeTab, setActiveTab] = useState(initialContext?.activeTab || 'pending');
+  const [viewMode, setViewMode] = useState(initialContext?.viewMode || 'grouped');
 
   // State per processing
   const [processingAction, setProcessingAction] = useState(null);
@@ -35,6 +38,13 @@ export function useSupervisione({ currentUser, returnToOrdine, onReturnToOrdine 
   const [correzioneModal, setCorrezioneModal] = useState({ isOpen: false, supervisione: null });
   const [archiviazioneModal, setArchiviazioneModal] = useState({ isOpen: false, supervisione: null });
   const [aicModal, setAicModal] = useState({ isOpen: false, supervisione: null }); // v9.0
+  // v11.4: anagraficaModal ora usa AnomaliaDetailModal (unificato operatore/supervisore)
+  const [anagraficaModal, setAnagraficaModal] = useState({
+    isOpen: false,
+    supervisione: null,
+    anomaliaDetail: null,
+    loading: false
+  });
 
   const operatore = currentUser?.username || 'admin';
 
@@ -42,18 +52,17 @@ export function useSupervisione({ currentUser, returnToOrdine, onReturnToOrdine 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [pendingRes, groupedRes, criteriRes, statsRes, storicoRes] = await Promise.all([
+      // v11.4: Rimosso getStorico - tab non utilizzato
+      const [pendingRes, groupedRes, criteriRes, statsRes] = await Promise.all([
         supervisioneApi.getPending(),
         supervisioneApi.getPendingGrouped(),
         supervisioneApi.getCriteriTutti(),
         supervisioneApi.getCriteriStats(),
-        supervisioneApi.getStorico(50),
       ]);
 
       setSupervisioni(pendingRes?.supervisioni || []);
       setGroupedSupervisioni(groupedRes?.groups || []);
       setCriteri(criteriRes?.criteri || []);
-      setStorico(storicoRes?.applicazioni || []);
       setStats(statsRes || {
         totale_pattern: 0,
         pattern_ordinari: 0,
@@ -294,6 +303,141 @@ export function useSupervisione({ currentUser, returnToOrdine, onReturnToOrdine 
     }
   };
 
+  // v11.4: Handler modale Anagrafica (usa AnomaliaDetailModal unificato)
+  // Carica dettaglio anomalia e apre il modal
+  const handleOpenAnagrafica = async (supervisione) => {
+    // Apre modal in loading
+    setAnagraficaModal({
+      isOpen: true,
+      supervisione,
+      anomaliaDetail: null,
+      loading: true
+    });
+
+    try {
+      // Carica dettaglio anomalia usando id_anomalia dalla supervisione
+      const idAnomalia = supervisione?.id_anomalia;
+      if (idAnomalia) {
+        const { anomalieApi } = await import('../../../api/anomalie');
+        const result = await anomalieApi.getDettaglio(idAnomalia);
+        if (result.success) {
+          // Assicurati che pdf_file sia presente
+          let anomaliaDetail = result.data;
+          if (!anomaliaDetail?.anomalia?.pdf_file && !anomaliaDetail?.ordine_data?.pdf_file) {
+            // Carica pdf_file dalla testata
+            try {
+              const { ordiniApi } = await import('../../../api');
+              const idTestata = anomaliaDetail?.anomalia?.id_testata || supervisione?.id_testata;
+              if (idTestata) {
+                const ordineRes = await ordiniApi.getOrdine(idTestata);
+                if (ordineRes?.pdf_file) {
+                  anomaliaDetail = {
+                    ...anomaliaDetail,
+                    anomalia: { ...anomaliaDetail.anomalia, pdf_file: ordineRes.pdf_file },
+                    ordine_data: { ...anomaliaDetail.ordine_data, pdf_file: ordineRes.pdf_file }
+                  };
+                }
+              }
+            } catch (e) {
+              console.warn('Impossibile caricare pdf_file:', e);
+            }
+          }
+          setAnagraficaModal(prev => ({
+            ...prev,
+            anomaliaDetail,
+            loading: false
+          }));
+        } else {
+          console.error('Errore caricamento dettaglio anomalia:', result.error);
+          setAnagraficaModal(prev => ({ ...prev, loading: false }));
+        }
+      } else {
+        // Se non c'è id_anomalia, costruisci un anomaliaDetail minimo dai dati ordine
+        // Carica anche il pdf_file dalla testata se disponibile
+        let pdfFile = supervisione?.pdf_file;
+        if (!pdfFile && supervisione?.id_testata) {
+          try {
+            const { ordiniApi } = await import('../../../api');
+            const ordineRes = await ordiniApi.getOrdine(supervisione.id_testata);
+            pdfFile = ordineRes?.pdf_file;
+          } catch (e) {
+            console.warn('Impossibile caricare pdf_file:', e);
+          }
+        }
+
+        setAnagraficaModal(prev => ({
+          ...prev,
+          anomaliaDetail: {
+            anomalia: {
+              id_anomalia: null,
+              id_testata: supervisione?.id_testata,
+              tipo_anomalia: 'LOOKUP',
+              codice_anomalia: supervisione?.codice_anomalia,
+              stato: 'APERTA',
+              numero_ordine: supervisione?.numero_ordine,
+              vendor: supervisione?.vendor,
+              pdf_file: pdfFile
+            },
+            ordine_data: {
+              partita_iva: supervisione?.piva_estratta,
+              ragione_sociale: supervisione?.ragione_sociale_estratta || supervisione?.ragione_sociale,
+              indirizzo: supervisione?.indirizzo_estratto,
+              cap: supervisione?.cap_estratto,
+              citta: supervisione?.citta_estratta,
+              provincia: supervisione?.provincia_estratta,
+              pdf_file: pdfFile
+            }
+          },
+          loading: false
+        }));
+      }
+    } catch (err) {
+      console.error('Errore caricamento dettaglio:', err);
+      setAnagraficaModal(prev => ({ ...prev, loading: false }));
+    }
+  };
+
+  const handleCloseAnagrafica = () => {
+    setAnagraficaModal({ isOpen: false, supervisione: null, anomaliaDetail: null, loading: false });
+  };
+
+  const handleAnagraficaSuccess = (result) => {
+    if (result?.message) {
+      alert(result.message);
+    }
+    loadData();
+    if (returnToOrdine && onReturnToOrdine) {
+      onReturnToOrdine(returnToOrdine);
+    }
+  };
+
+  // v11.4: Rifiuta Anagrafica
+  const handleRifiutaAnagrafica = async (id) => {
+    const note = richiestaInput(
+      'Motivo del rifiuto (obbligatorio):',
+      { required: true, minLength: 5 }
+    );
+    if (!note) {
+      alert('Motivo non valido. Minimo 5 caratteri.');
+      return;
+    }
+
+    setProcessingAction(id);
+    try {
+      await supervisioneApi.rifiutaAnagrafica(id, operatore, note);
+
+      if (returnToOrdine && onReturnToOrdine) {
+        onReturnToOrdine(returnToOrdine);
+      } else {
+        loadData();
+      }
+    } catch (err) {
+      alert('Errore: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setProcessingAction(null);
+    }
+  };
+
   // Riapplica listino a tutte le supervisioni prezzo pending (PRICE-A01)
   const handleRiapplicaListino = async () => {
     if (!richiestaConfermaSemplice(
@@ -358,6 +502,7 @@ export function useSupervisione({ currentUser, returnToOrdine, onReturnToOrdine 
   // non serve filtrare nuovamente (evita problemi se il campo stato non è sempre presente)
   const pendingCount = supervisioni.length;
 
+  // v11.4: Rimossi tab Storico e Analytics (senza funzione)
   const tabs = [
     {
       id: 'pending',
@@ -372,20 +517,6 @@ export function useSupervisione({ currentUser, returnToOrdine, onReturnToOrdine 
       count: criteri.length,
       icon: '🧠',
       description: 'Pattern appresi dal sistema'
-    },
-    {
-      id: 'storico',
-      label: 'Storico',
-      count: storico.length,
-      icon: '📜',
-      description: 'Decisioni precedenti (audit trail)'
-    },
-    {
-      id: 'stats',
-      label: 'Analytics',
-      count: stats?.approvazioni_totali || 0,
-      icon: '📊',
-      description: 'Statistiche e metriche ML'
     }
   ];
 
@@ -394,7 +525,7 @@ export function useSupervisione({ currentUser, returnToOrdine, onReturnToOrdine 
     supervisioni,
     groupedSupervisioni,
     criteri,
-    storico,
+    // storico, // v11.4: Rimosso - tab non utilizzato
     stats,
     loading,
     activeTab,
@@ -411,6 +542,7 @@ export function useSupervisione({ currentUser, returnToOrdine, onReturnToOrdine 
     correzioneModal,
     archiviazioneModal,
     aicModal, // v9.0
+    anagraficaModal, // v11.4
 
     // Actions
     loadData,
@@ -433,6 +565,10 @@ export function useSupervisione({ currentUser, returnToOrdine, onReturnToOrdine 
     handleAicSuccess,    // v9.0
     handleRifiutaAic,    // v9.0
     handleListinoSuccess,
+    handleOpenAnagrafica,    // v11.4
+    handleCloseAnagrafica,   // v11.4
+    handleAnagraficaSuccess, // v11.4
+    handleRifiutaAnagrafica, // v11.4
 
     // Bulk actions
     handleRiapplicaListino,

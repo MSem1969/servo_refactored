@@ -1,8 +1,13 @@
 // =============================================================================
-// SERV.O v9.0 - SUPERVISIONE PAGE
+// SERV.O v11.4 - SUPERVISIONE PAGE
 // =============================================================================
 // Pagina supervisione ML con pattern recognition e workflow approvazione
 // v9.0: Aggiunto supporto supervisione AIC (AIC-A01)
+// v11.4: Refactoring workflow con nuovi bottoni:
+//        - Verifica Ordine: naviga all'ordine
+//        - Azione Correttiva: apre modal per correzione (stessa del operatore)
+//        - Supervisione: apre modal per review correzione operatore
+//        Aggiunto supporto ANAGRAFICA (unifica lookup + deposito)
 // =============================================================================
 
 import React, { useEffect } from 'react';
@@ -12,6 +17,8 @@ import CorrezioneLisinoModal from './CorrezioneLisinoModal';
 import ArchiviazioneListinoModal from './ArchiviazioneListinoModal';
 // v11.0: Usa AicAssignmentModal unificato (TIER 2.1)
 import { AicAssignmentModal, AIC_MODAL_MODES } from '../../components/AicAssignmentModal';
+// v11.4: AnomaliaDetailModal unificato per LOOKUP/ANAGRAFICA (stessa UI operatore e supervisore)
+import { AnomaliaDetailModal } from '../../components/AnomaliaDetailModal';
 
 /**
  * Componente SupervisionePage
@@ -24,14 +31,16 @@ const SupervisionePage = ({
   returnToOrdine,
   currentUser,
   onReturnToOrdine,
-  onNavigateToOrdine
+  // v11.4: Navigazione con ritorno
+  onNavigateWithReturn,
+  initialContext
 }) => {
   const {
     // State
     supervisioni,
     groupedSupervisioni,
     criteri,
-    storico,
+    // storico, // v11.4: Rimosso - tab non utilizzato
     stats,
     loading,
     activeTab,
@@ -48,6 +57,7 @@ const SupervisionePage = ({
     correzioneModal,
     archiviazioneModal,
     aicModal, // v9.0
+    anagraficaModal, // v11.4
 
     // Actions
     loadData,
@@ -70,6 +80,10 @@ const SupervisionePage = ({
     handleAicSuccess,    // v9.0
     handleRifiutaAic,    // v9.0
     handleListinoSuccess,
+    handleOpenAnagrafica,    // v11.4
+    handleCloseAnagrafica,   // v11.4
+    handleAnagraficaSuccess, // v11.4
+    handleRifiutaAnagrafica, // v11.4
 
     // Bulk actions
     handleRiapplicaListinoLst,  // v10.0 - Riapplica listino unificato
@@ -77,11 +91,25 @@ const SupervisionePage = ({
     // Utilities
     getMLProgress,
     getAnomaliaUrgency,
-  } = useSupervisione({ currentUser, returnToOrdine, onReturnToOrdine });
+  } = useSupervisione({ currentUser, returnToOrdine, onReturnToOrdine, initialContext });
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // v11.4: Funzione generica per navigare con salvataggio contesto
+  // Usata da tutti i bottoni che devono tornare a Supervisione (Verifica Ordine, etc.)
+  const handleNavigateWithReturn = (idTestata) => {
+    if (onNavigateWithReturn) {
+      // Salva contesto corrente per ripristinarlo al ritorno
+      const context = {
+        activeTab,
+        viewMode,
+        // Potremmo aggiungere: scrollPosition, selectedPattern, etc.
+      };
+      onNavigateWithReturn('ordine-detail', { ordineId: idTestata }, context);
+    }
+  };
 
   if (loading) {
     return (
@@ -221,7 +249,7 @@ const SupervisionePage = ({
             setViewMode={setViewMode}
             processingAction={processingAction}
             processingPattern={processingPattern}
-            onNavigateToOrdine={onNavigateToOrdine}
+            onNavigateToOrdine={handleNavigateWithReturn}
             handleApprova={handleApprova}
             handleRifiuta={handleRifiuta}
             handleModifica={handleModifica}
@@ -232,6 +260,8 @@ const SupervisionePage = ({
             handleOpenArchiviazione={handleOpenArchiviazione}
             handleOpenAic={handleOpenAic}           // v9.0
             handleRifiutaAic={handleRifiutaAic}     // v9.0
+            handleOpenAnagrafica={handleOpenAnagrafica}  // v11.4
+            handleRifiutaAnagrafica={handleRifiutaAnagrafica}  // v11.4
             returnToOrdine={returnToOrdine}
             getMLProgress={getMLProgress}
             getAnomaliaUrgency={getAnomaliaUrgency}
@@ -248,21 +278,6 @@ const SupervisionePage = ({
           />
         )}
 
-        {/* Tab Storico */}
-        {activeTab === 'storico' && (
-          <TabStorico storico={storico} />
-        )}
-
-        {/* Tab Analytics */}
-        {activeTab === 'stats' && (
-          <div className="p-6">
-            <div className="text-center py-8 text-slate-500">
-              <div className="text-4xl mb-2">📊</div>
-              <p>Analytics avanzate in sviluppo...</p>
-              <p className="text-sm mt-1">Grafici performance ML, trend approvazioni, efficienza pattern</p>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Modali Listino */}
@@ -291,6 +306,33 @@ const SupervisionePage = ({
         operatore={operatore}
         onSuccess={handleAicSuccess}
       />
+
+      {/* v11.4: AnomaliaDetailModal unificato per LOOKUP/ANAGRAFICA */}
+      <AnomaliaDetailModal
+        isOpen={anagraficaModal.isOpen}
+        onClose={handleCloseAnagrafica}
+        anomaliaDetail={anagraficaModal.anomaliaDetail}
+        loading={anagraficaModal.loading}
+        // v11.4: Props per supporto Supervisione
+        fromSupervisione={true}
+        supervisione={anagraficaModal.supervisione}
+        onSupervisioneSuccess={handleAnagraficaSuccess}
+        // Callback per assegnazione farmacia (usa lookupApi.manuale)
+        onAssignFarmacia={async (idTestata, idFarmacia, idParafarmacia, manualMinId) => {
+          try {
+            const { lookupApi } = await import('../../api');
+            const result = await lookupApi.manuale(idTestata, idFarmacia, idParafarmacia, manualMinId);
+            if (result.success) {
+              handleAnagraficaSuccess(result);
+              return true;
+            }
+            return false;
+          } catch (err) {
+            console.error('Errore assegnazione:', err);
+            return false;
+          }
+        }}
+      />
     </div>
   );
 };
@@ -316,6 +358,8 @@ const TabPending = ({
   handleOpenArchiviazione,
   handleOpenAic,       // v9.0
   handleRifiutaAic,    // v9.0
+  handleOpenAnagrafica,    // v11.4
+  handleRifiutaAnagrafica, // v11.4
   returnToOrdine,
   getMLProgress,
   getAnomaliaUrgency,
@@ -377,6 +421,7 @@ const TabPending = ({
           handleRifiutaBulk={handleRifiutaBulk}
           handleOpenCorrezione={handleOpenCorrezione}
           handleOpenAic={handleOpenAic}
+          handleOpenAnagrafica={handleOpenAnagrafica}
         />
       )}
 
@@ -394,6 +439,8 @@ const TabPending = ({
           handleOpenArchiviazione={handleOpenArchiviazione}
           handleOpenAic={handleOpenAic}           // v9.0
           handleRifiutaAic={handleRifiutaAic}     // v9.0
+          handleOpenAnagrafica={handleOpenAnagrafica}      // v11.4
+          handleRifiutaAnagrafica={handleRifiutaAnagrafica}// v11.4
           returnToOrdine={returnToOrdine}
           getMLProgress={getMLProgress}
           getAnomaliaUrgency={getAnomaliaUrgency}
@@ -407,11 +454,12 @@ const TabPending = ({
 // HELPER: Ordinamento per tipo anomalia
 // =============================================================================
 const TIPO_PRIORITY = {
-  'aic': 1,      // AIC mancante - più critico
-  'prezzo': 2,   // Prezzi mancanti
-  'listino': 3,  // Problemi listino
-  'lookup': 4,   // Farmacia non trovata
-  'espositore': 5, // Problemi espositori
+  'aic': 1,        // AIC mancante - più critico
+  'prezzo': 2,     // Prezzi mancanti
+  'listino': 3,    // Problemi listino
+  'anagrafica': 4, // Problemi header/lookup - v11.4
+  'lookup': 5,     // Farmacia non trovata (legacy)
+  'espositore': 6, // Problemi espositori
 };
 
 const sortByTipoAnomalia = (items, tipoField = 'tipo_supervisione') => {
@@ -436,6 +484,7 @@ const GroupedView = ({
   handleRifiutaBulk,
   handleOpenCorrezione,
   handleOpenAic,
+  handleOpenAnagrafica,
 }) => {
   // Ordina i gruppi per tipo anomalia
   const sortedGroups = sortByTipoAnomalia(groups);
@@ -456,6 +505,7 @@ const GroupedView = ({
     'lookup': { bg: 'bg-amber-100', text: 'text-amber-700', label: 'LOOKUP' },
     'prezzo': { bg: 'bg-red-100', text: 'text-red-700', label: 'PREZZO' },
     'aic': { bg: 'bg-teal-100', text: 'text-teal-700', label: 'AIC' },  // v9.0
+    'anagrafica': { bg: 'bg-orange-100', text: 'text-orange-700', label: 'ANAGRAFICA' },  // v11.4
   };
 
   return (
@@ -521,8 +571,10 @@ const GroupedView = ({
               <span className="text-xs text-slate-600">{group.pattern_count || 0}/5</span>
             </div>
 
-            {/* Actions */}
+            {/* Actions - v11.4: Workflow UNIFICATO per TUTTI i pattern */}
+            {/* 1. Verifica Ordine  2. Azione Correttiva  3. Supervisione */}
             <div className="mt-4 flex items-center gap-3 flex-wrap">
+              {/* 1. VERIFICA ORDINE - sempre presente per tutti */}
               {group.affected_order_ids?.length > 0 && onNavigateToOrdine && (
                 <Button
                   variant="secondary"
@@ -532,76 +584,79 @@ const GroupedView = ({
                   Verifica Ordine
                 </Button>
               )}
-              {group.tipo_supervisione === 'listino' && (() => {
+
+              {/* 2. AZIONE CORRETTIVA - apre modal/azione specifica per tipo */}
+              {(() => {
                 const firstSup = supervisioni.find(s => s.pattern_signature === group.pattern_signature);
-                return firstSup ? (
+                if (!firstSup) return null;
+
+                // Azione correttiva specifica per tipo
+                if (group.tipo_supervisione === 'anagrafica' || group.tipo_supervisione === 'lookup') {
+                  return (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => handleOpenAnagrafica?.(firstSup)}
+                      disabled={isProcessing}
+                    >
+                      Azione Correttiva
+                    </Button>
+                  );
+                }
+                if (group.tipo_supervisione === 'aic') {
+                  return (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => handleOpenAic?.({
+                        ...firstSup,
+                        is_bulk: true,
+                        pattern_signature: group.pattern_signature,
+                        total_count: group.total_count,
+                        affected_order_ids: group.affected_order_ids
+                      })}
+                      disabled={isProcessing}
+                    >
+                      Azione Correttiva
+                    </Button>
+                  );
+                }
+                if (group.tipo_supervisione === 'listino' || group.tipo_supervisione === 'prezzo') {
+                  // PREZZO e LISTINO usano stesso modal CorrezioneLisinoModal
+                  return (
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => handleOpenCorrezione?.(firstSup)}
+                      disabled={isProcessing}
+                    >
+                      Azione Correttiva
+                    </Button>
+                  );
+                }
+                // ESPOSITORE - va alla tab Espositore dell'ordine
+                return (
                   <Button
                     variant="primary"
                     size="sm"
-                    onClick={() => handleOpenCorrezione(firstSup)}
+                    onClick={() => onNavigateToOrdine?.(group.affected_order_ids?.[0])}
                     disabled={isProcessing}
                   >
-                    Correggi Prezzi
+                    Azione Correttiva
                   </Button>
-                ) : null;
+                );
               })()}
-              {group.tipo_supervisione === 'aic' ? (
-                // Per AIC: apri modal per assegnare codice
-                <>
-                  {(() => {
-                    const firstSup = supervisioni.find(s =>
-                      s.pattern_signature === group.pattern_signature && s.tipo_supervisione === 'aic'
-                    );
-                    return (
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={() => handleOpenAic?.({
-                          ...firstSup,
-                          // Aggiungi info pattern per bulk
-                          is_bulk: true,
-                          pattern_signature: group.pattern_signature,
-                          total_count: group.total_count,
-                          affected_order_ids: group.affected_order_ids
-                        })}
-                        disabled={isProcessing}
-                      >
-                        Assegna AIC ({group.total_count})
-                      </Button>
-                    );
-                  })()}
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    loading={isProcessing}
-                    onClick={() => handleRifiutaBulk(group.pattern_signature, group.total_count)}
-                    disabled={isProcessing}
-                  >
-                    Rifiuta Tutti
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Button
-                    variant="success"
-                    size="sm"
-                    loading={isProcessing}
-                    onClick={() => handleApprovaBulk(group.pattern_signature, group.total_count)}
-                    disabled={isProcessing}
-                  >
-                    Approva Tutti ({group.total_count})
-                  </Button>
-                  <Button
-                    variant="danger"
-                    size="sm"
-                    loading={isProcessing}
-                    onClick={() => handleRifiutaBulk(group.pattern_signature, group.total_count)}
-                    disabled={isProcessing}
-                  >
-                    Rifiuta Tutti
-                  </Button>
-                </>
-              )}
+
+              {/* 3. SUPERVISIONE - approva pattern (sempre presente) */}
+              <Button
+                variant="success"
+                size="sm"
+                loading={isProcessing}
+                onClick={() => handleApprovaBulk(group.pattern_signature, group.total_count)}
+                disabled={isProcessing}
+              >
+                Supervisione ({group.total_count})
+              </Button>
             </div>
           </div>
         );
@@ -625,6 +680,8 @@ const IndividualView = ({
   handleOpenArchiviazione,
   handleOpenAic,       // v9.0
   handleRifiutaAic,    // v9.0
+  handleOpenAnagrafica,    // v11.4
+  handleRifiutaAnagrafica, // v11.4
   returnToOrdine,
   getMLProgress,
   getAnomaliaUrgency,
@@ -652,11 +709,12 @@ const IndividualView = ({
         const isLookup = sup.tipo_supervisione === 'lookup' || sup.codice_anomalia?.startsWith('LKP-');
         const isPrezzo = sup.tipo_supervisione === 'prezzo' || sup.codice_anomalia?.startsWith('PRICE-');
         const isAic = sup.tipo_supervisione === 'aic' || sup.codice_anomalia?.startsWith('AIC-');  // v9.0
+        const isAnagrafica = sup.tipo_supervisione === 'anagrafica' || sup.codice_anomalia?.startsWith('DEP-');  // v11.4
         const vendorDisplay = isListino ? (sup.vendor || 'CODIFI') : (sup.vendor || 'ANGELINI');
 
         return (
           <SupervisioneCard
-            key={`${isPrezzo ? 'prz' : isAic ? 'aic' : isListino ? 'lst' : isLookup ? 'lkp' : 'esp'}-${sup.id_supervisione}`}
+            key={`${isPrezzo ? 'prz' : isAic ? 'aic' : isListino ? 'lst' : isAnagrafica ? 'ana' : isLookup ? 'lkp' : 'esp'}-${sup.id_supervisione}`}
             sup={sup}
             urgency={urgency}
             mlProgress={mlProgress}
@@ -665,6 +723,7 @@ const IndividualView = ({
             isLookup={isLookup}
             isPrezzo={isPrezzo}
             isAic={isAic}
+            isAnagrafica={isAnagrafica}
             vendorDisplay={vendorDisplay}
             onNavigateToOrdine={onNavigateToOrdine}
             handleApprova={handleApprova}
@@ -675,6 +734,8 @@ const IndividualView = ({
             handleOpenArchiviazione={handleOpenArchiviazione}
             handleOpenAic={handleOpenAic}           // v9.0
             handleRifiutaAic={handleRifiutaAic}     // v9.0
+            handleOpenAnagrafica={handleOpenAnagrafica}      // v11.4
+            handleRifiutaAnagrafica={handleRifiutaAnagrafica}// v11.4
             returnToOrdine={returnToOrdine}
           />
         );
@@ -695,6 +756,7 @@ const SupervisioneCard = ({
   isLookup,
   isPrezzo,
   isAic,  // v9.0
+  isAnagrafica, // v11.4
   vendorDisplay,
   onNavigateToOrdine,
   handleApprova,
@@ -705,6 +767,8 @@ const SupervisioneCard = ({
   handleOpenArchiviazione,
   handleOpenAic,       // v9.0
   handleRifiutaAic,    // v9.0
+  handleOpenAnagrafica,    // v11.4
+  handleRifiutaAnagrafica, // v11.4
   returnToOrdine,
 }) => (
   <div
@@ -727,6 +791,8 @@ const SupervisioneCard = ({
             <span className="px-2 py-0.5 text-xs bg-teal-100 text-teal-700 rounded-full">AIC</span>
           ) : isListino ? (
             <span className="px-2 py-0.5 text-xs bg-blue-100 text-blue-700 rounded-full">LISTINO</span>
+          ) : isAnagrafica ? (
+            <span className="px-2 py-0.5 text-xs bg-orange-100 text-orange-700 rounded-full">ANAGRAFICA</span>
           ) : isLookup ? (
             <span className="px-2 py-0.5 text-xs bg-amber-100 text-amber-700 rounded-full">LOOKUP</span>
           ) : (
@@ -747,7 +813,7 @@ const SupervisioneCard = ({
 
         {/* Details grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-          <SupervisioneDetails sup={sup} isPrezzo={isPrezzo} isListino={isListino} isLookup={isLookup} isAic={isAic} />
+          <SupervisioneDetails sup={sup} isPrezzo={isPrezzo} isListino={isListino} isLookup={isLookup} isAic={isAic} isAnagrafica={isAnagrafica} />
 
           {/* ML Progress */}
           <div className="flex items-center gap-2">
@@ -781,6 +847,7 @@ const SupervisioneCard = ({
       isListino={isListino}
       isLookup={isLookup}
       isAic={isAic}
+      isAnagrafica={isAnagrafica}
       onNavigateToOrdine={onNavigateToOrdine}
       handleApprova={handleApprova}
       handleRifiuta={handleRifiuta}
@@ -790,6 +857,8 @@ const SupervisioneCard = ({
       handleOpenArchiviazione={handleOpenArchiviazione}
       handleOpenAic={handleOpenAic}           // v9.0
       handleRifiutaAic={handleRifiutaAic}     // v9.0
+      handleOpenAnagrafica={handleOpenAnagrafica}      // v11.4
+      handleRifiutaAnagrafica={handleRifiutaAnagrafica}// v11.4
       returnToOrdine={returnToOrdine}
     />
   </div>
@@ -798,7 +867,7 @@ const SupervisioneCard = ({
 // =============================================================================
 // SUPERVISIONE DETAILS - Dettagli specifici per tipo
 // =============================================================================
-const SupervisioneDetails = ({ sup, isPrezzo, isListino, isLookup, isAic }) => {
+const SupervisioneDetails = ({ sup, isPrezzo, isListino, isLookup, isAic, isAnagrafica }) => {
   if (isAic) {
     return (
       <div className="space-y-1">
@@ -831,13 +900,18 @@ const SupervisioneDetails = ({ sup, isPrezzo, isListino, isLookup, isAic }) => {
     );
   }
 
-  if (isLookup) {
+  // v11.4: Anagrafica (unifica lookup + deposito + header)
+  if (isAnagrafica || isLookup) {
     return (
       <div className="space-y-1">
         <p className="text-slate-600"><strong>Anomalia:</strong> {sup.codice_anomalia}</p>
-        <p className="text-slate-600"><strong>Farmacia estratta:</strong> {sup.ragione_sociale?.toUpperCase() || 'N/A'}</p>
-        {sup.piva && <p className="text-slate-600"><strong>P.IVA:</strong> {sup.piva}</p>}
+        <p className="text-slate-600"><strong>Ragione sociale:</strong> {(sup.ragione_sociale_estratta || sup.ragione_sociale)?.toUpperCase() || 'N/A'}</p>
+        {(sup.piva_estratta || sup.piva) && <p className="text-slate-600"><strong>P.IVA:</strong> {sup.piva_estratta || sup.piva}</p>}
+        {sup.deposito_estratto && <p className="text-slate-600"><strong>Deposito:</strong> {sup.deposito_estratto}</p>}
         {sup.lookup_score !== undefined && <p className="text-slate-600"><strong>Score:</strong> {sup.lookup_score}%</p>}
+        {sup.operatore_correzione && (
+          <p className="text-emerald-600"><strong>Corretto da:</strong> {sup.operatore_correzione}</p>
+        )}
       </div>
     );
   }
@@ -865,6 +939,7 @@ const SupervisioneActions = ({
   isListino,
   isLookup,
   isAic,
+  isAnagrafica,
   onNavigateToOrdine,
   handleApprova,
   handleRifiuta,
@@ -874,81 +949,67 @@ const SupervisioneActions = ({
   handleOpenArchiviazione,
   handleOpenAic,       // v9.0
   handleRifiutaAic,    // v9.0
+  handleOpenAnagrafica,    // v11.4
+  handleRifiutaAnagrafica, // v11.4
   returnToOrdine,
-}) => (
-  <div className="flex items-center gap-3 flex-wrap">
-    {sup.id_testata && onNavigateToOrdine && (
-      <Button variant="secondary" size="sm" onClick={() => onNavigateToOrdine(sup.id_testata)}>
-        Vai all'Ordine
-      </Button>
-    )}
+}) => {
+  // v11.4: Workflow UNIFICATO - tutti i pattern hanno: Verifica Ordine + Azione Correttiva + Supervisione
 
-    {isAic ? (
-      <>
+  return (
+    <div className="flex items-center gap-3 flex-wrap">
+      {/* 1. VERIFICA ORDINE - sempre presente per tutti */}
+      {sup.id_testata && onNavigateToOrdine && (
+        <Button variant="secondary" size="sm" onClick={() => onNavigateToOrdine(sup.id_testata)}>
+          Verifica Ordine
+        </Button>
+      )}
+
+      {/* 2. AZIONE CORRETTIVA - specifica per tipo pattern */}
+      {(isAnagrafica || isLookup) ? (
+        <Button
+          variant="primary"
+          size="sm"
+          loading={isProcessing}
+          onClick={() => handleOpenAnagrafica?.(sup)}
+          disabled={isProcessing}
+        >
+          Azione Correttiva
+        </Button>
+      ) : isAic ? (
         <Button variant="primary" size="sm" loading={isProcessing} onClick={() => handleOpenAic?.(sup)} disabled={isProcessing}>
-          Assegna AIC
+          Azione Correttiva
         </Button>
-        <Button variant="secondary" size="sm" onClick={() => onNavigateToOrdine?.(sup.id_testata)} disabled={isProcessing}>
-          Vai all'Ordine
+      ) : (isPrezzo || isListino) ? (
+        // PREZZO e LISTINO usano stesso modal CorrezioneLisinoModal
+        <Button variant="primary" size="sm" loading={isProcessing} onClick={() => handleOpenCorrezione?.(sup)} disabled={isProcessing}>
+          Azione Correttiva
         </Button>
-        <Button variant="danger" size="sm" loading={isProcessing} onClick={() => handleRifiutaAic?.(sup.id_supervisione)} disabled={isProcessing}>
-          Rifiuta
-        </Button>
-      </>
-    ) : isPrezzo ? (
-      <>
+      ) : (
+        // ESPOSITORE - va alla tab Espositore dell'ordine
         <Button variant="primary" size="sm" loading={isProcessing} onClick={() => onNavigateToOrdine?.(sup.id_testata)} disabled={isProcessing}>
-          Gestisci Prezzi
+          Azione Correttiva
         </Button>
-        <Button variant="success" size="sm" loading={isProcessing} onClick={() => handleApprova(sup.id_supervisione, sup.pattern_signature)} disabled={isProcessing}>
-          Approva
-        </Button>
-        <Button variant="danger" size="sm" loading={isProcessing} onClick={() => handleRifiuta(sup.id_supervisione, sup.pattern_signature)} disabled={isProcessing}>
-          Rifiuta
-        </Button>
-      </>
-    ) : isListino ? (
-      <>
-        <Button variant="primary" size="sm" loading={isProcessing} onClick={() => handleOpenCorrezione(sup)} disabled={isProcessing}>
-          Correggi Prezzi
-        </Button>
-        <Button variant="warning" size="sm" loading={isProcessing} onClick={() => handleOpenArchiviazione(sup)} disabled={isProcessing}>
-          Archivia Riga
-        </Button>
-        <Button variant="success" size="sm" loading={isProcessing} onClick={() => handleApprova(sup.id_supervisione, sup.pattern_signature)} disabled={isProcessing}>
-          Approva
-        </Button>
-      </>
-    ) : isLookup ? (
-      <>
-        <Button variant="success" size="sm" loading={isProcessing} onClick={() => handleApprova(sup.id_supervisione, sup.pattern_signature)} disabled={isProcessing}>
-          Approva Farmacia
-        </Button>
-        <Button variant="danger" size="sm" loading={isProcessing} onClick={() => handleRifiuta(sup.id_supervisione, sup.pattern_signature)} disabled={isProcessing}>
-          Rifiuta
-        </Button>
-      </>
-    ) : (
-      <>
-        <Button variant="success" size="sm" loading={isProcessing} onClick={() => handleApprova(sup.id_supervisione, sup.pattern_signature)} disabled={isProcessing}>
-          Approva (+1 ML)
-        </Button>
-        <Button variant="danger" size="sm" loading={isProcessing} onClick={() => handleRifiuta(sup.id_supervisione, sup.pattern_signature)} disabled={isProcessing}>
-          Rifiuta (Reset ML)
-        </Button>
-        <Button variant="secondary" size="sm" onClick={() => handleModifica(sup.id_supervisione, {})} disabled={isProcessing}>
-          Modifica
-        </Button>
-      </>
-    )}
+      )}
 
-    {returnToOrdine && (
-      <Button variant="ghost" size="sm" onClick={() => handleLasciaSospeso(sup.id_supervisione)} disabled={isProcessing}>
-        Lascia Sospeso
+      {/* 3. SUPERVISIONE - sempre presente per tutti */}
+      <Button
+        variant="success"
+        size="sm"
+        loading={isProcessing}
+        onClick={() => handleApprova(sup.id_supervisione, sup.pattern_signature)}
+        disabled={isProcessing}
+      >
+        Supervisione
       </Button>
-    )}
-  </div>
-);
+
+      {returnToOrdine && (
+        <Button variant="ghost" size="sm" onClick={() => handleLasciaSospeso(sup.id_supervisione)} disabled={isProcessing}>
+          Lascia Sospeso
+        </Button>
+      )}
+    </div>
+  );
+};
 
 // =============================================================================
 // TAB PATTERNS - Pattern ML appresi
@@ -1083,61 +1144,5 @@ const PatternCard = ({ criterio, getMLProgress, handlePromuoviPattern, handleRes
     </div>
   );
 };
-
-// =============================================================================
-// TAB STORICO
-// =============================================================================
-const TabStorico = ({ storico }) => (
-  <div className="p-6">
-    <div className="mb-4">
-      <h3 className="text-lg font-medium text-slate-800 mb-2">Storico Decisioni</h3>
-      <p className="text-slate-600 text-sm">Ultime decisioni per audit e verifica.</p>
-    </div>
-
-    {storico.length === 0 ? (
-      <div className="text-center py-8 text-slate-500">
-        <div className="text-4xl mb-3">📜</div>
-        <p>Nessuna decisione nello storico</p>
-      </div>
-    ) : (
-      <div className="space-y-3">
-        {storico.map((item, idx) => (
-          <div
-            key={idx}
-            className={`p-4 border rounded-lg ${
-              item.azione === 'APPROVED' ? 'border-emerald-200 bg-emerald-50' :
-              item.azione === 'REJECTED' ? 'border-red-200 bg-red-50' :
-              'border-slate-200 bg-slate-50'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <span className={`px-2 py-1 text-xs rounded-full ${
-                  item.azione === 'APPROVED' ? 'bg-emerald-100 text-emerald-700' :
-                  item.azione === 'REJECTED' ? 'bg-red-100 text-red-700' :
-                  'bg-slate-100 text-slate-700'
-                }`}>
-                  {item.azione === 'APPROVED' ? '✓ Approvato' :
-                   item.azione === 'REJECTED' ? '✗ Rifiutato' : item.azione}
-                </span>
-                <span className="text-sm font-medium text-slate-800">
-                  Ordine #{item.numero_ordine || item.id_testata}
-                </span>
-                <VendorBadge vendor={item.vendor} size="xs" />
-              </div>
-              <div className="text-right text-xs text-slate-500">
-                <p>{item.operatore}</p>
-                <p>{item.timestamp ? new Date(item.timestamp).toLocaleString('it-IT') : '-'}</p>
-              </div>
-            </div>
-            {item.note && (
-              <p className="mt-2 text-sm text-slate-600 italic">"{item.note}"</p>
-            )}
-          </div>
-        ))}
-      </div>
-    )}
-  </div>
-);
 
 export default SupervisionePage;

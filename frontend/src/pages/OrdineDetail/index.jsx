@@ -1,7 +1,8 @@
 // =============================================================================
-// SERV.O v7.0 - ORDINE DETAIL PAGE (REFACTORED)
+// SERV.O v11.4 - ORDINE DETAIL PAGE (REFACTORED)
 // =============================================================================
 // Pagina dettaglio ordine - versione decomposta e modulare
+// v11.4: Aggiunto supporto ritorno a Supervisione ML con banner
 // =============================================================================
 
 import React, { useState } from 'react';
@@ -24,7 +25,7 @@ import { useOrdineDetail } from './hooks/useOrdineDetail';
 // MAIN COMPONENT
 // =============================================================================
 
-export default function OrdineDetailPage({ ordineId, currentUser, onBack, onNavigateToSupervisione }) {
+export default function OrdineDetailPage({ ordineId, currentUser, onBack, onNavigateToSupervisione, returnToSupervisione }) {
   // State per modal modifica header
   const [showHeaderModal, setShowHeaderModal] = useState(false);
 
@@ -92,12 +93,15 @@ export default function OrdineDetailPage({ ordineId, currentUser, onBack, onNavi
     return <Loading text="Caricamento ordine..." />;
   }
 
+  // v11.4: Testo dinamico per bottone indietro
+  const backButtonText = returnToSupervisione ? 'Torna a Supervisione ML' : 'Torna al Database';
+
   if (error && !ordine) {
     return (
       <div className="space-y-4">
         <ErrorBox.Error message={error} />
         <Button variant="secondary" onClick={onBack}>
-          Torna al Database
+          {backButtonText}
         </Button>
       </div>
     );
@@ -108,7 +112,7 @@ export default function OrdineDetailPage({ ordineId, currentUser, onBack, onNavi
       <div className="text-center py-8">
         <p className="text-slate-500">Ordine non trovato</p>
         <Button variant="secondary" onClick={onBack} className="mt-4">
-          Torna al Database
+          {backButtonText}
         </Button>
       </div>
     );
@@ -120,12 +124,37 @@ export default function OrdineDetailPage({ ordineId, currentUser, onBack, onNavi
 
   return (
     <div className="space-y-6">
+      {/* v11.4: Banner ritorno a Supervisione ML */}
+      {returnToSupervisione && (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white text-sm font-bold">
+                ML
+              </div>
+              <div>
+                <p className="font-medium text-indigo-900">Verifica da Supervisione ML</p>
+                <p className="text-sm text-indigo-700">Clicca per tornare alla pagina Supervisione ML</p>
+              </div>
+            </div>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={onBack}
+            >
+              Torna a Supervisione ML
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <OrdineHeader
         ordine={ordine}
         onBack={onBack}
         onShowPdf={() => setShowPdfModal(true)}
         onEditHeader={() => setShowHeaderModal(true)}
+        returnToSupervisione={returnToSupervisione}
       />
 
       {/* Error message */}

@@ -1,12 +1,17 @@
 /**
- * AnomaliaDetailModal Component - v11.0 Refactoring
+ * AnomaliaDetailModal Component - v11.4 Refactoring
  * Modale dettaglio anomalia con gestione:
  * - ESPOSITORE: parent/child editing
- * - LOOKUP: ricerca farmacia/parafarmacia
+ * - LOOKUP/ANAGRAFICA: ricerca farmacia/parafarmacia + deposito
  * - AIC: correzione codice AIC con propagazione (v11.0 - usa AicAssignmentModal unificato)
- * Usato da DatabasePage e OrdineDetailPage
+ *
+ * v11.4: Unificato per operatore E supervisore
+ * - Operatore: corregge anomalie singole
+ * - Supervisore: stesse azioni + opzione propagazione
+ *
+ * Usato da DatabasePage, OrdineDetailPage e SupervisionePage
  */
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { TipoAnomaliaBadge, StatoAnomaliaBadge, SeveritaBadge } from '../common/StatusBadge';
 import { lookupApi, getApiBaseUrl } from '../api';
 // v8.2: Import diretto per evitare problemi con barrel export
@@ -23,7 +28,25 @@ export function AnomaliaDetailModal({
   onRisolvi,
   onOpenOrdine,
   onAssignFarmacia,
+  // v11.4: Props per supporto Supervisione
+  fromSupervisione = false,        // Se true, mostra opzioni supervisore
+  supervisione = null,             // Dati supervisione (per propagazione)
+  onSupervisioneSuccess = null,    // Callback dopo azione supervisore
 }) {
+  // v11.4: Determina se utente è supervisore
+  const { operatore, isSupervisor } = useMemo(() => {
+    try {
+      const user = JSON.parse(localStorage.getItem('servo_user') || '{}');
+      const ruolo = (user.ruolo || '').toLowerCase();
+      const canGlobal = ['admin', 'supervisore', 'supervisor', 'superuser'].includes(ruolo);
+      return {
+        operatore: user.username || 'operatore',
+        isSupervisor: canGlobal
+      };
+    } catch {
+      return { operatore: 'operatore', isSupervisor: false };
+    }
+  }, []);
   // Stato editing parent (per ESPOSITORE)
   const [isEditingParent, setIsEditingParent] = useState(false);
   const [editingRigaParent, setEditingRigaParent] = useState(null);
@@ -192,17 +215,25 @@ export function AnomaliaDetailModal({
             Dettaglio Anomalia {anomaliaDetail?.anomalia?.id_anomalia && `#${anomaliaDetail.anomalia.id_anomalia}`}
           </h3>
           <div className="flex items-center gap-2">
-            {/* Pulsante Visualizza PDF */}
-            {anomaliaDetail?.anomalia?.pdf_file && (
-              <a
-                href={`${getApiBaseUrl()}/api/v1/upload/pdf/${encodeURIComponent(anomaliaDetail.anomalia.pdf_file)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-3 py-2 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-lg text-sm flex items-center gap-1"
-              >
-                Visualizza PDF
-              </a>
-            )}
+            {/* Pulsante Visualizza PDF - controlla anomalia, ordine_data, testata */}
+            {(() => {
+              const pdfFile = anomaliaDetail?.anomalia?.pdf_file
+                || anomaliaDetail?.ordine_data?.pdf_file
+                || anomaliaDetail?.testata?.pdf_file;
+              return pdfFile ? (
+                <a
+                  href={`${getApiBaseUrl()}/api/v1/upload/pdf/${encodeURIComponent(pdfFile)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm flex items-center gap-2"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                  </svg>
+                  Visualizza PDF
+                </a>
+              ) : null;
+            })()}
             <button
               onClick={handleClose}
               className="p-2 hover:bg-slate-100 rounded-lg text-slate-500"
@@ -260,6 +291,11 @@ export function AnomaliaDetailModal({
                     }
                   }}
                   onClose={onClose}
+                  // v11.4: Props per supporto Supervisione
+                  fromSupervisione={fromSupervisione}
+                  isSupervisor={isSupervisor}
+                  supervisione={supervisione}
+                  onSupervisioneSuccess={onSupervisioneSuccess}
                 />
               )}
 
@@ -736,15 +772,27 @@ function LookupSection({
   onSearch,
   onAssign,
   onAssignManualMinId,
-  onClose  // v10.6: Per chiudere modal dopo risoluzione deposito
+  onClose,  // v10.6: Per chiudere modal dopo risoluzione deposito
+  // v11.4: Props per supporto Supervisione
+  fromSupervisione = false,
+  isSupervisor = false,
+  supervisione = null,
+  onSupervisioneSuccess = null
 }) {
   const [manualMinId, setManualMinId] = React.useState('');
   const [mode, setMode] = React.useState('alternative'); // 'alternative', 'search', 'manual', 'deposito'
 
-  // v10.6: Stato per deposito manuale (LKP-A05)
+  // v10.6: Stato per deposito manuale
   const [depositoRiferimento, setDepositoRiferimento] = React.useState('');
   const [depositoSubmitting, setDepositoSubmitting] = React.useState(false);
   const [depositoError, setDepositoError] = React.useState(null);
+
+  // v11.4: Stato per propagazione (supervisore)
+  const [livelloPropagazione, setLivelloPropagazione] = React.useState('ORDINE');
+
+  // v11.4: Stato per flusso a due step (assegna → rivedi → risolvi)
+  const [assignedData, setAssignedData] = React.useState(null); // Dati assegnati (farmacia/MIN_ID/deposito)
+  const [isResolving, setIsResolving] = React.useState(false);
 
   // v10.6: Check se è LKP-A05 (Cliente non in anagrafica - deposito non determinabile)
   const isLkpA05 = anomalia?.codice_anomalia === 'LKP-A05';
@@ -782,45 +830,138 @@ function LookupSection({
     loadAlternatives();
   }, [idTestata, ordineData?.partita_iva]);
 
-  const handleManualAssign = () => {
-    if (manualMinId && manualMinId.length >= 6 && onAssignManualMinId) {
-      onAssignManualMinId(manualMinId);
+  // v11.4: Assegna farmacia da ricerca/alternative (popola TUTTI i campi)
+  const handleAssignFarmacia = (farmacia) => {
+    setAssignedData({
+      type: farmacia.tipo === 'FARMACIA' ? 'farmacia' : 'parafarmacia',
+      id_farmacia: farmacia.tipo === 'FARMACIA' ? farmacia.id_farmacia : null,
+      id_parafarmacia: farmacia.tipo === 'PARAFARMACIA' ? farmacia.id_parafarmacia : null,
+      // Campi da anagrafica ministeriale/clienti
+      min_id: farmacia.min_id || farmacia.codice_sito || '',
+      partita_iva: farmacia.partita_iva || '',
+      ragione_sociale: farmacia.ragione_sociale || farmacia.sito_logistico || '',
+      indirizzo: farmacia.indirizzo || '',
+      cap: farmacia.cap || '',
+      citta: farmacia.citta || '',
+      provincia: farmacia.provincia || '',
+      // Deposito da anagrafica clienti (se disponibile)
+      deposito: farmacia.deposito_riferimento || farmacia.deposito || ''
+    });
+    // Reset campi manuali quando si seleziona una farmacia
+    setManualMinId('');
+    setDepositoRiferimento('');
+  };
+
+  // v11.4: Aggiorna MIN_ID manuale (aggiorna campo specifico in assignedData)
+  const handleAssignManualMinId = () => {
+    if (manualMinId && manualMinId.length >= 6) {
+      const paddedMinId = manualMinId.padStart(9, '0');
+      if (assignedData) {
+        // Aggiorna MIN_ID nei dati già assegnati
+        setAssignedData(prev => ({ ...prev, min_id: paddedMinId }));
+      } else {
+        // Crea nuova assegnazione con solo MIN_ID (dati base da ordine)
+        setAssignedData({
+          type: 'manual',
+          min_id: paddedMinId,
+          partita_iva: ordineData?.partita_iva || '',
+          ragione_sociale: ordineData?.ragione_sociale || '',
+          indirizzo: ordineData?.indirizzo || '',
+          cap: ordineData?.cap || '',
+          citta: ordineData?.citta || '',
+          provincia: ordineData?.provincia || '',
+          deposito: ''
+        });
+      }
     }
   };
 
-  // v10.6: Handler per assegnazione deposito manuale (LKP-A05)
-  const handleDepositoAssign = async () => {
-    if (!depositoRiferimento || !depositoRiferimento.trim()) {
-      setDepositoError('Inserire un codice deposito');
-      return;
+  // v11.4: Aggiorna Deposito manuale (aggiorna campo specifico in assignedData)
+  const handleAssignDeposito = () => {
+    if (depositoRiferimento && depositoRiferimento.trim()) {
+      const dep = depositoRiferimento.trim();
+      if (assignedData) {
+        // Aggiorna deposito nei dati già assegnati
+        setAssignedData(prev => ({ ...prev, deposito: dep }));
+      } else {
+        // Crea nuova assegnazione con solo deposito (dati base da ordine)
+        setAssignedData({
+          type: 'manual',
+          min_id: '',
+          partita_iva: ordineData?.partita_iva || '',
+          ragione_sociale: ordineData?.ragione_sociale || '',
+          indirizzo: ordineData?.indirizzo || '',
+          cap: ordineData?.cap || '',
+          citta: ordineData?.citta || '',
+          provincia: ordineData?.provincia || '',
+          deposito: dep
+        });
+      }
     }
+  };
 
-    setDepositoSubmitting(true);
+  // v11.4: Valida campi obbligatori (P.IVA, MIN_ID, Deposito)
+  const missingFields = React.useMemo(() => {
+    if (!assignedData) return [];
+    const missing = [];
+    if (!assignedData.partita_iva) missing.push('partita_iva');
+    if (!assignedData.min_id) missing.push('min_id');
+    if (!assignedData.deposito) missing.push('deposito');
+    return missing;
+  }, [assignedData]);
+
+  const canResolve = assignedData && missingFields.length === 0;
+
+  // v11.4: Risolvi anomalia (step 2 - conferma e salva)
+  const handleRisolviAnomalia = async () => {
+    if (!canResolve) return;
+
+    setIsResolving(true);
     setDepositoError(null);
 
     try {
-      // Recupera operatore da localStorage
       const user = JSON.parse(localStorage.getItem('servo_user') || '{}');
       const operatore = user.username || 'admin';
 
-      const { anomalieApi } = await import('../api/anomalie');
-      const result = await anomalieApi.risolviDeposito(anomalia.id_anomalia, {
-        deposito_riferimento: depositoRiferimento.trim(),
-        operatore,
-        note: `Deposito assegnato manualmente per cliente non in anagrafica`
-      });
-
-      if (result.success) {
-        if (onClose) onClose();
+      // Usa sempre onAssign con i dati completi (farmacia o manuale)
+      if (assignedData.type === 'farmacia' || assignedData.type === 'parafarmacia') {
+        // Assegna farmacia/parafarmacia + deposito se necessario
+        if (onAssign) {
+          // Prima assegna la farmacia
+          onAssign();
+          // Se c'è un deposito manuale aggiunto, aggiorna anche quello
+          if (assignedData.deposito && !assignedData.id_farmacia?.deposito_riferimento) {
+            // TODO: aggiorna deposito ordine se necessario
+          }
+        }
       } else {
-        setDepositoError(result.error || 'Errore durante assegnazione deposito');
+        // Assegnazione manuale (MIN_ID e/o Deposito)
+        if (assignedData.min_id && onAssignManualMinId) {
+          onAssignManualMinId(assignedData.min_id);
+        }
+        if (assignedData.deposito) {
+          const { anomalieApi } = await import('../api/anomalie');
+          await anomalieApi.risolviDeposito(anomalia.id_anomalia, {
+            deposito_riferimento: assignedData.deposito,
+            operatore,
+            note: `Deposito assegnato manualmente`
+          });
+        }
+        if (onClose) onClose();
       }
     } catch (err) {
-      console.error('Errore assegnazione deposito:', err);
-      setDepositoError(err.message || 'Errore durante assegnazione deposito');
+      console.error('Errore risoluzione:', err);
+      setDepositoError(err.message || 'Errore durante risoluzione');
     } finally {
-      setDepositoSubmitting(false);
+      setIsResolving(false);
     }
+  };
+
+  // v11.4: Reset assegnazione
+  const handleResetAssignment = () => {
+    setAssignedData(null);
+    setManualMinId('');
+    setDepositoRiferimento('');
   };
 
   // Conta alternative disponibili
@@ -871,8 +1012,232 @@ function LookupSection({
         </div>
       </div>
 
-      {/* Toggle tra modalita */}
-      <div className="flex gap-2">
+      {/* v11.4: Preview Anagrafica Assegnata (dopo selezione, prima di risoluzione) */}
+      {assignedData && (
+        <div className={`border-2 rounded-lg p-4 ${canResolve ? 'bg-green-50 border-green-300' : 'bg-amber-50 border-amber-300'}`}>
+          <div className="flex items-center justify-between mb-3">
+            <h4 className={`font-semibold flex items-center gap-2 ${canResolve ? 'text-green-800' : 'text-amber-800'}`}>
+              {canResolve ? (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              )}
+              Anagrafica da Assegnare
+            </h4>
+            <button
+              onClick={handleResetAssignment}
+              className="text-sm text-red-600 hover:text-red-800 flex items-center gap-1"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+              Annulla
+            </button>
+          </div>
+
+          {/* Alert campi mancanti */}
+          {missingFields.length > 0 && (
+            <div className="mb-4 p-3 bg-amber-100 border border-amber-300 rounded-lg">
+              <p className="text-sm font-medium text-amber-800 mb-2">
+                Campi obbligatori mancanti - inserisci manualmente:
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {missingFields.includes('partita_iva') && (
+                  <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-medium">P.IVA</span>
+                )}
+                {missingFields.includes('min_id') && (
+                  <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-medium">MIN_ID</span>
+                )}
+                {missingFields.includes('deposito') && (
+                  <span className="px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-medium">Deposito</span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Griglia dati con evidenziazione campi mancanti */}
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            {/* P.IVA */}
+            <div className={missingFields.includes('partita_iva') ? 'p-2 bg-red-50 border border-red-200 rounded' : ''}>
+              <span className="text-slate-500">P.IVA:</span>{' '}
+              {assignedData.partita_iva ? (
+                <span className="font-mono font-medium">{assignedData.partita_iva}</span>
+              ) : (
+                <span className="text-red-500 font-medium">MANCANTE</span>
+              )}
+            </div>
+
+            {/* MIN_ID */}
+            <div className={missingFields.includes('min_id') ? 'p-2 bg-red-50 border border-red-200 rounded' : ''}>
+              <span className="text-slate-500">MIN_ID:</span>{' '}
+              {assignedData.min_id ? (
+                <span className="font-mono font-bold text-green-700">{assignedData.min_id}</span>
+              ) : (
+                <div className="inline-flex items-center gap-2">
+                  <span className="text-red-500 font-medium">MANCANTE</span>
+                  <input
+                    type="text"
+                    value={manualMinId}
+                    onChange={(e) => setManualMinId(e.target.value.replace(/\D/g, '').slice(0, 9))}
+                    placeholder="Inserisci"
+                    className="w-24 px-2 py-1 border border-orange-300 rounded text-xs font-mono"
+                    maxLength={9}
+                  />
+                  <button
+                    onClick={handleAssignManualMinId}
+                    disabled={!manualMinId || manualMinId.length < 6}
+                    className="px-2 py-1 bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white rounded text-xs"
+                  >
+                    OK
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Ragione Sociale */}
+            <div className="col-span-2">
+              <span className="text-slate-500">Ragione Sociale:</span>{' '}
+              <span className="font-medium">{assignedData.ragione_sociale?.toUpperCase() || '-'}</span>
+            </div>
+
+            {/* Indirizzo */}
+            <div className="col-span-2">
+              <span className="text-slate-500">Indirizzo:</span>{' '}
+              <span>{assignedData.indirizzo?.toUpperCase() || '-'}</span>
+            </div>
+
+            {/* CAP, Città, Provincia */}
+            <div>
+              <span className="text-slate-500">CAP:</span>{' '}
+              <span>{assignedData.cap || '-'}</span>
+            </div>
+            <div>
+              <span className="text-slate-500">Città:</span>{' '}
+              <span>{assignedData.citta?.toUpperCase() || '-'}</span>
+            </div>
+            <div>
+              <span className="text-slate-500">Provincia:</span>{' '}
+              <span>{assignedData.provincia?.toUpperCase() || '-'}</span>
+            </div>
+
+            {/* Deposito */}
+            <div className={`${missingFields.includes('deposito') ? 'p-2 bg-red-50 border border-red-200 rounded' : ''}`}>
+              <span className="text-slate-500">Deposito:</span>{' '}
+              {assignedData.deposito ? (
+                <span className="font-bold text-purple-700">{assignedData.deposito}</span>
+              ) : (
+                <div className="inline-flex items-center gap-2">
+                  <span className="text-red-500 font-medium">MANCANTE</span>
+                  <input
+                    type="text"
+                    value={depositoRiferimento}
+                    onChange={(e) => setDepositoRiferimento(e.target.value.slice(0, 10))}
+                    placeholder="Cod."
+                    className="w-16 px-2 py-1 border border-purple-300 rounded text-xs font-mono"
+                    maxLength={10}
+                  />
+                  <button
+                    onClick={handleAssignDeposito}
+                    disabled={!depositoRiferimento}
+                    className="px-2 py-1 bg-purple-500 hover:bg-purple-600 disabled:bg-purple-300 text-white rounded text-xs"
+                  >
+                    OK
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Errore */}
+          {depositoError && (
+            <div className="mt-3 p-2 bg-red-100 border border-red-300 rounded text-red-700 text-sm">
+              {depositoError}
+            </div>
+          )}
+
+          {/* v11.4: Opzioni Propagazione per Supervisore */}
+          {fromSupervisione && isSupervisor && (
+            <div className="mt-4 pt-3 border-t border-green-200">
+              <p className="text-sm font-medium text-green-800 mb-2">Propagazione:</p>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="propagazione_lookup"
+                    value="ORDINE"
+                    checked={livelloPropagazione === 'ORDINE'}
+                    onChange={() => setLivelloPropagazione('ORDINE')}
+                    className="text-green-600"
+                  />
+                  <span className="text-sm">Solo questo ordine</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="propagazione_lookup"
+                    value="GLOBALE"
+                    checked={livelloPropagazione === 'GLOBALE'}
+                    onChange={() => setLivelloPropagazione('GLOBALE')}
+                    className="text-green-600"
+                  />
+                  <span className="text-sm">
+                    Propaga globalmente
+                    {supervisione?.total_count > 1 && (
+                      <span className="ml-1 text-green-600 font-medium">
+                        ({supervisione.total_count})
+                      </span>
+                    )}
+                  </span>
+                </label>
+              </div>
+            </div>
+          )}
+
+          {/* Bottone Risolvi Anomalia */}
+          <div className="mt-4 flex justify-end">
+            <button
+              onClick={handleRisolviAnomalia}
+              disabled={!canResolve || isResolving}
+              className={`px-6 py-2 rounded-lg font-medium flex items-center gap-2 ${
+                !canResolve || isResolving
+                  ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                  : 'bg-green-600 hover:bg-green-700 text-white'
+              }`}
+              title={!canResolve ? 'Compila i campi obbligatori mancanti' : ''}
+            >
+              {isResolving ? (
+                <>
+                  <span className="animate-spin">⏳</span>
+                  Risoluzione in corso...
+                </>
+              ) : !canResolve ? (
+                <>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  Compila campi mancanti
+                </>
+              ) : (
+                <>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                  Risolvi Anomalia
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Toggle tra modalita (nascosto se già assegnato) */}
+      {!assignedData && (
+        <>
+        <div className="flex gap-2">
         {hasPivaBloccata && (
           <button
             onClick={() => setMode('alternative')}
@@ -905,19 +1270,17 @@ function LookupSection({
         >
           MIN_ID Manuale
         </button>
-        {/* v10.6: Deposito manuale per LKP-A05 */}
-        {isLkpA05 && (
-          <button
-            onClick={() => setMode('deposito')}
-            className={`flex-1 px-4 py-2 rounded text-sm font-medium transition-colors ${
-              mode === 'deposito'
-                ? 'bg-purple-500 text-white'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
-          >
-            Deposito Manuale
-          </button>
-        )}
+        {/* v11.4: Deposito manuale sempre visibile (non solo LKP-A05) */}
+        <button
+          onClick={() => setMode('deposito')}
+          className={`flex-1 px-4 py-2 rounded text-sm font-medium transition-colors ${
+            mode === 'deposito'
+              ? 'bg-purple-500 text-white'
+              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+          }`}
+        >
+          Deposito
+        </button>
       </div>
 
       {/* v6.2.5: Alternative P.IVA-filtered */}
@@ -1062,10 +1425,10 @@ function LookupSection({
                   </span>
                 </div>
                 <button
-                  onClick={onAssign}
+                  onClick={() => handleAssignFarmacia(selectedResult)}
                   className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded text-sm font-medium"
                 >
-                  Assegna e Risolvi
+                  Assegna
                 </button>
               </div>
             </div>
@@ -1155,10 +1518,10 @@ function LookupSection({
                   </span>
                 </div>
                 <button
-                  onClick={onAssign}
+                  onClick={() => handleAssignFarmacia(selectedResult)}
                   className="px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded text-sm font-medium"
                 >
-                  Assegna e Risolvi
+                  Assegna
                 </button>
               </div>
             </div>
@@ -1185,11 +1548,11 @@ function LookupSection({
               maxLength={9}
             />
             <button
-              onClick={handleManualAssign}
+              onClick={handleAssignManualMinId}
               disabled={!manualMinId || manualMinId.length < 6}
               className="px-4 py-2 bg-orange-500 hover:bg-orange-600 disabled:bg-orange-300 text-white rounded text-sm font-medium"
             >
-              Assegna MIN_ID
+              Assegna
             </button>
           </div>
 
@@ -1200,22 +1563,25 @@ function LookupSection({
                   <span className="text-sm font-medium text-orange-800">MIN_ID da assegnare:</span>
                   <span className="ml-2 font-mono text-lg">{manualMinId.padStart(9, '0')}</span>
                 </div>
+                <button
+                  onClick={handleAssignManualMinId}
+                  disabled={!manualMinId || manualMinId.length < 6}
+                  className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded text-sm font-medium"
+                >
+                  Assegna
+                </button>
               </div>
-              <p className="text-xs text-orange-600 mt-2">
-                L'ordine verra aggiornato con questo codice ministeriale e l'anomalia sara risolta.
-              </p>
             </div>
           )}
         </div>
       )}
 
-      {/* v10.6: Inserimento manuale Deposito (LKP-A05) */}
-      {mode === 'deposito' && isLkpA05 && (
+      {/* v11.4: Inserimento manuale Deposito (per tutti i LOOKUP/ANAGRAFICA) */}
+      {mode === 'deposito' && (
         <div className="bg-purple-50 rounded-lg p-4">
-          <h4 className="font-semibold text-purple-800 mb-3">Assegnazione Manuale Deposito</h4>
+          <h4 className="font-semibold text-purple-800 mb-3">Assegnazione Deposito</h4>
           <p className="text-sm text-purple-700 mb-4">
-            Il cliente non è presente in anagrafica clienti. Inserisci manualmente il codice deposito
-            di riferimento per procedere con l'ordine.
+            Inserisci manualmente il codice deposito di riferimento per procedere con l'ordine.
           </p>
 
           {depositoError && (
@@ -1234,11 +1600,11 @@ function LookupSection({
               maxLength={10}
             />
             <button
-              onClick={handleDepositoAssign}
-              disabled={!depositoRiferimento || depositoSubmitting}
+              onClick={handleAssignDeposito}
+              disabled={!depositoRiferimento}
               className="px-4 py-2 bg-purple-500 hover:bg-purple-600 disabled:bg-purple-300 text-white rounded text-sm font-medium"
             >
-              {depositoSubmitting ? 'Salvataggio...' : 'Assegna Deposito'}
+              Assegna
             </button>
           </div>
 
@@ -1249,13 +1615,20 @@ function LookupSection({
                   <span className="text-sm font-medium text-purple-800">Deposito da assegnare:</span>
                   <span className="ml-2 font-mono text-lg">{depositoRiferimento}</span>
                 </div>
+                <button
+                  onClick={handleAssignDeposito}
+                  disabled={!depositoRiferimento}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300 text-white rounded text-sm font-medium"
+                >
+                  Assegna
+                </button>
               </div>
-              <p className="text-xs text-purple-600 mt-2">
-                L'ordine verrà aggiornato con questo deposito e l'anomalia LKP-A05 sarà risolta.
-              </p>
             </div>
           )}
         </div>
+      )}
+      {/* Fine blocco !assignedData */}
+      </>
       )}
     </div>
   );
