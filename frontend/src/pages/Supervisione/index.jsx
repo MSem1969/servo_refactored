@@ -1190,6 +1190,8 @@ const PatternCard = ({ criterio, getMLProgress, handlePromuoviPattern, handleRes
               variant="primary"
               size="sm"
               onClick={() => handlePromuoviPattern(criterio.pattern_signature)}
+              disabled={approvazioni === 0}
+              title={approvazioni === 0 ? 'Richiede almeno 1 approvazione' : 'Rendi automatico questo pattern'}
             >
               ⚡ Forza Automazione
             </Button>

@@ -291,6 +291,14 @@ async def promuovi_pattern(pattern_signature: str, operatore: str = Query(...)):
     if not criterio_esp and not criterio_lst and not criterio_lkp and not criterio_aic:
         raise HTTPException(status_code=404, detail="Pattern non trovato")
 
+    # v11.4: Verifica che ci sia almeno 1 approvazione
+    criterio = criterio_esp or criterio_lst or criterio_lkp or criterio_aic
+    if criterio['count_approvazioni'] == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Impossibile forzare automazione: richiede almeno 1 approvazione"
+        )
+
     # Forza promozione settando count_approvazioni = 5 e is_ordinario = true
     if criterio_esp:
         db.execute("""
