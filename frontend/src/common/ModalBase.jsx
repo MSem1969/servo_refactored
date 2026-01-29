@@ -1,10 +1,11 @@
 // =============================================================================
-// SERV.O v10.1 - MODAL BASE COMPONENT
+// SERV.O v11.4 - MODAL BASE COMPONENT
 // =============================================================================
 // Componente modale riutilizzabile con varianti e features avanzate
+// v11.4: Aggiunto supporto drag per spostare modal nello schermo
 // =============================================================================
 
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useState, useRef } from 'react';
 import Button from './Button';
 
 /**
@@ -17,6 +18,7 @@ import Button from './Button';
  * - Varianti colore per header
  * - Footer con azioni predefinite
  * - Supporto loading state
+ * - v11.4: Trascinabile (drag header per spostare)
  *
  * @param {boolean} isOpen - Stato apertura modale
  * @param {function} onClose - Handler chiusura
@@ -29,6 +31,7 @@ import Button from './Button';
  * @param {boolean} showCloseButton - Mostra pulsante X
  * @param {boolean} closeOnOverlay - Chiudi cliccando overlay
  * @param {boolean} closeOnEsc - Chiudi con ESC
+ * @param {boolean} draggable - Abilita trascinamento modal (default: true)
  * @param {object} actions - Azioni footer { confirm, cancel, confirmText, cancelText, confirmVariant, loading }
  */
 const ModalBase = ({
@@ -43,9 +46,66 @@ const ModalBase = ({
   showCloseButton = true,
   closeOnOverlay = true,
   closeOnEsc = true,
+  draggable = true,
   actions,
   className = '',
 }) => {
+  // v11.4: Stato per drag
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragRef = useRef({ startX: 0, startY: 0, initialX: 0, initialY: 0 });
+
+  // Reset posizione quando si apre
+  useEffect(() => {
+    if (isOpen) {
+      setPosition({ x: 0, y: 0 });
+    }
+  }, [isOpen]);
+
+  // v11.4: Handler drag
+  const handleMouseDown = useCallback((e) => {
+    if (!draggable) return;
+    // Evita drag se si clicca su bottoni o input
+    if (e.target.closest('button') || e.target.closest('input')) return;
+
+    setIsDragging(true);
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      initialX: position.x,
+      initialY: position.y,
+    };
+    e.preventDefault();
+  }, [draggable, position]);
+
+  const handleMouseMove = useCallback((e) => {
+    if (!isDragging) return;
+
+    const deltaX = e.clientX - dragRef.current.startX;
+    const deltaY = e.clientY - dragRef.current.startY;
+
+    setPosition({
+      x: dragRef.current.initialX + deltaX,
+      y: dragRef.current.initialY + deltaY,
+    });
+  }, [isDragging]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  // v11.4: Aggiungi listener globali per drag
+  useEffect(() => {
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    }
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging, handleMouseMove, handleMouseUp]);
+
   // Chiusura con ESC
   const handleKeyDown = useCallback((e) => {
     if (closeOnEsc && e.key === 'Escape') {
@@ -108,14 +168,31 @@ const ModalBase = ({
         className={`
           bg-white rounded-xl w-full ${sizeClasses[size]} max-h-[90vh] flex flex-col
           shadow-2xl animate-slideUp ${className}
+          ${isDragging ? 'select-none' : ''}
         `}
+        style={{
+          transform: `translate(${position.x}px, ${position.y}px)`,
+          transition: isDragging ? 'none' : 'transform 0.1s ease-out',
+        }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
+        {/* Header - v11.4: Draggable handle */}
         {title && (
-          <div className={`p-4 flex justify-between items-start shrink-0 rounded-t-xl ${variantClasses[variant]}`}>
+          <div
+            className={`p-4 flex justify-between items-start shrink-0 rounded-t-xl ${variantClasses[variant]} ${
+              draggable ? 'cursor-move' : ''
+            }`}
+            onMouseDown={handleMouseDown}
+          >
             <div>
-              <h3 className={`font-semibold text-lg ${titleColorClasses[variant]}`}>{title}</h3>
+              <h3 className={`font-semibold text-lg ${titleColorClasses[variant]}`}>
+                {title}
+                {draggable && (
+                  <span className="ml-2 text-xs text-slate-400 font-normal" title="Trascina per spostare">
+                    ⋮⋮
+                  </span>
+                )}
+              </h3>
               {subtitle && (
                 <p className="text-sm text-slate-500 mt-0.5">{subtitle}</p>
               )}
