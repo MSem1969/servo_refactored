@@ -1071,32 +1071,16 @@ const PatternCard = ({ criterio, getMLProgress, handlePromuoviPattern, handleRes
   const isAic = criterio.tipo === 'aic';
   const mancanti = Math.max(0, 5 - approvazioni);
 
-  // v11.4: Costruisci descrizione senza ripetizioni
-  const buildDescription = () => {
-    if (isLookup) {
-      // LOOKUP: mostra nome farmacia/cliente
-      return criterio.pattern_descrizione || criterio.min_id_default || 'Farmacia non specificata';
-    }
-    if (isAic) {
-      // AIC: codice + descrizione prodotto
-      const aic = criterio.codice_aic_default || '';
-      const desc = criterio.descrizione_normalizzata || criterio.pattern_descrizione || '';
-      return aic ? `${aic} - ${desc}`.trim() : desc;
-    }
-    if (isListino || isPrezzo) {
-      // LISTINO/PREZZO: codice anomalia + AIC + descrizione prodotto (senza ripetere tipo)
-      const codiceAnom = criterio.codice_anomalia || '';
-      const aic = criterio.codice_aic || '';
-      const desc = criterio.pattern_descrizione || '';
-      // Evita ripetizione: se pattern_descrizione inizia con vendor, mostra solo AIC + desc
-      const parts = [];
-      if (codiceAnom) parts.push(codiceAnom);
-      if (aic) parts.push(`AIC ${aic}`);
-      if (desc && !desc.toLowerCase().includes('listino')) parts.push(desc);
-      return parts.join(' - ') || 'Pattern listino';
-    }
-    // ESPOSITORE
-    return criterio.pattern_descrizione || criterio.codice_espositore || 'Espositore';
+  // v11.4: Costruisci descrizione per LISTINO: codice_anomalia - AIC xxx - descrizione_prodotto
+  const buildListinoDescription = () => {
+    const codiceAnom = criterio.codice_anomalia || '';
+    const aic = criterio.codice_aic || '';
+    const desc = criterio.pattern_descrizione || '';
+    const parts = [];
+    if (codiceAnom) parts.push(codiceAnom);
+    if (aic) parts.push(`AIC ${aic}`);
+    if (desc) parts.push(desc);
+    return parts.join(' - ') || 'Pattern listino';
   };
 
   return (
@@ -1109,7 +1093,7 @@ const PatternCard = ({ criterio, getMLProgress, handlePromuoviPattern, handleRes
     >
       <div className="flex items-start justify-between">
         <div className="flex-1">
-          <div className="flex items-center gap-3 mb-2">
+          <div className="flex items-center gap-3 mb-3">
             <span className={`px-3 py-1 text-sm font-bold rounded-lg ${
               isPrezzo ? 'bg-red-100 text-red-800' :
               isAic ? 'bg-teal-100 text-teal-800' :
@@ -1118,6 +1102,12 @@ const PatternCard = ({ criterio, getMLProgress, handlePromuoviPattern, handleRes
               'bg-purple-100 text-purple-800'
             }`}>
               {isPrezzo ? 'PREZZO' : isAic ? 'AIC' : isListino ? 'LISTINO' : isLookup ? 'LOOKUP' : 'ESPOSITORE'}
+            </span>
+            {/* v11.4: Descrizione inline come prima, ma migliorata per LISTINO */}
+            <span className="font-semibold text-slate-800">
+              {(isListino || isPrezzo)
+                ? buildListinoDescription()
+                : (criterio.codice_anomalia || criterio.pattern_descrizione || 'Pattern')}
             </span>
             {isOrdinario ? (
               <span className="px-3 py-1 text-sm font-bold bg-emerald-200 text-emerald-800 rounded-lg">
@@ -1129,11 +1119,6 @@ const PatternCard = ({ criterio, getMLProgress, handlePromuoviPattern, handleRes
               </span>
             )}
           </div>
-
-          {/* v11.4: Descrizione migliorata sotto l'etichetta */}
-          <p className="font-medium text-slate-800 mb-3 text-sm">
-            {buildDescription()}
-          </p>
 
           <div className="bg-white/80 p-3 rounded-lg">
             <div className="flex items-center justify-between mb-2">
