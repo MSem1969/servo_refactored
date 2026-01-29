@@ -1176,12 +1176,12 @@ const PatternCard = ({ criterio, getMLProgress, handlePromuoviPattern, handleRes
             🔄 Reset Apprendimento
           </Button>
           <Button
-            variant="ghost"
+            variant="danger"
             size="sm"
             onClick={() => handleDeletePattern(criterio.pattern_signature)}
-            className="text-red-600 hover:bg-red-50"
+            className="bg-red-600 hover:bg-red-700 text-white"
           >
-            🗑️ Cancella Pattern
+            🗑️ CANCELLA
           </Button>
         </div>
       </div>

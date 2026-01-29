@@ -232,15 +232,22 @@ export function useSupervisione({ currentUser, returnToOrdine, onReturnToOrdine,
     }
   };
 
-  // v11.4: Cancella pattern completamente
+  // v11.4: Cancella pattern completamente - richiede digitazione "conferma"
   const handleDeletePattern = async (signature) => {
-    if (!richiestaConferma(
-      'Cancella pattern ML',
-      'ATTENZIONE: Questa azione cancellerà definitivamente il pattern.\n\n' +
+    const input = prompt(
+      'ATTENZIONE: Questa azione cancellerà DEFINITIVAMENTE il pattern.\n\n' +
       'A differenza del RESET (che azzera il contatore), la cancellazione\n' +
       'rimuove completamente il pattern dal sistema.\n\n' +
-      'Il pattern dovrà essere riappreso da zero. Continuare?'
-    )) return;
+      'Il pattern dovrà essere riappreso da zero.\n\n' +
+      'Digita "conferma" per procedere:'
+    );
+
+    if (input?.toLowerCase().trim() !== 'conferma') {
+      if (input !== null) {
+        alert('Cancellazione annullata. Devi digitare "conferma" per procedere.');
+      }
+      return;
+    }
 
     try {
       await supervisioneApi.deletePattern(signature, operatore);
