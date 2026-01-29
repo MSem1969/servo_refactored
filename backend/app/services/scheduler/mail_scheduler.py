@@ -35,6 +35,70 @@ def _get_mail_monitor_path() -> Path:
     return local_path
 
 
+def _parse_mail_monitor_output(stdout: str) -> Dict[str, int]:
+    """
+    v11.4: Estrae statistiche dall'output del mail_monitor.
+    Cerca pattern: "RIEPILOGO: X processate, Y errori"
+    """
+    import re
+    result = {'processate': 0, 'errori': 0}
+
+    # Pattern: "RIEPILOGO: 3 processate, 0 errori"
+    match = re.search(r'RIEPILOGO:\s*(\d+)\s*processate,\s*(\d+)\s*errori', stdout)
+    if match:
+        result['processate'] = int(match.group(1))
+        result['errori'] = int(match.group(2))
+
+    return result
+
+
+def _notify_new_orders(processate: int, errori: int):
+    """
+    v11.4: Crea ticket CRM per notificare nuovi ordini arrivati via email.
+    """
+    try:
+        from ...database_pg import get_db
+        from ..crm.tickets.commands import crea_ticket_sistema
+
+        db = get_db()
+
+        # Determina priorità in base agli errori
+        priorita = 'alta' if errori > 0 else 'normale'
+
+        contenuto = f"""Il monitoraggio email ha scaricato nuovi ordini.
+
+**Riepilogo:**
+- PDF processati con successo: {processate}
+- Errori: {errori}
+
+Gli ordini sono ora visibili nella sezione Database."""
+
+        if errori > 0:
+            contenuto += f"""
+
+**Attenzione:** Si sono verificati {errori} errori durante l'elaborazione.
+Verificare i log per dettagli."""
+
+        crea_ticket_sistema(
+            db,
+            tipo_alert='MONITORAGGIO',
+            oggetto=f'Nuovi ordini da email ({processate} PDF)',
+            contenuto=contenuto,
+            priorita=priorita,
+            contesto={
+                'pagina_origine': 'scheduler',
+                'dati_extra': {
+                    'PDF processati': processate,
+                    'Errori': errori,
+                    'Data sync': _last_run.strftime('%d/%m/%Y %H:%M') if _last_run else 'N/A'
+                }
+            }
+        )
+        print(f"📬 Ticket creato: {processate} nuovi ordini da email")
+    except Exception as e:
+        print(f"⚠️ Impossibile creare ticket per nuovi ordini: {e}")
+
+
 def _notify_mail_failure(error_msg: str):
     """
     v11.4: Crea ticket CRM per notificare errore mail monitor.
@@ -112,6 +176,11 @@ def _run_mail_sync():
         if result.returncode == 0:
             print(f"✅ Mail Monitor completato con successo")
             _consecutive_failures = 0  # Reset contatore
+
+            # v11.4: Notifica nuovi ordini se ci sono PDF processati
+            stats = _parse_mail_monitor_output(result.stdout or "")
+            if stats['processate'] > 0:
+                _notify_new_orders(stats['processate'], stats['errori'])
         else:
             print(f"⚠️ Mail Monitor terminato con codice {result.returncode}")
             if result.stderr:
