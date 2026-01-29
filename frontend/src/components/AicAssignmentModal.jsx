@@ -13,7 +13,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { ModalBase } from '../common/ModalBase';
 import { Button, Loading } from '../common';
 import { anomalieApi } from '../api/anomalie';
-import { supervisioneApi } from '../api';
+import { supervisioneApi, getApiBaseUrl, ordiniApi } from '../api';
 
 /**
  * Modalità operative del componente
@@ -76,6 +76,9 @@ const AicAssignmentModal = ({
 
   // Dettaglio supervisione (caricato dinamicamente)
   const [detail, setDetail] = useState(null);
+
+  // v11.4: PDF file per visualizzazione
+  const [pdfFile, setPdfFile] = useState(null);
 
   // ==========================================================================
   // COMPUTED VALUES
@@ -148,8 +151,20 @@ const AicAssignmentModal = ({
       setSuggerimenti([]);
       setError(null);
       setResult(null);
+      setPdfFile(null);
       return;
     }
+
+    // v11.4: Helper per caricare pdf_file dalla testata
+    const loadPdfFile = async (idTestata) => {
+      if (!idTestata) return;
+      try {
+        const ordineRes = await ordiniApi.getOrdine(idTestata);
+        setPdfFile(ordineRes?.pdf_file || null);
+      } catch (e) {
+        console.warn('Impossibile caricare pdf_file:', e);
+      }
+    };
 
     // Per bulk, usa i dati già presenti
     if (isBulk && supervisione) {
@@ -159,6 +174,7 @@ const AicAssignmentModal = ({
         descrizione_prodotto: supervisione.descrizione_prodotto || supervisione.descrizione_normalizzata || '',
       });
       setSearchQuery(supervisione.descrizione_prodotto || supervisione.descrizione_normalizzata || '');
+      loadPdfFile(supervisione?.id_testata);
       return;
     }
 
@@ -174,6 +190,8 @@ const AicAssignmentModal = ({
           if (data.suggerimenti_aic?.length > 0) {
             setSuggerimenti(data.suggerimenti_aic);
           }
+          // v11.4: Carica pdf_file
+          await loadPdfFile(data?.id_testata || supervisione?.id_testata);
         } catch (err) {
           console.error('Errore caricamento dettaglio AIC:', err);
           setError('Impossibile caricare i dettagli della supervisione');
@@ -188,8 +206,9 @@ const AicAssignmentModal = ({
     // Per anomalia, pre-popola ricerca
     if (isAnomalia && rigaParent) {
       setSearchQuery(rigaParent.descrizione || '');
+      loadPdfFile(anomalia?.id_testata);
     }
-  }, [isOpen, isBulk, isSupervisione, isAnomalia, supervisione, rigaParent, isSupervisor]);
+  }, [isOpen, isBulk, isSupervisione, isAnomalia, supervisione, rigaParent, anomalia, isSupervisor]);
 
   // ==========================================================================
   // HANDLERS
@@ -365,6 +384,23 @@ const AicAssignmentModal = ({
         </div>
       ) : (
         <div className="space-y-6">
+          {/* v11.4: Bottone Visualizza PDF */}
+          {pdfFile && (
+            <div className="flex justify-end">
+              <a
+                href={`${getApiBaseUrl()}/api/v1/upload/pdf/${encodeURIComponent(pdfFile)}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                </svg>
+                Visualizza PDF
+              </a>
+            </div>
+          )}
+
           {/* Info ordine/pattern/anomalia */}
           <InfoSection
             mode={mode}
