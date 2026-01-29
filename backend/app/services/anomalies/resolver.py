@@ -430,8 +430,8 @@ class AnomaliaResolver:
             )
 
         try:
-            # v11.4: Migrato a aic_unified (refactoring)
-            from ..supervision.aic_unified import propaga_aic_da_anomalia
+            # v11.4: Usa modulo AIC rifattorizzato
+            from ..supervision.aic import propaga_aic_da_anomalia
 
             result = propaga_aic_da_anomalia(
                 id_anomalia=anomalia['id_anomalia'],

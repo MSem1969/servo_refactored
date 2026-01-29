@@ -20,8 +20,8 @@ from ..services.ordini import (
 )
 # v10.4: Usa la versione aggiornata che gestisce TUTTE le supervisioni e ML
 from ..services.anomalies.commands import update_anomalia_stato
-# v11.0: Usa servizio AIC unificato
-from ..services.supervision.aic_unified import (
+# v11.4: Usa modulo AIC rifattorizzato
+from ..services.supervision.aic import (
     LivelloPropagazione as LivelloPropagazioneAIC,
     risolvi_anomalia_aic,
     propaga_aic,
@@ -920,8 +920,8 @@ async def get_contatori_aic() -> Dict[str, Any]:
 
     Utile per aggiornare i badge nella sezione ML/Supervisione.
     """
-    # v11.0: Usa servizio AIC unificato
-    from ..services.supervision.aic_unified import (
+    # v11.4: Usa modulo AIC rifattorizzato
+    from ..services.supervision.aic import (
         conta_anomalie_aic_aperte,
         conta_supervisioni_aic_pending
     )

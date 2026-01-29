@@ -1,10 +1,7 @@
 # =============================================================================
-# SERV.O v11.4 - AIC UNIFIED SERVICE (DEPRECATED)
+# SERV.O v11.4 - AIC MODULE
 # =============================================================================
-# DEPRECATO: Questo file esiste solo per retrocompatibilità.
-# Usare invece: from ...services.supervision.aic import ...
-#
-# Il modulo AIC è stato rifattorizzato in:
+# Modulo AIC rifattorizzato in sottomodouli:
 #   aic/models.py       - Enum e dataclass
 #   aic/validation.py   - Funzioni di validazione
 #   aic/propagation.py  - Classe AICPropagator
@@ -12,55 +9,78 @@
 #   aic/queries.py      - Query e contatori
 #   aic/corrections.py  - Correzione errori AIC
 #   aic/wrappers.py     - Wrapper retrocompatibili
+#
+# Re-export per retrocompatibilità con aic_unified.py
 # =============================================================================
 
-# Re-export everything from the new module for backward compatibility
-from .aic import (
-    # Models
+# Models
+from .models import (
     LivelloPropagazione,
     PropagationResult,
     ResolutionResult,
-    # Validation
+)
+
+# Validation
+from .validation import (
     valida_codice_aic,
     normalizza_descrizione,
     calcola_pattern_signature,
-    # Propagation
-    AICPropagator,
-    # Approval
+)
+
+# Propagation
+from .propagation import AICPropagator
+
+# Approval/Rejection
+from .approval import (
     approva_supervisione_aic,
     approva_bulk_pattern_aic,
     rifiuta_supervisione_aic,
     _reset_pattern_aic,
-    # Queries
+)
+
+# Queries
+from .queries import (
     conta_anomalie_aic_aperte,
     conta_supervisioni_aic_pending,
     search_aic_suggestions,
     get_storico_modifiche_aic,
-    # Corrections
-    correggi_aic_errato,
-    # Wrappers
+)
+
+# Corrections
+from .corrections import correggi_aic_errato
+
+# Wrappers
+from .wrappers import (
     propaga_aic,
     risolvi_anomalia_aic,
     propaga_aic_da_anomalia,
 )
 
+
 __all__ = [
+    # Models
     'LivelloPropagazione',
     'PropagationResult',
     'ResolutionResult',
+    # Validation
     'valida_codice_aic',
     'normalizza_descrizione',
     'calcola_pattern_signature',
+    # Propagation
     'AICPropagator',
+    # Approval
     'approva_supervisione_aic',
     'approva_bulk_pattern_aic',
     'rifiuta_supervisione_aic',
     '_reset_pattern_aic',
+    # Queries
     'conta_anomalie_aic_aperte',
     'conta_supervisioni_aic_pending',
     'search_aic_suggestions',
     'get_storico_modifiche_aic',
+    # Corrections
     'correggi_aic_errato',
+    # Wrappers
     'propaga_aic',
     'risolvi_anomalia_aic',
     'propaga_aic_da_anomalia',

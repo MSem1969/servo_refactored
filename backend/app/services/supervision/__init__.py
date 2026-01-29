@@ -57,8 +57,8 @@ from .queries import (
     get_storico_criteri_applicati,
 )
 
-# v11.4 - AIC Unified Service (centralizza propagazione_aic.py e aic.py - REFACTORING)
-from .aic_unified import (
+# v11.4 - AIC Module (refactored into submodules)
+from .aic import (
     # Classe principale
     AICPropagator,
     # Enums e dataclass
@@ -71,15 +71,15 @@ from .aic_unified import (
     calcola_pattern_signature as calcola_pattern_signature_aic,
     # Wrapper retrocompatibili
     propaga_aic,
-    propaga_aic_da_anomalia,  # v11.4: migrato da propagazione_aic.py
+    propaga_aic_da_anomalia,
     risolvi_anomalia_aic,
     approva_supervisione_aic,
     approva_bulk_pattern_aic,
-    rifiuta_supervisione_aic,  # v11.4: migrato da aic.py
-    search_aic_suggestions,  # v11.4: migrato da aic.py
+    rifiuta_supervisione_aic,
+    search_aic_suggestions,
     # Correzione errori AIC
-    correggi_aic_errato,  # v11.4: migrato da propagazione_aic.py
-    get_storico_modifiche_aic,  # v11.4: migrato da propagazione_aic.py
+    correggi_aic_errato,
+    get_storico_modifiche_aic,
     # Contatori
     conta_anomalie_aic_aperte,
     conta_supervisioni_aic_pending,
