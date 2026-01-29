@@ -12,10 +12,10 @@ function SortableHeader({ label, field, sortField, sortDirection, onSort }) {
   const isActive = sortField === field;
   return (
     <th
-      className="text-left p-2 text-xs font-medium text-slate-600 cursor-pointer hover:bg-slate-100 select-none"
+      className="text-center align-middle p-2 text-xs font-medium text-slate-600 cursor-pointer hover:bg-slate-100 select-none"
       onClick={() => onSort(field)}
     >
-      <div className="flex items-center gap-1">
+      <div className="flex items-center justify-center gap-1">
         {label}
         <span className={`text-xs ${isActive ? 'text-blue-600' : 'text-slate-300'}`}>
           {isActive ? (sortDirection === 'asc' ? '▲' : '▼') : '⇅'}
@@ -107,7 +107,7 @@ export default function OrdiniTab({
       <table className="w-full">
         <thead className="bg-slate-50 border-b border-slate-200">
           <tr>
-            <th className="w-8 p-2">
+            <th className="w-8 p-2 text-center align-middle">
               <input
                 type="checkbox"
                 checked={selected.length === ordini.length && ordini.length > 0}
@@ -125,7 +125,7 @@ export default function OrdiniTab({
             <SortableHeader label="Confermate" field="righe_confermate" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
             <SortableHeader label="Stato" field="stato" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
             <SortableHeader label="Lookup" field="lookup_score" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-            <th className="text-center p-2 text-xs font-medium text-slate-600">Azioni</th>
+            <th className="text-center align-middle p-2 text-xs font-medium text-slate-600">Azioni</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
@@ -142,7 +142,7 @@ export default function OrdiniTab({
                 } ${!isViewed ? 'border-l-4 border-l-blue-500 bg-blue-50/30' : 'border-l-4 border-l-transparent'}`}
                 onClick={() => onOpenOrdine(ordine.id_testata)}
               >
-                <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}>
+                <td className="p-2 text-center align-middle" onClick={(e) => e.stopPropagation()}>
                   <input
                     type="checkbox"
                     checked={isSelected}
@@ -150,28 +150,28 @@ export default function OrdiniTab({
                     className="rounded border-slate-300"
                   />
                 </td>
-                <td className="p-2">
+                <td className="p-2 text-center align-middle">
                   <VendorBadge vendor={ordine.vendor} size="xs" />
                 </td>
-                <td className="p-2 font-mono text-xs font-medium">
+                <td className="p-2 text-center align-middle font-mono text-xs font-medium">
                   {ordine.numero_ordine || ordine.numero_ordine_vendor || '-'}
                 </td>
-                <td className="p-2">
+                <td className="p-2 text-center align-middle">
                   <DeliveryBadge dataConsegna={ordine.data_consegna} dataOrdine={ordine.data_ordine} />
                 </td>
-                <td className="p-2 text-xs font-medium text-purple-700">
+                <td className="p-2 text-center align-middle text-xs font-medium text-purple-700">
                   {ordine.deposito || '-'}
                 </td>
-                <td className="p-2 truncate max-w-[200px] text-xs">
+                <td className="p-2 text-center align-middle truncate max-w-[200px] text-xs">
                   {ordine.ragione_sociale?.toUpperCase() || '-'}
                 </td>
-                <td className="p-2 text-xs text-slate-500">
+                <td className="p-2 text-center align-middle text-xs text-slate-500">
                   {ordine.citta?.toUpperCase() || '-'}
                 </td>
-                <td className="p-2 text-center text-xs">
+                <td className="p-2 text-center align-middle text-xs">
                   {ordine.righe_totali || ordine.num_righe || '-'}
                 </td>
-                <td className="p-2 text-center">
+                <td className="p-2 text-center align-middle">
                   {ordine.righe_confermate !== undefined && (ordine.righe_totali || ordine.num_righe) > 0 ? (
                     <span className={`text-xs font-mono ${
                       ordine.righe_confermate === (ordine.righe_totali || ordine.num_righe)
@@ -186,10 +186,10 @@ export default function OrdiniTab({
                     <span className="text-slate-400 text-xs">-</span>
                   )}
                 </td>
-                <td className="p-2 text-center">
+                <td className="p-2 text-center align-middle">
                   <StatusBadge status={ordine.stato} size="xs" />
                 </td>
-                <td className="p-2 text-center">
+                <td className="p-2 text-center align-middle">
                   <span className={`text-xs ${
                     ordine.lookup_score >= 90
                       ? 'text-emerald-600'
@@ -201,7 +201,7 @@ export default function OrdiniTab({
                     {ordine.lookup_score ? ` (${ordine.lookup_score}%)` : ''}
                   </span>
                 </td>
-                <td className="p-2 text-center" onClick={(e) => e.stopPropagation()}>
+                <td className="p-2 text-center align-middle" onClick={(e) => e.stopPropagation()}>
                   {ordine.pdf_file && (
                     <button
                       onClick={() => onShowPdf(ordine.pdf_file)}
