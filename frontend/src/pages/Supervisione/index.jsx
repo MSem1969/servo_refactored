@@ -1089,7 +1089,19 @@ const PatternCard = ({ criterio, getMLProgress, handlePromuoviPattern, handleRes
   const buildLookupDescription = () => {
     const codiceAnom = criterio.codice_anomalia || 'LKP-A01';
     const vendor = criterio.vendor || '';
-    const farmacia = criterio.ragione_sociale_farmacia || '';
+    let farmacia = criterio.ragione_sociale_farmacia || '';
+
+    // v11.4: Fallback - estrai farmacia da pattern_descrizione se non disponibile dal JOIN
+    // Formato: "Lookup VENDOR - LKP-A0x - MIN_ID RAGIONE_SOCIALE - CITTA"
+    if (!farmacia && criterio.pattern_descrizione) {
+      const desc = criterio.pattern_descrizione;
+      // Trova tutto dopo "LKP-A0x - " (terzo segmento)
+      const match = desc.match(/LKP-A\d+\s*-\s*(.+)/);
+      if (match && match[1]) {
+        farmacia = match[1].trim();
+      }
+    }
+
     const parts = [];
     parts.push(codiceAnom);
     if (vendor) parts.push(vendor);

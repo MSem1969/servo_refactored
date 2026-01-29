@@ -218,8 +218,8 @@ def approva_supervisione_lookup(
             WHERE id_testata = %s
         """, (id_farmacia, sup['id_testata']))
 
-    # Registra approvazione pattern
-    registra_approvazione_pattern_lookup(sup['pattern_signature'], operatore)
+    # Registra approvazione pattern (v11.4: passa anche min_id e id_farmacia)
+    registra_approvazione_pattern_lookup(sup['pattern_signature'], operatore, min_id, id_farmacia)
 
     db.commit()
 
@@ -302,7 +302,12 @@ def rifiuta_supervisione_lookup(
     return True
 
 
-def registra_approvazione_pattern_lookup(pattern_signature: str, operatore: str):
+def registra_approvazione_pattern_lookup(
+    pattern_signature: str,
+    operatore: str,
+    min_id: str = None,
+    id_farmacia: int = None
+):
     """
     Registra approvazione per un pattern lookup.
 
@@ -310,16 +315,28 @@ def registra_approvazione_pattern_lookup(pattern_signature: str, operatore: str)
     v8.1: Soglia differenziata per tipo anomalia:
     - LKP-A03 (score >= 80%): 1 conferma = automatico
     - LKP-A01, LKP-A02 (score < 80%): 5 conferme = automatico
+
+    v11.4: Aggiunto salvataggio min_id_default e id_farmacia_default
     """
     db = get_db()
 
-    # Incrementa contatore
-    db.execute("""
-        UPDATE criteri_ordinari_lookup
-        SET count_approvazioni = count_approvazioni + 1,
-            operatori_approvatori = COALESCE(operatori_approvatori || ', ', '') || %s
-        WHERE pattern_signature = %s
-    """, (operatore, pattern_signature))
+    # Incrementa contatore e salva farmacia default se fornita
+    if min_id and id_farmacia:
+        db.execute("""
+            UPDATE criteri_ordinari_lookup
+            SET count_approvazioni = count_approvazioni + 1,
+                operatori_approvatori = COALESCE(operatori_approvatori || ', ', '') || %s,
+                min_id_default = COALESCE(min_id_default, %s),
+                id_farmacia_default = COALESCE(id_farmacia_default, %s)
+            WHERE pattern_signature = %s
+        """, (operatore, min_id, id_farmacia, pattern_signature))
+    else:
+        db.execute("""
+            UPDATE criteri_ordinari_lookup
+            SET count_approvazioni = count_approvazioni + 1,
+                operatori_approvatori = COALESCE(operatori_approvatori || ', ', '') || %s
+            WHERE pattern_signature = %s
+        """, (operatore, pattern_signature))
 
     # Recupera contatore e codice anomalia per determinare soglia
     row = db.execute("""
