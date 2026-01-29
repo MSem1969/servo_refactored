@@ -57,7 +57,7 @@ from .queries import (
     get_storico_criteri_applicati,
 )
 
-# v11.0 - AIC Unified Service (centralizza propagazione_aic.py e aic.py)
+# v11.4 - AIC Unified Service (centralizza propagazione_aic.py e aic.py - REFACTORING)
 from .aic_unified import (
     # Classe principale
     AICPropagator,
@@ -71,9 +71,15 @@ from .aic_unified import (
     calcola_pattern_signature as calcola_pattern_signature_aic,
     # Wrapper retrocompatibili
     propaga_aic,
+    propaga_aic_da_anomalia,  # v11.4: migrato da propagazione_aic.py
     risolvi_anomalia_aic,
     approva_supervisione_aic,
     approva_bulk_pattern_aic,
+    rifiuta_supervisione_aic,  # v11.4: migrato da aic.py
+    search_aic_suggestions,  # v11.4: migrato da aic.py
+    # Correzione errori AIC
+    correggi_aic_errato,  # v11.4: migrato da propagazione_aic.py
+    get_storico_modifiche_aic,  # v11.4: migrato da propagazione_aic.py
     # Contatori
     conta_anomalie_aic_aperte,
     conta_supervisioni_aic_pending,
@@ -111,7 +117,7 @@ __all__ = [
     'può_emettere_tracciato',
     'get_supervisioni_per_ordine',
     'get_storico_criteri_applicati',
-    # v11.0 - AIC Unified
+    # v11.4 - AIC Unified (refactoring completo)
     'AICPropagator',
     'LivelloPropagazione',
     'PropagationResult',
@@ -120,9 +126,14 @@ __all__ = [
     'normalizza_descrizione',
     'calcola_pattern_signature_aic',
     'propaga_aic',
+    'propaga_aic_da_anomalia',
     'risolvi_anomalia_aic',
     'approva_supervisione_aic',
     'approva_bulk_pattern_aic',
+    'rifiuta_supervisione_aic',
+    'search_aic_suggestions',
+    'correggi_aic_errato',
+    'get_storico_modifiche_aic',
     'conta_anomalie_aic_aperte',
     'conta_supervisioni_aic_pending',
 ]

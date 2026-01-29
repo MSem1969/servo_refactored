@@ -1,8 +1,20 @@
 # =============================================================================
-# SERV.O v9.0 - SUPERVISION AIC SERVICE
+# SERV.O v11.4 - SUPERVISION AIC SERVICE (PARZIALMENTE DEPRECATO)
 # =============================================================================
-# Gestione supervisione per prodotti senza codice AIC valido
-# Anomalia AIC-A01: Codice AIC mancante o non valido
+# NOTA: Questo file è in fase di migrazione verso aic_unified.py
+#
+# FUNZIONI MIGRATE (v11.4):
+# - rifiuta_supervisione_aic -> aic_unified.py
+# - search_aic_suggestions -> aic_unified.py
+# - _reset_pattern_aic -> aic_unified.py
+#
+# FUNZIONI ANCORA QUI (da migrare in futuro):
+# - crea_supervisione_aic (usato da pdf_processor.py)
+# - valuta_anomalia_aic (usato da pdf_processor.py)
+# - _registra_approvazione_pattern_aic (usato da anomalies/commands.py)
+# - normalizza_descrizione_prodotto, calcola_pattern_signature_aic, etc.
+#
+# Per nuove funzionalità AIC, usare aic_unified.py
 # =============================================================================
 
 import re
@@ -612,3 +624,17 @@ def search_aic_suggestions(descrizione: str, vendor: str = None, limit: int = 10
     rows = db.execute(query, params).fetchall()
 
     return [dict(r) for r in rows]
+
+
+# =============================================================================
+# NOTA: Le funzioni seguenti sono ANCHE in aic_unified.py (v11.4)
+# =============================================================================
+# Per nuovo codice, importare da aic_unified.py.
+# Queste versioni locali sono mantenute per retrocompatibilità con moduli
+# che le importano direttamente da qui (pdf_processor.py, anomalies/commands.py)
+#
+# Funzioni duplicate (preferire aic_unified.py):
+# - rifiuta_supervisione_aic
+# - search_aic_suggestions
+# - _reset_pattern_aic
+# =============================================================================

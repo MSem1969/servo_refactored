@@ -11,22 +11,17 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from ...database_pg import get_db
-# v11.0: Importa dal servizio unificato
+# v11.4: Importa tutto dal servizio unificato (refactoring completo)
 from ...services.supervision.aic_unified import (
     AICPropagator,
     LivelloPropagazione,
     approva_supervisione_aic,
     valida_codice_aic,
     conta_supervisioni_aic_pending,
-)
-# Funzioni ancora nel vecchio modulo (da migrare in seguito)
-from ...services.supervision.aic import (
-    rifiuta_supervisione_aic,
-    search_aic_suggestions,
-)
-from ...services.supervision.propagazione_aic import (
     correggi_aic_errato,
     get_storico_modifiche_aic,
+    rifiuta_supervisione_aic,
+    search_aic_suggestions,
 )
 
 

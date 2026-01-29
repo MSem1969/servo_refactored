@@ -997,3 +997,321 @@ def conta_supervisioni_aic_pending() -> int:
         WHERE stato = 'PENDING'
     """).fetchone()
     return row['cnt'] if row else 0
+
+
+# =============================================================================
+# FUNZIONI MIGRATE DA propagazione_aic.py (v11.4 refactoring)
+# =============================================================================
+
+def propaga_aic_da_anomalia(
+    id_anomalia: int,
+    codice_aic: str,
+    livello_propagazione: str,
+    operatore: str,
+    note: str = None
+) -> Dict:
+    """
+    Wrapper per risolvi_anomalia_aic con firma compatibile con resolver.py.
+    Migrato da propagazione_aic.py (v11.4).
+    """
+    livello = LivelloPropagazione(livello_propagazione.upper())
+    return risolvi_anomalia_aic(id_anomalia, codice_aic, livello, operatore, note)
+
+
+def correggi_aic_errato(
+    aic_errato: str,
+    aic_corretto: str,
+    operatore: str,
+    note: str = None
+) -> Dict:
+    """
+    Corregge un AIC errato sostituendolo con quello corretto in tutto il database.
+    Migrato da propagazione_aic.py (v11.4).
+
+    Utile quando un operatore ha digitato un AIC sbagliato e questo è stato
+    propagato a multiple righe.
+
+    Args:
+        aic_errato: Codice AIC errato da sostituire
+        aic_corretto: Codice AIC corretto
+        operatore: Username operatore
+        note: Note opzionali sulla correzione
+
+    Returns:
+        Dict con risultati: success, righe_corrette, ordini_coinvolti, error
+    """
+    from ...utils.audit import log_modifica, log_operation
+
+    # Valida entrambi i codici
+    valido_err, msg_err = valida_codice_aic(aic_errato)
+    if not valido_err:
+        return {'success': False, 'error': f"AIC errato non valido: {msg_err}"}
+
+    valido_corr, aic_corretto_clean = valida_codice_aic(aic_corretto)
+    if not valido_corr:
+        return {'success': False, 'error': f"AIC corretto non valido: {aic_corretto_clean}"}
+
+    aic_errato = msg_err  # Codice pulito
+    aic_corretto = aic_corretto_clean
+
+    if aic_errato == aic_corretto:
+        return {'success': False, 'error': "AIC errato e corretto sono identici"}
+
+    db = get_db()
+
+    try:
+        # Trova tutte le righe con l'AIC errato
+        righe = db.execute("""
+            SELECT id_dettaglio, id_testata, descrizione
+            FROM ordini_dettaglio
+            WHERE codice_aic = %s
+        """, (aic_errato,)).fetchall()
+
+        if not righe:
+            return {
+                'success': False,
+                'error': f"Nessuna riga trovata con AIC {aic_errato}"
+            }
+
+        ordini_coinvolti = set()
+        righe_corrette = 0
+
+        # Correggi ogni riga con audit trail
+        for riga in righe:
+            db.execute("""
+                UPDATE ordini_dettaglio
+                SET codice_aic = %s
+                WHERE id_dettaglio = %s
+            """, (aic_corretto, riga['id_dettaglio']))
+
+            # Audit trail
+            log_modifica(
+                entita='ORDINI_DETTAGLIO',
+                id_entita=riga['id_dettaglio'],
+                campo_modificato='codice_aic',
+                valore_precedente=aic_errato,
+                valore_nuovo=aic_corretto,
+                fonte_modifica='CORREZIONE_AIC_ERRATO',
+                id_testata=riga['id_testata'],
+                username_operatore=operatore,
+                motivazione=note or f"Correzione AIC errato {aic_errato} -> {aic_corretto}"
+            )
+
+            ordini_coinvolti.add(riga['id_testata'])
+            righe_corrette += 1
+
+        db.commit()
+
+        # Log operazione generale
+        log_operation(
+            'CORREGGI_AIC_ERRATO',
+            'ORDINI_DETTAGLIO',
+            0,
+            f"Corretto AIC {aic_errato} -> {aic_corretto}: {righe_corrette} righe, "
+            f"{len(ordini_coinvolti)} ordini. Operatore: {operatore}",
+            dati={
+                'aic_errato': aic_errato,
+                'aic_corretto': aic_corretto,
+                'righe_corrette': righe_corrette,
+                'ordini_coinvolti': list(ordini_coinvolti),
+                'note': note
+            },
+            operatore=operatore
+        )
+
+        return {
+            'success': True,
+            'aic_errato': aic_errato,
+            'aic_corretto': aic_corretto,
+            'righe_corrette': righe_corrette,
+            'ordini_coinvolti': list(ordini_coinvolti)
+        }
+
+    except Exception as e:
+        db.rollback()
+        return {'success': False, 'error': str(e)}
+
+
+def get_storico_modifiche_aic(
+    limit: int = 100,
+    aic_filter: str = None,
+    operatore_filter: str = None
+) -> List[Dict]:
+    """
+    Recupera storico modifiche AIC dalla tabella audit.
+    Migrato da propagazione_aic.py (v11.4).
+
+    Args:
+        limit: Numero massimo di record
+        aic_filter: Filtra per codice AIC specifico
+        operatore_filter: Filtra per operatore
+
+    Returns:
+        Lista di modifiche con dettagli
+    """
+    db = get_db()
+
+    query = """
+        SELECT
+            am.id_modifica,
+            am.timestamp,
+            am.entita,
+            am.id_entita,
+            am.campo_modificato,
+            am.valore_precedente,
+            am.valore_nuovo,
+            am.fonte_modifica,
+            am.id_testata,
+            am.username_operatore,
+            am.motivazione,
+            od.descrizione,
+            ot.numero_ordine_vendor
+        FROM audit_modifiche am
+        LEFT JOIN ordini_dettaglio od ON am.id_entita = od.id_dettaglio
+        LEFT JOIN ordini_testata ot ON am.id_testata = ot.id_testata
+        WHERE am.campo_modificato = 'codice_aic'
+    """
+    params = []
+
+    if aic_filter:
+        query += " AND (am.valore_precedente = %s OR am.valore_nuovo = %s)"
+        params.extend([aic_filter, aic_filter])
+
+    if operatore_filter:
+        query += " AND am.username_operatore = %s"
+        params.append(operatore_filter)
+
+    query += " ORDER BY am.timestamp DESC LIMIT %s"
+    params.append(limit)
+
+    rows = db.execute(query, params).fetchall()
+    return [dict(r) for r in rows]
+
+
+# =============================================================================
+# FUNZIONI MIGRATE DA aic.py (v11.4 refactoring)
+# =============================================================================
+
+def _reset_pattern_aic(pattern_sig: str):
+    """
+    Reset pattern ML AIC dopo rifiuto.
+    Migrato da aic.py (v11.4).
+    """
+    db = get_db()
+
+    db.execute("""
+        UPDATE criteri_ordinari_aic
+        SET count_approvazioni = 0,
+            is_ordinario = FALSE,
+            data_promozione = NULL,
+            codice_aic_default = NULL
+        WHERE pattern_signature = %s
+    """, (pattern_sig,))
+
+
+def rifiuta_supervisione_aic(
+    id_supervisione: int,
+    operatore: str,
+    note: str
+) -> bool:
+    """
+    Rifiuta supervisione AIC.
+    Il rifiuto resetta il pattern ML.
+    Migrato da aic.py (v11.4).
+
+    Args:
+        id_supervisione: ID supervisione
+        operatore: Username operatore
+        note: Motivo del rifiuto (obbligatorio)
+
+    Returns:
+        True se rifiutata con successo
+    """
+    db = get_db()
+
+    if not note or len(note) < 5:
+        raise ValueError("Motivo del rifiuto obbligatorio (minimo 5 caratteri)")
+
+    # Recupera dati supervisione
+    sup = db.execute("""
+        SELECT id_testata, pattern_signature, stato
+        FROM supervisione_aic
+        WHERE id_supervisione = %s
+    """, (id_supervisione,)).fetchone()
+
+    if not sup:
+        raise ValueError(f"Supervisione AIC {id_supervisione} non trovata")
+
+    if sup['stato'] != 'PENDING':
+        raise ValueError(f"Supervisione non in stato PENDING")
+
+    # Aggiorna supervisione
+    db.execute("""
+        UPDATE supervisione_aic
+        SET stato = 'REJECTED',
+            operatore = %s,
+            timestamp_decisione = CURRENT_TIMESTAMP,
+            note = %s
+        WHERE id_supervisione = %s
+    """, (operatore, note, id_supervisione))
+
+    # Reset pattern ML
+    _reset_pattern_aic(sup['pattern_signature'])
+
+    db.commit()
+
+    # Sblocca ordine
+    from .requests import sblocca_ordine_se_completo
+    sblocca_ordine_se_completo(sup['id_testata'])
+
+    log_operation(
+        'RIFIUTA_SUPERVISIONE',
+        'SUPERVISIONE_AIC',
+        id_supervisione,
+        f"Rifiutata: {note[:50]}"
+    )
+
+    return True
+
+
+def search_aic_suggestions(descrizione: str, vendor: str = None, limit: int = 10) -> List[Dict]:
+    """
+    Cerca suggerimenti AIC basati sulla descrizione prodotto.
+    Usa listini_vendor per trovare corrispondenze.
+    Migrato da aic.py (v11.4).
+
+    Args:
+        descrizione: Descrizione prodotto da cercare
+        vendor: Filtro vendor opzionale
+        limit: Numero massimo risultati
+
+    Returns:
+        Lista di {codice_aic, descrizione, vendor, prezzo}
+    """
+    db = get_db()
+
+    desc_pattern = f"%{descrizione.upper()}%"
+
+    query = """
+        SELECT DISTINCT
+            codice_aic,
+            descrizione,
+            vendor,
+            prezzo_netto
+        FROM listini_vendor
+        WHERE UPPER(descrizione) LIKE %s
+          AND codice_aic IS NOT NULL
+          AND LENGTH(codice_aic) = 9
+    """
+    params = [desc_pattern]
+
+    if vendor:
+        query += " AND vendor = %s"
+        params.append(vendor)
+
+    query += " ORDER BY descrizione LIMIT %s"
+    params.append(limit)
+
+    rows = db.execute(query, params).fetchall()
+
+    return [dict(r) for r in rows]
