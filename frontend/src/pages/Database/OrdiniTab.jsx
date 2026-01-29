@@ -54,6 +54,16 @@ export default function OrdiniTab({
     }
   };
 
+  // Helper: converti data DD/MM/YYYY in timestamp per confronto
+  const parseDate = (dateStr) => {
+    if (!dateStr) return 0;
+    // Formato: DD/MM/YYYY
+    const parts = String(dateStr).split('/');
+    if (parts.length !== 3) return 0;
+    const [day, month, year] = parts.map(Number);
+    return new Date(year, month - 1, day).getTime() || 0;
+  };
+
   // Ordini ordinati
   const sortedOrdini = useMemo(() => {
     if (!sortField) return ordini;
@@ -70,7 +80,13 @@ export default function OrdiniTab({
       if (['righe_totali', 'num_righe', 'righe_confermate', 'lookup_score'].includes(sortField)) {
         valA = Number(valA) || 0;
         valB = Number(valB) || 0;
-      } else {
+      }
+      // Confronto date per campi data (formato DD/MM/YYYY)
+      else if (['data_consegna', 'data_ordine', 'data_estrazione'].includes(sortField)) {
+        valA = parseDate(valA);
+        valB = parseDate(valB);
+      }
+      else {
         // Confronto stringa case-insensitive
         valA = String(valA).toLowerCase();
         valB = String(valB).toLowerCase();
