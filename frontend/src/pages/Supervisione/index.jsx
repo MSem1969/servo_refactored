@@ -1083,6 +1083,20 @@ const PatternCard = ({ criterio, getMLProgress, handlePromuoviPattern, handleRes
     return parts.join(' - ') || 'Pattern listino';
   };
 
+  // v11.4: Costruisci descrizione per LOOKUP: tipo (LKP-A04) - VENDOR - Farmacia - MIN_ID
+  const buildLookupDescription = () => {
+    const codiceAnom = criterio.codice_anomalia || '';
+    const vendor = criterio.vendor || '';
+    const desc = criterio.pattern_descrizione || '';
+    const minId = criterio.min_id_default || '';
+    const parts = [];
+    if (codiceAnom) parts.push(codiceAnom);
+    if (vendor) parts.push(vendor);
+    if (desc) parts.push(desc);
+    if (minId) parts.push(`MIN ${minId}`);
+    return parts.join(' - ') || 'Pattern lookup';
+  };
+
   return (
     <div
       className={`p-5 border-2 rounded-xl ${
@@ -1103,10 +1117,12 @@ const PatternCard = ({ criterio, getMLProgress, handlePromuoviPattern, handleRes
             }`}>
               {isPrezzo ? 'PREZZO' : isAic ? 'AIC' : isListino ? 'LISTINO' : isLookup ? 'LOOKUP' : 'ESPOSITORE'}
             </span>
-            {/* v11.4: Descrizione inline come prima, ma migliorata per LISTINO */}
+            {/* v11.4: Descrizione inline migliorata per LISTINO e LOOKUP */}
             <span className="font-semibold text-slate-800">
               {(isListino || isPrezzo)
                 ? buildListinoDescription()
+                : isLookup
+                ? buildLookupDescription()
                 : (criterio.codice_anomalia || criterio.pattern_descrizione || 'Pattern')}
             </span>
             {isOrdinario ? (
