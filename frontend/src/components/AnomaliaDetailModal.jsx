@@ -1440,7 +1440,7 @@ function LookupSection({
       {mode === 'search' && (
         <div className="bg-blue-50 rounded-lg p-4">
           <h4 className="font-semibold text-blue-800 mb-3">Ricerca Libera Farmacia/Parafarmacia</h4>
-          <div className="flex gap-2 mb-4">
+          <div className="flex gap-2 mb-2">
             <input
               type="text"
               value={searchQuery}
@@ -1457,6 +1457,11 @@ function LookupSection({
               {searchLoading ? 'Cerco...' : 'Cerca'}
             </button>
           </div>
+          <p className="text-xs text-blue-600 mb-4">
+            <span className="font-medium">Operatori:</span>{' '}
+            <code className="bg-blue-100 px-1 rounded">ROMA + MILANO</code> (OR){' '}
+            <code className="bg-blue-100 px-1 rounded">SEMINARA * CATANIA</code> (AND)
+          </p>
 
           {/* Risultati ricerca */}
           {searchResults.length > 0 ? (

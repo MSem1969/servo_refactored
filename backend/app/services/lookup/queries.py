@@ -402,60 +402,190 @@ def get_pending_lookup(limit: int = 50) -> List[Dict]:
 # RICERCA ANAGRAFICA
 # =============================================================================
 
-def search_farmacie(query: str, limit: int = 20) -> List[Dict]:
-    """Cerca farmacie per ragione sociale, citta, indirizzo, CAP, provincia, P.IVA o MIN_ID."""
-    db = get_db()
-    query_like = f"%{query}%"
+def _parse_search_query(query: str) -> tuple:
+    """
+    Parsa la query di ricerca per operatori logici.
 
-    rows = db.execute("""
+    Operatori supportati:
+    - " + " (OR): SEMINARA + CATANIA → trova record con SEMINARA oppure CATANIA
+    - " * " (AND): SEMINARA * CATANIA → trova record con SEMINARA e CATANIA (in campi diversi)
+    - Senza operatori: ricerca stringa normale
+
+    Returns:
+        tuple: (operator, terms) dove operator è 'OR', 'AND' o None
+    """
+    query = query.strip()
+
+    # Controlla operatore OR (spazio + spazio)
+    if ' + ' in query:
+        terms = [t.strip() for t in query.split(' + ') if t.strip()]
+        if len(terms) >= 2:
+            return ('OR', terms)
+
+    # Controlla operatore AND (spazio * spazio)
+    if ' * ' in query:
+        terms = [t.strip() for t in query.split(' * ') if t.strip()]
+        if len(terms) >= 2:
+            return ('AND', terms)
+
+    # Nessun operatore - ricerca normale
+    return (None, [query])
+
+
+def _build_search_condition_farmacie(operator: str, terms: List[str]) -> tuple:
+    """
+    Costruisce la condizione WHERE e i parametri per la ricerca farmacie.
+
+    Returns:
+        tuple: (where_clause, params)
+    """
+    fields = [
+        'ragione_sociale', 'citta', 'indirizzo', 'cap',
+        'provincia', 'partita_iva', 'min_id'
+    ]
+
+    if operator is None:
+        # Ricerca normale - un termine su tutti i campi (OR tra campi)
+        term_like = f"%{terms[0]}%"
+        field_conditions = ' OR '.join([f"{f} ILIKE %s" for f in fields])
+        return (f"({field_conditions})", [term_like] * len(fields), term_like)
+
+    elif operator == 'OR':
+        # OR tra termini: ogni termine può essere in qualsiasi campo
+        # (term1 in any field) OR (term2 in any field)
+        term_conditions = []
+        params = []
+        for term in terms:
+            term_like = f"%{term}%"
+            field_conditions = ' OR '.join([f"{f} ILIKE %s" for f in fields])
+            term_conditions.append(f"({field_conditions})")
+            params.extend([term_like] * len(fields))
+        where_clause = ' OR '.join(term_conditions)
+        # Per ORDER BY, usa il primo termine
+        return (f"({where_clause})", params, f"%{terms[0]}%")
+
+    elif operator == 'AND':
+        # AND tra termini: ogni termine deve essere presente (in qualsiasi campo)
+        # (term1 in any field) AND (term2 in any field)
+        term_conditions = []
+        params = []
+        for term in terms:
+            term_like = f"%{term}%"
+            field_conditions = ' OR '.join([f"{f} ILIKE %s" for f in fields])
+            term_conditions.append(f"({field_conditions})")
+            params.extend([term_like] * len(fields))
+        where_clause = ' AND '.join(term_conditions)
+        # Per ORDER BY, usa il primo termine
+        return (f"({where_clause})", params, f"%{terms[0]}%")
+
+    return ("TRUE", [], "%")
+
+
+def _build_search_condition_parafarmacie(operator: str, terms: List[str]) -> tuple:
+    """
+    Costruisce la condizione WHERE e i parametri per la ricerca parafarmacie.
+
+    Returns:
+        tuple: (where_clause, params)
+    """
+    fields = [
+        'sito_logistico', 'citta', 'indirizzo', 'cap',
+        'provincia', 'partita_iva', 'codice_sito'
+    ]
+
+    if operator is None:
+        # Ricerca normale
+        term_like = f"%{terms[0]}%"
+        field_conditions = ' OR '.join([f"{f} ILIKE %s" for f in fields])
+        return (f"({field_conditions})", [term_like] * len(fields), term_like)
+
+    elif operator == 'OR':
+        term_conditions = []
+        params = []
+        for term in terms:
+            term_like = f"%{term}%"
+            field_conditions = ' OR '.join([f"{f} ILIKE %s" for f in fields])
+            term_conditions.append(f"({field_conditions})")
+            params.extend([term_like] * len(fields))
+        where_clause = ' OR '.join(term_conditions)
+        return (f"({where_clause})", params, f"%{terms[0]}%")
+
+    elif operator == 'AND':
+        term_conditions = []
+        params = []
+        for term in terms:
+            term_like = f"%{term}%"
+            field_conditions = ' OR '.join([f"{f} ILIKE %s" for f in fields])
+            term_conditions.append(f"({field_conditions})")
+            params.extend([term_like] * len(fields))
+        where_clause = ' AND '.join(term_conditions)
+        return (f"({where_clause})", params, f"%{terms[0]}%")
+
+    return ("TRUE", [], "%")
+
+
+def search_farmacie(query: str, limit: int = 20) -> List[Dict]:
+    """
+    Cerca farmacie per ragione sociale, citta, indirizzo, CAP, provincia, P.IVA o MIN_ID.
+
+    Supporta operatori logici:
+    - " + " (OR): SEMINARA + CATANIA → trova SEMINARA oppure CATANIA
+    - " * " (AND): SEMINARA * CATANIA → trova SEMINARA e CATANIA
+    - Senza operatori: ricerca stringa normale
+    """
+    db = get_db()
+
+    # Parsa query per operatori
+    operator, terms = _parse_search_query(query)
+    where_clause, params, order_param = _build_search_condition_farmacie(operator, terms)
+
+    sql = f"""
         SELECT id_farmacia, min_id, partita_iva, ragione_sociale,
                indirizzo, cap, citta, provincia
         FROM ANAGRAFICA_FARMACIE
         WHERE attiva = TRUE
-        AND (
-            ragione_sociale ILIKE %s
-            OR citta ILIKE %s
-            OR indirizzo ILIKE %s
-            OR cap ILIKE %s
-            OR provincia ILIKE %s
-            OR partita_iva ILIKE %s
-            OR min_id ILIKE %s
-        )
+        AND {where_clause}
         ORDER BY
             CASE WHEN citta ILIKE %s THEN 0 ELSE 1 END,
             ragione_sociale
         LIMIT %s
-    """, (query_like, query_like, query_like, query_like, query_like, query_like, query_like,
-          query_like, limit)).fetchall()
+    """
+
+    all_params = params + [order_param, limit]
+    rows = db.execute(sql, all_params).fetchall()
 
     return [dict(row) for row in rows]
 
 
 def search_parafarmacie(query: str, limit: int = 20) -> List[Dict]:
-    """Cerca parafarmacie per ragione sociale, citta, indirizzo, CAP, provincia, P.IVA o codice_sito."""
-    db = get_db()
-    query_like = f"%{query}%"
+    """
+    Cerca parafarmacie per ragione sociale, citta, indirizzo, CAP, provincia, P.IVA o codice_sito.
 
-    rows = db.execute("""
+    Supporta operatori logici:
+    - " + " (OR): SEMINARA + CATANIA → trova SEMINARA oppure CATANIA
+    - " * " (AND): SEMINARA * CATANIA → trova SEMINARA e CATANIA
+    - Senza operatori: ricerca stringa normale
+    """
+    db = get_db()
+
+    # Parsa query per operatori
+    operator, terms = _parse_search_query(query)
+    where_clause, params, order_param = _build_search_condition_parafarmacie(operator, terms)
+
+    sql = f"""
         SELECT id_parafarmacia, codice_sito, partita_iva, sito_logistico as ragione_sociale,
                indirizzo, cap, citta, provincia
         FROM ANAGRAFICA_PARAFARMACIE
         WHERE attiva = TRUE
-        AND (
-            sito_logistico ILIKE %s
-            OR citta ILIKE %s
-            OR indirizzo ILIKE %s
-            OR cap ILIKE %s
-            OR provincia ILIKE %s
-            OR partita_iva ILIKE %s
-            OR codice_sito ILIKE %s
-        )
+        AND {where_clause}
         ORDER BY
             CASE WHEN citta ILIKE %s THEN 0 ELSE 1 END,
             sito_logistico
         LIMIT %s
-    """, (query_like, query_like, query_like, query_like, query_like, query_like, query_like,
-          query_like, limit)).fetchall()
+    """
+
+    all_params = params + [order_param, limit]
+    rows = db.execute(sql, all_params).fetchall()
 
     return [dict(row) for row in rows]
 
