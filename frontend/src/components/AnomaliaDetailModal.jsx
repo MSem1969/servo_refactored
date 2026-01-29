@@ -13,7 +13,8 @@
  */
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { TipoAnomaliaBadge, StatoAnomaliaBadge, SeveritaBadge } from '../common/StatusBadge';
-import { lookupApi, getApiBaseUrl } from '../api';
+import { PdfViewerButton } from '../common';
+import { lookupApi } from '../api';
 // v8.2: Import diretto per evitare problemi con barrel export
 import { anomalieApi } from '../api/anomalie';
 // v11.0: Import AicAssignmentModal unificato (TIER 2.1)
@@ -216,24 +217,13 @@ export function AnomaliaDetailModal({
           </h3>
           <div className="flex items-center gap-2">
             {/* Pulsante Visualizza PDF - controlla anomalia, ordine_data, testata */}
-            {(() => {
-              const pdfFile = anomaliaDetail?.anomalia?.pdf_file
+            <PdfViewerButton
+              pdfFile={
+                anomaliaDetail?.anomalia?.pdf_file
                 || anomaliaDetail?.ordine_data?.pdf_file
-                || anomaliaDetail?.testata?.pdf_file;
-              return pdfFile ? (
-                <a
-                  href={`${getApiBaseUrl()}/api/v1/upload/pdf/${encodeURIComponent(pdfFile)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm flex items-center gap-2"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                  </svg>
-                  Visualizza PDF
-                </a>
-              ) : null;
-            })()}
+                || anomaliaDetail?.testata?.pdf_file
+              }
+            />
             <button
               onClick={handleClose}
               className="p-2 hover:bg-slate-100 rounded-lg text-slate-500"

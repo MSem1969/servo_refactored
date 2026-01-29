@@ -6,8 +6,8 @@
 // =============================================================================
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { supervisioneApi, getApiBaseUrl, ordiniApi } from '../../api';
-import { ModalBase, StatusBadge, Loading } from '../../common';
+import { supervisioneApi, ordiniApi } from '../../api';
+import { ModalBase, StatusBadge, Loading, PdfViewerButton } from '../../common';
 
 // Aliquote IVA disponibili
 const ALIQUOTE_IVA = [
@@ -217,21 +217,9 @@ const CorrezioneLisinoModal = ({ isOpen, onClose, supervisione, operatore, onSuc
       ) : (
         <div className="space-y-4">
           {/* v11.4: Bottone Visualizza PDF */}
-          {pdfFile && (
-            <div className="flex justify-end">
-              <a
-                href={`${getApiBaseUrl()}/api/v1/upload/pdf/${encodeURIComponent(pdfFile)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm flex items-center gap-2"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                </svg>
-                Visualizza PDF
-              </a>
-            </div>
-          )}
+          <div className="flex justify-end">
+            <PdfViewerButton pdfFile={pdfFile} />
+          </div>
 
           {/* Suggerimenti pattern */}
           {hasSuggerimenti && (
