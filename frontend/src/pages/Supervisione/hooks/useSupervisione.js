@@ -232,6 +232,24 @@ export function useSupervisione({ currentUser, returnToOrdine, onReturnToOrdine,
     }
   };
 
+  // v11.4: Cancella pattern completamente
+  const handleDeletePattern = async (signature) => {
+    if (!richiestaConferma(
+      'Cancella pattern ML',
+      'ATTENZIONE: Questa azione cancellerà definitivamente il pattern.\n\n' +
+      'A differenza del RESET (che azzera il contatore), la cancellazione\n' +
+      'rimuove completamente il pattern dal sistema.\n\n' +
+      'Il pattern dovrà essere riappreso da zero. Continuare?'
+    )) return;
+
+    try {
+      await supervisioneApi.deletePattern(signature, operatore);
+      loadData();
+    } catch (err) {
+      alert('Errore cancellazione: ' + err.message);
+    }
+  };
+
   // Modal handlers
   const handleOpenCorrezione = (supervisione) => {
     setCorrezioneModal({ isOpen: true, supervisione });
@@ -554,6 +572,7 @@ export function useSupervisione({ currentUser, returnToOrdine, onReturnToOrdine,
     handleLasciaSospeso,
     handleResetPattern,
     handlePromuoviPattern,
+    handleDeletePattern, // v11.4
 
     // Modal actions
     handleOpenCorrezione,

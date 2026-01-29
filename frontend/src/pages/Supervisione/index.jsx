@@ -69,6 +69,7 @@ const SupervisionePage = ({
     handleLasciaSospeso,
     handleResetPattern,
     handlePromuoviPattern,
+    handleDeletePattern, // v11.4
 
     // Modal actions
     handleOpenCorrezione,
@@ -275,6 +276,7 @@ const SupervisionePage = ({
             getMLProgress={getMLProgress}
             handlePromuoviPattern={handlePromuoviPattern}
             handleResetPattern={handleResetPattern}
+            handleDeletePattern={handleDeletePattern}
           />
         )}
 
@@ -1014,7 +1016,7 @@ const SupervisioneActions = ({
 // =============================================================================
 // TAB PATTERNS - Pattern ML appresi
 // =============================================================================
-const TabPatterns = ({ criteri, getMLProgress, handlePromuoviPattern, handleResetPattern }) => (
+const TabPatterns = ({ criteri, getMLProgress, handlePromuoviPattern, handleResetPattern, handleDeletePattern }) => (
   <div className="p-6">
     <div className="mb-6 p-4 bg-indigo-50 border border-indigo-200 rounded-lg">
       <h3 className="text-lg font-semibold text-indigo-900 mb-2">Pattern Machine Learning</h3>
@@ -1048,6 +1050,7 @@ const TabPatterns = ({ criteri, getMLProgress, handlePromuoviPattern, handleRese
             getMLProgress={getMLProgress}
             handlePromuoviPattern={handlePromuoviPattern}
             handleResetPattern={handleResetPattern}
+            handleDeletePattern={handleDeletePattern}
           />
         ))}
       </div>
@@ -1056,16 +1059,45 @@ const TabPatterns = ({ criteri, getMLProgress, handlePromuoviPattern, handleRese
 );
 
 // =============================================================================
-// PATTERN CARD
+// PATTERN CARD - v11.4: Descrizioni migliorate, 3 azioni per tutti i pattern
 // =============================================================================
-const PatternCard = ({ criterio, getMLProgress, handlePromuoviPattern, handleResetPattern }) => {
+const PatternCard = ({ criterio, getMLProgress, handlePromuoviPattern, handleResetPattern, handleDeletePattern }) => {
   const approvazioni = criterio.count_approvazioni || 0;
   const progress = getMLProgress(approvazioni);
   const isOrdinario = criterio.is_ordinario || approvazioni >= 5;
   const isListino = criterio.tipo === 'listino';
   const isLookup = criterio.tipo === 'lookup';
   const isPrezzo = criterio.tipo === 'prezzo';
+  const isAic = criterio.tipo === 'aic';
   const mancanti = Math.max(0, 5 - approvazioni);
+
+  // v11.4: Costruisci descrizione senza ripetizioni
+  const buildDescription = () => {
+    if (isLookup) {
+      // LOOKUP: mostra nome farmacia/cliente
+      return criterio.pattern_descrizione || criterio.min_id_default || 'Farmacia non specificata';
+    }
+    if (isAic) {
+      // AIC: codice + descrizione prodotto
+      const aic = criterio.codice_aic_default || '';
+      const desc = criterio.descrizione_normalizzata || criterio.pattern_descrizione || '';
+      return aic ? `${aic} - ${desc}`.trim() : desc;
+    }
+    if (isListino || isPrezzo) {
+      // LISTINO/PREZZO: codice anomalia + AIC + descrizione prodotto (senza ripetere tipo)
+      const codiceAnom = criterio.codice_anomalia || '';
+      const aic = criterio.codice_aic || '';
+      const desc = criterio.pattern_descrizione || '';
+      // Evita ripetizione: se pattern_descrizione inizia con vendor, mostra solo AIC + desc
+      const parts = [];
+      if (codiceAnom) parts.push(codiceAnom);
+      if (aic) parts.push(`AIC ${aic}`);
+      if (desc && !desc.toLowerCase().includes('listino')) parts.push(desc);
+      return parts.join(' - ') || 'Pattern listino';
+    }
+    // ESPOSITORE
+    return criterio.pattern_descrizione || criterio.codice_espositore || 'Espositore';
+  };
 
   return (
     <div
@@ -1077,17 +1109,15 @@ const PatternCard = ({ criterio, getMLProgress, handlePromuoviPattern, handleRes
     >
       <div className="flex items-start justify-between">
         <div className="flex-1">
-          <div className="flex items-center gap-3 mb-3">
+          <div className="flex items-center gap-3 mb-2">
             <span className={`px-3 py-1 text-sm font-bold rounded-lg ${
               isPrezzo ? 'bg-red-100 text-red-800' :
+              isAic ? 'bg-teal-100 text-teal-800' :
               isListino ? 'bg-blue-100 text-blue-800' :
               isLookup ? 'bg-amber-100 text-amber-800' :
               'bg-purple-100 text-purple-800'
             }`}>
-              {isPrezzo ? 'PREZZO' : isListino ? 'LISTINO' : isLookup ? 'LOOKUP' : 'ESPOSITORE'}
-            </span>
-            <span className="font-semibold text-slate-800">
-              {criterio.codice_anomalia || criterio.pattern_descrizione || 'Pattern'}
+              {isPrezzo ? 'PREZZO' : isAic ? 'AIC' : isListino ? 'LISTINO' : isLookup ? 'LOOKUP' : 'ESPOSITORE'}
             </span>
             {isOrdinario ? (
               <span className="px-3 py-1 text-sm font-bold bg-emerald-200 text-emerald-800 rounded-lg">
@@ -1099,6 +1129,11 @@ const PatternCard = ({ criterio, getMLProgress, handlePromuoviPattern, handleRes
               </span>
             )}
           </div>
+
+          {/* v11.4: Descrizione migliorata sotto l'etichetta */}
+          <p className="font-medium text-slate-800 mb-3 text-sm">
+            {buildDescription()}
+          </p>
 
           <div className="bg-white/80 p-3 rounded-lg">
             <div className="flex items-center justify-between mb-2">
@@ -1121,7 +1156,8 @@ const PatternCard = ({ criterio, getMLProgress, handlePromuoviPattern, handleRes
           </div>
         </div>
 
-        <div className="ml-6 flex flex-col gap-3">
+        {/* v11.4: 3 azioni sempre presenti per tutti i pattern */}
+        <div className="ml-6 flex flex-col gap-2">
           {!isOrdinario && (
             <Button
               variant="primary"
@@ -1135,9 +1171,17 @@ const PatternCard = ({ criterio, getMLProgress, handlePromuoviPattern, handleRes
             variant="ghost"
             size="sm"
             onClick={() => handleResetPattern(criterio.pattern_signature)}
+            className="text-amber-600 hover:bg-amber-50"
+          >
+            🔄 Reset Apprendimento
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => handleDeletePattern(criterio.pattern_signature)}
             className="text-red-600 hover:bg-red-50"
           >
-            Reset Apprendimento
+            🗑️ Cancella Pattern
           </Button>
         </div>
       </div>

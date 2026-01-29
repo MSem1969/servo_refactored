@@ -43,6 +43,9 @@ export const supervisioneApi = {
     api.post(`/supervisione/criteri/${encodeURIComponent(signature)}/reset?operatore=${encodeURIComponent(operatore)}`).then(r => r.data),
   promuoviPattern: (signature, operatore) =>
     api.post(`/supervisione/criteri/${encodeURIComponent(signature)}/promuovi?operatore=${encodeURIComponent(operatore)}`).then(r => r.data),
+  // v11.4: Cancella pattern completamente (diverso da reset che azzera solo il contatore)
+  deletePattern: (signature, operatore) =>
+    api.delete(`/supervisione/criteri/${encodeURIComponent(signature)}?operatore=${encodeURIComponent(operatore)}`).then(r => r.data),
 
   // === STORICO ===
   getStorico: (limit = 50) => api.get(`/supervisione/criteri/storico/applicazioni?limit=${limit}`).then(r => r.data),

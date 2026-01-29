@@ -173,6 +173,76 @@ async def reset_pattern(pattern_signature: str, operatore: str = Query(...)):
     }
 
 
+@router.delete("/{pattern_signature}", summary="Cancella pattern ML")
+async def delete_pattern(pattern_signature: str, operatore: str = Query(...)):
+    """
+    Cancella completamente un pattern ML dal sistema.
+
+    A differenza di RESET (che azzera il contatore), DELETE rimuove
+    il pattern dalla tabella. Usare con cautela - il pattern dovrà
+    essere riappreso da zero.
+    """
+    from ...database_pg import log_operation
+
+    db = get_db()
+
+    # Cerca e cancella da tutte le tabelle pattern
+    deleted_from = None
+
+    result = db.execute(
+        "DELETE FROM criteri_ordinari_espositore WHERE pattern_signature = %s RETURNING pattern_signature",
+        (pattern_signature,)
+    ).fetchone()
+    if result:
+        deleted_from = "espositore"
+
+    if not deleted_from:
+        result = db.execute(
+            "DELETE FROM criteri_ordinari_listino WHERE pattern_signature = %s RETURNING pattern_signature",
+            (pattern_signature,)
+        ).fetchone()
+        if result:
+            deleted_from = "listino"
+
+    if not deleted_from:
+        result = db.execute(
+            "DELETE FROM criteri_ordinari_lookup WHERE pattern_signature = %s RETURNING pattern_signature",
+            (pattern_signature,)
+        ).fetchone()
+        if result:
+            deleted_from = "lookup"
+
+    if not deleted_from:
+        result = db.execute(
+            "DELETE FROM criteri_ordinari_aic WHERE pattern_signature = %s RETURNING pattern_signature",
+            (pattern_signature,)
+        ).fetchone()
+        if result:
+            deleted_from = "aic"
+
+    if not deleted_from:
+        raise HTTPException(status_code=404, detail="Pattern non trovato")
+
+    db.commit()
+
+    # Log operazione
+    log_operation(
+        'CANCELLAZIONE_PATTERN',
+        f'criteri_ordinari_{deleted_from}',
+        0,
+        f"Pattern {pattern_signature[:16]}... cancellato definitivamente",
+        operatore=operatore
+    )
+
+    return {
+        "success": True,
+        "pattern_signature": pattern_signature,
+        "tipo": deleted_from,
+        "azione": "CANCELLATO",
+        "operatore": operatore
+    }
+
+
 @router.post("/{pattern_signature}/promuovi", summary="Forza promozione pattern")
 async def promuovi_pattern(pattern_signature: str, operatore: str = Query(...)):
     """
