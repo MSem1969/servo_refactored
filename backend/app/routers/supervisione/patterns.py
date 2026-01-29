@@ -70,36 +70,41 @@ async def get_tutti_criteri():
         ORDER BY count_approvazioni DESC, data_promozione DESC NULLS LAST
     """).fetchall()
 
-    # Pattern listino
+    # Pattern listino - v11.4: includi codice_anomalia e descrizione_prodotto
     criteri_lst = db.execute("""
         SELECT
-            pattern_signature,
-            pattern_descrizione,
-            codice_aic,
-            vendor,
-            count_approvazioni,
-            is_ordinario,
-            data_promozione,
+            col.pattern_signature,
+            col.pattern_descrizione,
+            col.codice_aic,
+            col.codice_anomalia,
+            col.vendor,
+            col.count_approvazioni,
+            col.is_ordinario,
+            col.data_promozione,
+            lp.descrizione AS descrizione_prodotto,
             'listino' AS tipo
-        FROM criteri_ordinari_listino
-        ORDER BY count_approvazioni DESC, data_promozione DESC NULLS LAST
+        FROM criteri_ordinari_listino col
+        LEFT JOIN listino_prodotti lp ON col.codice_aic = lp.codice_aic
+        ORDER BY col.count_approvazioni DESC, col.data_promozione DESC NULLS LAST
     """).fetchall()
 
-    # Pattern lookup
+    # Pattern lookup - v11.4: includi ragione_sociale farmacia
     criteri_lkp = db.execute("""
         SELECT
-            pattern_signature,
-            pattern_descrizione,
-            partita_iva_pattern,
-            vendor,
-            codice_anomalia,
-            count_approvazioni,
-            is_ordinario,
-            data_promozione,
-            min_id_default,
+            colk.pattern_signature,
+            colk.pattern_descrizione,
+            colk.partita_iva_pattern,
+            colk.vendor,
+            colk.codice_anomalia,
+            colk.count_approvazioni,
+            colk.is_ordinario,
+            colk.data_promozione,
+            colk.min_id_default,
+            af.ragione_sociale AS ragione_sociale_farmacia,
             'lookup' AS tipo
-        FROM criteri_ordinari_lookup
-        ORDER BY count_approvazioni DESC, data_promozione DESC NULLS LAST
+        FROM criteri_ordinari_lookup colk
+        LEFT JOIN anagrafica_farmacie af ON colk.id_farmacia_default = af.id_farmacia
+        ORDER BY colk.count_approvazioni DESC, colk.data_promozione DESC NULLS LAST
     """).fetchall()
 
     # v9.0: Pattern AIC

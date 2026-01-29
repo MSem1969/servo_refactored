@@ -1071,30 +1071,30 @@ const PatternCard = ({ criterio, getMLProgress, handlePromuoviPattern, handleRes
   const isAic = criterio.tipo === 'aic';
   const mancanti = Math.max(0, 5 - approvazioni);
 
-  // v11.4: Costruisci descrizione per LISTINO: codice_anomalia - AIC xxx - descrizione_prodotto
+  // v11.4: Costruisci descrizione per LISTINO: codice_anomalia - VENDOR - AIC xxx - descrizione_prodotto
   const buildListinoDescription = () => {
-    const codiceAnom = criterio.codice_anomalia || '';
+    const codiceAnom = criterio.codice_anomalia || 'LST-A01';
+    const vendor = criterio.vendor || '';
     const aic = criterio.codice_aic || '';
-    const desc = criterio.pattern_descrizione || '';
+    const descProdotto = criterio.descrizione_prodotto || '';
     const parts = [];
-    if (codiceAnom) parts.push(codiceAnom);
+    parts.push(codiceAnom);
+    if (vendor) parts.push(vendor);
     if (aic) parts.push(`AIC ${aic}`);
-    if (desc) parts.push(desc);
-    return parts.join(' - ') || 'Pattern listino';
+    if (descProdotto) parts.push(descProdotto);
+    return parts.join(' - ');
   };
 
-  // v11.4: Costruisci descrizione per LOOKUP: tipo (LKP-A04) - VENDOR - Farmacia - MIN_ID
+  // v11.4: Costruisci descrizione per LOOKUP: codice_anomalia - VENDOR - ragione_sociale_farmacia
   const buildLookupDescription = () => {
-    const codiceAnom = criterio.codice_anomalia || '';
+    const codiceAnom = criterio.codice_anomalia || 'LKP-A01';
     const vendor = criterio.vendor || '';
-    const desc = criterio.pattern_descrizione || '';
-    const minId = criterio.min_id_default || '';
+    const farmacia = criterio.ragione_sociale_farmacia || '';
     const parts = [];
-    if (codiceAnom) parts.push(codiceAnom);
+    parts.push(codiceAnom);
     if (vendor) parts.push(vendor);
-    if (desc) parts.push(desc);
-    if (minId) parts.push(`MIN ${minId}`);
-    return parts.join(' - ') || 'Pattern lookup';
+    if (farmacia) parts.push(farmacia);
+    return parts.join(' - ');
   };
 
   // v11.4: Costruisci descrizione per ESPOSITORE: codice - descrizione normalizzata
