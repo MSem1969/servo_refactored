@@ -1097,6 +1097,18 @@ const PatternCard = ({ criterio, getMLProgress, handlePromuoviPattern, handleRes
     return parts.join(' - ') || 'Pattern lookup';
   };
 
+  // v11.4: Costruisci descrizione per ESPOSITORE: codice - descrizione normalizzata
+  const buildEspositoreDescription = () => {
+    const codiceEsp = criterio.codice_espositore || '';
+    const desc = criterio.descrizione_normalizzata || criterio.pattern_descrizione || '';
+    const fascia = criterio.fascia_scostamento || '';
+    const parts = [];
+    if (codiceEsp) parts.push(codiceEsp);
+    if (desc) parts.push(desc);
+    if (fascia) parts.push(`±${fascia}%`);
+    return parts.join(' - ') || 'Pattern espositore';
+  };
+
   return (
     <div
       className={`p-5 border-2 rounded-xl ${
@@ -1117,13 +1129,15 @@ const PatternCard = ({ criterio, getMLProgress, handlePromuoviPattern, handleRes
             }`}>
               {isPrezzo ? 'PREZZO' : isAic ? 'AIC' : isListino ? 'LISTINO' : isLookup ? 'LOOKUP' : 'ESPOSITORE'}
             </span>
-            {/* v11.4: Descrizione inline migliorata per LISTINO e LOOKUP */}
+            {/* v11.4: Descrizione inline migliorata per tutti i tipi */}
             <span className="font-semibold text-slate-800">
               {(isListino || isPrezzo)
                 ? buildListinoDescription()
                 : isLookup
                 ? buildLookupDescription()
-                : (criterio.codice_anomalia || criterio.pattern_descrizione || 'Pattern')}
+                : isAic
+                ? (criterio.codice_aic_default ? `${criterio.codice_aic_default} - ${criterio.descrizione_normalizzata || criterio.pattern_descrizione || ''}` : criterio.pattern_descrizione || 'Pattern AIC')
+                : buildEspositoreDescription()}
             </span>
             {isOrdinario ? (
               <span className="px-3 py-1 text-sm font-bold bg-emerald-200 text-emerald-800 rounded-lg">
