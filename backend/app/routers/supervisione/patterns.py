@@ -70,7 +70,7 @@ async def get_tutti_criteri():
         ORDER BY count_approvazioni DESC, data_promozione DESC NULLS LAST
     """).fetchall()
 
-    # Pattern listino - v11.4: includi codice_anomalia e descrizione_prodotto
+    # Pattern listino - v11.4: includi codice_anomalia e descrizione_prodotto (da ordini_dettaglio)
     criteri_lst = db.execute("""
         SELECT
             col.pattern_signature,
@@ -81,10 +81,16 @@ async def get_tutti_criteri():
             col.count_approvazioni,
             col.is_ordinario,
             col.data_promozione,
-            lp.descrizione AS descrizione_prodotto,
+            od_desc.descrizione AS descrizione_prodotto,
             'listino' AS tipo
         FROM criteri_ordinari_listino col
-        LEFT JOIN listino_prodotti lp ON col.codice_aic = lp.codice_aic
+        LEFT JOIN LATERAL (
+            SELECT DISTINCT ON (codice_aic) descrizione
+            FROM ordini_dettaglio
+            WHERE codice_aic = col.codice_aic AND descrizione IS NOT NULL
+            ORDER BY codice_aic, id_dettaglio DESC
+            LIMIT 1
+        ) od_desc ON TRUE
         ORDER BY col.count_approvazioni DESC, col.data_promozione DESC NULLS LAST
     """).fetchall()
 
