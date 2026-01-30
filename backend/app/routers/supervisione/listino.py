@@ -35,6 +35,7 @@ async def get_supervisione_listino_detail(id_supervisione: int):
 
     # Recupera supervisione con dati ordine
     # v11.4: Fallback per descrizione_riga - prova prima da id_dettaglio, poi da codice_aic
+    # v11.4: pdf_file viene da acquisizioni, non da ordini_testata
     row = db.execute("""
         SELECT sl.*,
                COALESCE(od.descrizione, od_aic.descrizione) AS descrizione_riga,
@@ -46,7 +47,8 @@ async def get_supervisione_listino_detail(id_supervisione: int):
                COALESCE(od.sconto_3, od_aic.sconto_3) AS sconto_3_attuale,
                COALESCE(od.sconto_4, od_aic.sconto_4) AS sconto_4_attuale,
                COALESCE(od.aliquota_iva, od_aic.aliquota_iva) AS aliquota_iva_attuale,
-               ot.numero_ordine_vendor, ot.ragione_sociale_1, ot.pdf_file,
+               ot.numero_ordine_vendor, ot.ragione_sociale_1,
+               a.nome_file_originale AS pdf_file,
                col.count_approvazioni AS pattern_count,
                col.is_ordinario AS pattern_ordinario,
                col.prezzo_netto_pattern, col.sconto_1_pattern, col.sconto_2_pattern
@@ -54,6 +56,7 @@ async def get_supervisione_listino_detail(id_supervisione: int):
         LEFT JOIN ordini_dettaglio od ON sl.id_dettaglio = od.id_dettaglio
         LEFT JOIN ordini_dettaglio od_aic ON sl.id_testata = od_aic.id_testata AND sl.codice_aic = od_aic.codice_aic
         LEFT JOIN ordini_testata ot ON sl.id_testata = ot.id_testata
+        LEFT JOIN acquisizioni a ON ot.id_acquisizione = a.id_acquisizione
         LEFT JOIN criteri_ordinari_listino col ON sl.pattern_signature = col.pattern_signature
         WHERE sl.id_supervisione = %s
     """, (id_supervisione,)).fetchone()
