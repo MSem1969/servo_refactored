@@ -370,6 +370,196 @@ async def lista_files_tracciato() -> Dict[str, Any]:
 
 
 # =============================================================================
+# FTP EXPORT (v11.5)
+# =============================================================================
+
+@router.get("/ftp/status")
+async def ftp_status() -> Dict[str, Any]:
+    """
+    Stato del servizio FTP e scheduler.
+
+    Ritorna:
+    - Configurazione FTP attiva
+    - Stato scheduler
+    - Esportazioni pending/failed
+    """
+    try:
+        from ..database_pg import get_db
+        from ..services.scheduler.ftp_scheduler import get_ftp_scheduler_status
+
+        db = get_db()
+
+        # Config FTP
+        ftp_config = db.execute("""
+            SELECT ftp_enabled, ftp_host, ftp_port, ftp_username,
+                   batch_enabled, batch_intervallo_minuti, max_tentativi
+            FROM ftp_config LIMIT 1
+        """).fetchone()
+
+        # Contatori esportazioni
+        stats = db.execute("""
+            SELECT
+                stato_ftp,
+                COUNT(*) as count
+            FROM esportazioni
+            WHERE stato_ftp IS NOT NULL
+            GROUP BY stato_ftp
+        """).fetchall()
+
+        stats_dict = {s['stato_ftp']: s['count'] for s in stats}
+
+        # Scheduler status
+        scheduler_status = get_ftp_scheduler_status()
+
+        return {
+            "success": True,
+            "config": dict(ftp_config) if ftp_config else None,
+            "scheduler": scheduler_status,
+            "esportazioni": {
+                "pending": stats_dict.get('PENDING', 0),
+                "sending": stats_dict.get('SENDING', 0),
+                "sent": stats_dict.get('SENT', 0),
+                "failed": stats_dict.get('FAILED', 0),
+                "retry": stats_dict.get('RETRY', 0),
+                "skipped": stats_dict.get('SKIPPED', 0)
+            }
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/ftp/send")
+async def ftp_send_now(
+    id_esportazione: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    Esegue invio FTP manuale.
+
+    Args:
+        id_esportazione: ID specifico (opzionale). Se omesso, invia tutte le pending.
+
+    Returns:
+        Risultato invio
+    """
+    try:
+        from ..services.ftp.sender import FTPSender, invia_tracciati_batch, get_ftp_client_from_config
+
+        if id_esportazione:
+            # Invio singolo
+            sender = FTPSender()
+            ftp_client = get_ftp_client_from_config()
+
+            with ftp_client:
+                result = sender.send_export(id_esportazione, ftp_client)
+
+            return {
+                "success": result['success'],
+                "data": result,
+                "message": f"Esportazione {id_esportazione}: {'inviata' if result['success'] else 'fallita'}"
+            }
+        else:
+            # Batch completo
+            result = invia_tracciati_batch()
+            return {
+                "success": result['success'],
+                "data": result,
+                "message": f"Batch: {result['sent']} inviati, {result['failed']} falliti"
+            }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/ftp/pending")
+async def ftp_pending() -> Dict[str, Any]:
+    """
+    Lista esportazioni in attesa di invio FTP.
+    """
+    try:
+        from ..database_pg import get_db
+        db = get_db()
+
+        pending = db.execute("""
+            SELECT e.*, ot.vendor, ot.numero_ordine_vendor, ot.deposito_riferimento
+            FROM esportazioni e
+            JOIN esportazioni_dettaglio ed ON e.id_esportazione = ed.id_esportazione
+            JOIN ordini_testata ot ON ed.id_testata = ot.id_testata
+            WHERE e.stato_ftp IN ('PENDING', 'RETRY', 'FAILED')
+            ORDER BY e.data_generazione ASC
+        """).fetchall()
+
+        return {
+            "success": True,
+            "data": [dict(p) for p in pending],
+            "count": len(pending)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/ftp/log")
+async def ftp_log(
+    limit: int = Query(50, ge=1, le=200),
+    id_esportazione: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    Log operazioni FTP.
+    """
+    try:
+        from ..database_pg import get_db
+        db = get_db()
+
+        query = """
+            SELECT * FROM ftp_log
+            WHERE 1=1
+        """
+        params = []
+
+        if id_esportazione:
+            query += " AND id_esportazione = %s"
+            params.append(id_esportazione)
+
+        query += " ORDER BY created_at DESC LIMIT %s"
+        params.append(limit)
+
+        logs = db.execute(query, params).fetchall()
+
+        return {
+            "success": True,
+            "data": [dict(l) for l in logs],
+            "count": len(logs)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/ftp/reset/{id_esportazione}")
+async def ftp_reset(id_esportazione: int) -> Dict[str, Any]:
+    """
+    Reset stato FTP di un'esportazione per ritentare l'invio.
+    """
+    try:
+        from ..database_pg import get_db
+        db = get_db()
+
+        db.execute("""
+            UPDATE esportazioni
+            SET stato_ftp = 'PENDING',
+                tentativi_ftp = 0,
+                ultimo_errore_ftp = NULL
+            WHERE id_esportazione = %s
+        """, (id_esportazione,))
+        db.commit()
+
+        return {
+            "success": True,
+            "message": f"Esportazione {id_esportazione} resettata per retry"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
 # PULIZIA
 # =============================================================================
 

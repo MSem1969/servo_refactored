@@ -302,6 +302,67 @@ POST /api/v10/admin/sync/all
 
 ---
 
+## Export FTP Tracciati (v11.5)
+
+### Configurazione
+
+| Parametro | Valore |
+|-----------|--------|
+| **Host** | 85.39.189.15 |
+| **Porta** | 21 |
+| **Username** | sofadto |
+| **Password** | Variabile ambiente `FTP_PASSWORD` (Coolify) |
+| **Modalità** | Attiva (IP whitelistato) |
+
+### Mapping Vendor → Path FTP
+
+| Vendor | Path FTP |
+|--------|----------|
+| ANGELINI | ./ANGELINI |
+| DOC_GENERICI | ./DOC |
+| CODIFI | ./CODIFI |
+| Altri vendor | **Skip FTP** (solo locale) |
+
+### Flusso Batch (ogni 10 minuti)
+
+1. Cerca esportazioni con `stato_ftp = 'PENDING'` o `'RETRY'`
+2. Per ogni esportazione:
+   - Verifica mapping vendor
+   - Upload coppia TO_T + TO_D
+   - Aggiorna stato: `SENT` / `RETRY` / `FAILED`
+3. Se `FAILED` dopo 3 tentativi → **Alert email**
+
+### API Endpoints
+
+```
+GET  /api/v1/tracciati/ftp/status     # Stato FTP e scheduler
+POST /api/v1/tracciati/ftp/send       # Invio manuale
+GET  /api/v1/tracciati/ftp/pending    # Esportazioni in attesa
+GET  /api/v1/tracciati/ftp/log        # Log operazioni
+POST /api/v1/tracciati/ftp/reset/{id} # Reset per retry
+```
+
+### Stati FTP (`esportazioni.stato_ftp`)
+
+| Stato | Descrizione |
+|-------|-------------|
+| PENDING | In attesa di invio |
+| SENDING | Invio in corso |
+| SENT | Inviato con successo |
+| RETRY | Fallito, in attesa retry |
+| FAILED | Fallito dopo max tentativi |
+| SKIPPED | Vendor non mappato |
+| ALERT_SENT | Alert email inviato |
+
+### Tabelle Database
+
+- `ftp_config` - Configurazione connessione
+- `ftp_vendor_mapping` - Mapping vendor → path
+- `ftp_log` - Log operazioni FTP
+- `esportazioni.stato_ftp` - Stato invio
+
+---
+
 ## Tracking Operatore
 
 Tabella `operatore_azioni_log`: chi, cosa, quando, contesto, client.
