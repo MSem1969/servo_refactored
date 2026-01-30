@@ -37,7 +37,8 @@ const PdfViewerButton = ({
       setLoading(true);
       import('../api').then(({ ordiniApi }) => {
         ordiniApi.getOrdine(idTestata)
-          .then(res => setLoadedPdfFile(res?.pdf_file || null))
+          // v11.4 fix: ordineRes è { success, data: {...ordine} }
+          .then(res => setLoadedPdfFile(res?.data?.pdf_file || null))
           .catch(() => setLoadedPdfFile(null))
           .finally(() => setLoading(false));
       });

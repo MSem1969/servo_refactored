@@ -65,9 +65,12 @@ async def get_pending(tipo: Optional[str] = Query(None, description="Tipo: 'espo
             SELECT sp.*,
                    ot.numero_ordine_vendor,
                    ot.ragione_sociale_1,
-                   ot.data_ordine
+                   ot.data_ordine,
+                   COALESCE(col.count_approvazioni, 0) AS count_pattern,
+                   COALESCE(col.is_ordinario, FALSE) AS pattern_ordinario
             FROM supervisione_prezzo sp
             JOIN ordini_testata ot ON sp.id_testata = ot.id_testata
+            LEFT JOIN criteri_ordinari_listino col ON sp.pattern_signature = col.pattern_signature
             WHERE sp.stato = 'PENDING'
             ORDER BY sp.timestamp_creazione DESC
         """).fetchall()
@@ -81,9 +84,12 @@ async def get_pending(tipo: Optional[str] = Query(None, description="Tipo: 'espo
             SELECT sa.*,
                    ot.numero_ordine_vendor as numero_ordine,
                    ot.ragione_sociale_1 as ragione_sociale,
-                   ot.data_ordine
+                   ot.data_ordine,
+                   COALESCE(coa.count_approvazioni, 0) AS count_pattern,
+                   COALESCE(coa.is_ordinario, FALSE) AS pattern_ordinario
             FROM supervisione_aic sa
             JOIN ordini_testata ot ON sa.id_testata = ot.id_testata
+            LEFT JOIN criteri_ordinari_aic coa ON sa.pattern_signature = coa.pattern_signature
             WHERE sa.stato = 'PENDING'
             ORDER BY sa.timestamp_creazione DESC
         """).fetchall()
@@ -102,9 +108,12 @@ async def get_pending(tipo: Optional[str] = Query(None, description="Tipo: 'espo
             SELECT sp.*,
                    ot.numero_ordine_vendor,
                    ot.ragione_sociale_1,
-                   ot.data_ordine
+                   ot.data_ordine,
+                   COALESCE(col.count_approvazioni, 0) AS count_pattern,
+                   COALESCE(col.is_ordinario, FALSE) AS pattern_ordinario
             FROM supervisione_prezzo sp
             JOIN ordini_testata ot ON sp.id_testata = ot.id_testata
+            LEFT JOIN criteri_ordinari_listino col ON sp.pattern_signature = col.pattern_signature
             WHERE sp.stato = 'PENDING'
             ORDER BY sp.timestamp_creazione DESC
         """).fetchall()
@@ -115,9 +124,12 @@ async def get_pending(tipo: Optional[str] = Query(None, description="Tipo: 'espo
             SELECT sa.*,
                    ot.numero_ordine_vendor as numero_ordine,
                    ot.ragione_sociale_1 as ragione_sociale,
-                   ot.data_ordine
+                   ot.data_ordine,
+                   COALESCE(coa.count_approvazioni, 0) AS count_pattern,
+                   COALESCE(coa.is_ordinario, FALSE) AS pattern_ordinario
             FROM supervisione_aic sa
             JOIN ordini_testata ot ON sa.id_testata = ot.id_testata
+            LEFT JOIN criteri_ordinari_aic coa ON sa.pattern_signature = coa.pattern_signature
             WHERE sa.stato = 'PENDING'
             ORDER BY sa.timestamp_creazione DESC
         """).fetchall()
