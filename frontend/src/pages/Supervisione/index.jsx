@@ -705,7 +705,7 @@ const IndividualView = ({
     <div className="divide-y divide-slate-100">
       {sortedItems.map((sup) => {
         const urgency = getAnomaliaUrgency(sup);
-        const mlProgress = getMLProgress(sup.pattern_approvazioni || sup.count_pattern || 0);
+        const mlProgress = getMLProgress(sup.pattern_approvazioni || sup.count_pattern || sup.pattern_count || 0);
         const isProcessing = processingAction === sup.id_supervisione;
         const isListino = sup.tipo_supervisione === 'listino' || sup.codice_anomalia?.startsWith('LST-');
         const isLookup = sup.tipo_supervisione === 'lookup' || sup.codice_anomalia?.startsWith('LKP-');
@@ -827,7 +827,7 @@ const SupervisioneCard = ({
               />
             </div>
             <span className="text-xs text-slate-600">
-              {sup.pattern_approvazioni || sup.count_pattern || 0}/5
+              {sup.pattern_approvazioni || sup.count_pattern || sup.pattern_count || 0}/5
             </span>
           </div>
         </div>
@@ -850,7 +850,7 @@ const SupervisioneCard = ({
       isLookup={isLookup}
       isAic={isAic}
       isAnagrafica={isAnagrafica}
-      approvazioni={sup.pattern_approvazioni || sup.count_pattern || 0}
+      approvazioni={sup.pattern_approvazioni || sup.count_pattern || sup.pattern_count || 0}
       onNavigateToOrdine={onNavigateToOrdine}
       handleApprova={handleApprova}
       handleRifiuta={handleRifiuta}
