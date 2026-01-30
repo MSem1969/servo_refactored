@@ -34,20 +34,25 @@ async def get_supervisione_listino_detail(id_supervisione: int):
     db = get_db()
 
     # Recupera supervisione con dati ordine
+    # v11.4: Fallback per descrizione_riga - prova prima da id_dettaglio, poi da codice_aic
     row = db.execute("""
         SELECT sl.*,
-               od.descrizione AS descrizione_riga,
-               od.q_venduta, od.prezzo_netto AS prezzo_netto_attuale,
-               od.prezzo_pubblico AS prezzo_pubblico_attuale,
-               od.sconto_1 AS sconto_1_attuale, od.sconto_2 AS sconto_2_attuale,
-               od.sconto_3 AS sconto_3_attuale, od.sconto_4 AS sconto_4_attuale,
-               od.aliquota_iva AS aliquota_iva_attuale,
+               COALESCE(od.descrizione, od_aic.descrizione) AS descrizione_riga,
+               COALESCE(od.q_venduta, od_aic.q_venduta) AS q_venduta,
+               COALESCE(od.prezzo_netto, od_aic.prezzo_netto) AS prezzo_netto_attuale,
+               COALESCE(od.prezzo_pubblico, od_aic.prezzo_pubblico) AS prezzo_pubblico_attuale,
+               COALESCE(od.sconto_1, od_aic.sconto_1) AS sconto_1_attuale,
+               COALESCE(od.sconto_2, od_aic.sconto_2) AS sconto_2_attuale,
+               COALESCE(od.sconto_3, od_aic.sconto_3) AS sconto_3_attuale,
+               COALESCE(od.sconto_4, od_aic.sconto_4) AS sconto_4_attuale,
+               COALESCE(od.aliquota_iva, od_aic.aliquota_iva) AS aliquota_iva_attuale,
                ot.numero_ordine_vendor, ot.ragione_sociale_1, ot.pdf_file,
                col.count_approvazioni AS pattern_count,
                col.is_ordinario AS pattern_ordinario,
                col.prezzo_netto_pattern, col.sconto_1_pattern, col.sconto_2_pattern
         FROM supervisione_listino sl
         LEFT JOIN ordini_dettaglio od ON sl.id_dettaglio = od.id_dettaglio
+        LEFT JOIN ordini_dettaglio od_aic ON sl.id_testata = od_aic.id_testata AND sl.codice_aic = od_aic.codice_aic
         LEFT JOIN ordini_testata ot ON sl.id_testata = ot.id_testata
         LEFT JOIN criteri_ordinari_listino col ON sl.pattern_signature = col.pattern_signature
         WHERE sl.id_supervisione = %s
