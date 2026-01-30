@@ -850,6 +850,7 @@ const SupervisioneCard = ({
       isLookup={isLookup}
       isAic={isAic}
       isAnagrafica={isAnagrafica}
+      approvazioni={sup.pattern_approvazioni || sup.count_pattern || 0}
       onNavigateToOrdine={onNavigateToOrdine}
       handleApprova={handleApprova}
       handleRifiuta={handleRifiuta}
@@ -942,6 +943,7 @@ const SupervisioneActions = ({
   isLookup,
   isAic,
   isAnagrafica,
+  approvazioni = 0,    // v11.4: Conteggio approvazioni per abilitare Supervisione
   onNavigateToOrdine,
   handleApprova,
   handleRifiuta,
@@ -956,6 +958,8 @@ const SupervisioneActions = ({
   returnToOrdine,
 }) => {
   // v11.4: Workflow UNIFICATO - tutti i pattern hanno: Verifica Ordine + Azione Correttiva + Supervisione
+  // v11.4: Supervisione abilitata solo se almeno 1 approvazione (azione correttiva eseguita)
+  const canApprove = approvazioni > 0;
 
   return (
     <div className="flex items-center gap-3 flex-wrap">
@@ -993,13 +997,14 @@ const SupervisioneActions = ({
         </Button>
       )}
 
-      {/* 3. SUPERVISIONE - sempre presente per tutti */}
+      {/* 3. SUPERVISIONE - sempre presente per tutti, ma richiede almeno 1 approvazione */}
       <Button
         variant="success"
         size="sm"
         loading={isProcessing}
         onClick={() => handleApprova(sup.id_supervisione, sup.pattern_signature)}
-        disabled={isProcessing}
+        disabled={isProcessing || !canApprove}
+        title={!canApprove ? 'Richiede almeno 1 azione correttiva prima di approvare' : 'Approva supervisione e sblocca ordine'}
       >
         Supervisione
       </Button>
