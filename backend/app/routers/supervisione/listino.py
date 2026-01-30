@@ -42,7 +42,7 @@ async def get_supervisione_listino_detail(id_supervisione: int):
                od.sconto_1 AS sconto_1_attuale, od.sconto_2 AS sconto_2_attuale,
                od.sconto_3 AS sconto_3_attuale, od.sconto_4 AS sconto_4_attuale,
                od.aliquota_iva AS aliquota_iva_attuale,
-               ot.numero_ordine_vendor, ot.ragione_sociale_1,
+               ot.numero_ordine_vendor, ot.ragione_sociale_1, ot.pdf_file,
                col.count_approvazioni AS pattern_count,
                col.is_ordinario AS pattern_ordinario,
                col.prezzo_netto_pattern, col.sconto_1_pattern, col.sconto_2_pattern

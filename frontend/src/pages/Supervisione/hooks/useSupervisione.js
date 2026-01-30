@@ -355,11 +355,12 @@ export function useSupervisione({ currentUser, returnToOrdine, onReturnToOrdine,
               const idTestata = anomaliaDetail?.anomalia?.id_testata || supervisione?.id_testata;
               if (idTestata) {
                 const ordineRes = await ordiniApi.getOrdine(idTestata);
-                if (ordineRes?.pdf_file) {
+                // v11.4 fix: ordineRes è { success, data: {...ordine} }
+                if (ordineRes?.data?.pdf_file) {
                   anomaliaDetail = {
                     ...anomaliaDetail,
-                    anomalia: { ...anomaliaDetail.anomalia, pdf_file: ordineRes.pdf_file },
-                    ordine_data: { ...anomaliaDetail.ordine_data, pdf_file: ordineRes.pdf_file }
+                    anomalia: { ...anomaliaDetail.anomalia, pdf_file: ordineRes.data.pdf_file },
+                    ordine_data: { ...anomaliaDetail.ordine_data, pdf_file: ordineRes.data.pdf_file }
                   };
                 }
               }
@@ -384,7 +385,8 @@ export function useSupervisione({ currentUser, returnToOrdine, onReturnToOrdine,
           try {
             const { ordiniApi } = await import('../../../api');
             const ordineRes = await ordiniApi.getOrdine(supervisione.id_testata);
-            pdfFile = ordineRes?.pdf_file;
+            // v11.4 fix: ordineRes è { success, data: {...ordine} }
+            pdfFile = ordineRes?.data?.pdf_file;
           } catch (e) {
             console.warn('Impossibile caricare pdf_file:', e);
           }

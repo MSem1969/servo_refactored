@@ -59,7 +59,8 @@ const CorrezioneLisinoModal = ({ isOpen, onClose, supervisione, operatore, onSuc
           if (!pdf && supervisione?.id_testata) {
             try {
               const ordineRes = await ordiniApi.getOrdine(supervisione.id_testata);
-              pdf = ordineRes?.pdf_file;
+              // v11.4 fix: ordineRes è { success, data: {...ordine} }
+              pdf = ordineRes?.data?.pdf_file;
             } catch (e) {
               console.warn('Impossibile caricare pdf_file:', e);
             }

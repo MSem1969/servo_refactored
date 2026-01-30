@@ -160,7 +160,8 @@ const AicAssignmentModal = ({
       if (!idTestata) return;
       try {
         const ordineRes = await ordiniApi.getOrdine(idTestata);
-        setPdfFile(ordineRes?.pdf_file || null);
+        // v11.4 fix: ordineRes è { success, data: {...ordine} }
+        setPdfFile(ordineRes?.data?.pdf_file || null);
       } catch (e) {
         console.warn('Impossibile caricare pdf_file:', e);
       }

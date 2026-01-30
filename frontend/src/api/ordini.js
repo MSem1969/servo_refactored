@@ -22,6 +22,7 @@ export const ordiniApi = {
   trackView: (idTestata) => api.post(`/ordini/${idTestata}/view`).then(r => r.data),
 
   getDetail: (id) => api.get(`/ordini/${id}`).then(r => r.data),
+  getOrdine: (id) => api.get(`/ordini/${id}`).then(r => r.data), // Alias for getDetail
   getRighe: (id) => api.get(`/ordini/${id}/righe`).then(r => r.data),
   getRigheAll: (id) => api.get(`/ordini/${id}/righe?include_children=true`).then(r => r.data),
   updateStato: (id, stato) => api.put(`/ordini/${id}/stato?nuovo_stato=${stato}`).then(r => r.data),
