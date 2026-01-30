@@ -167,8 +167,20 @@ HAL_FARVI 271952954                      10905              00407890672     PATR
 
 ### Operazioni Protette
 
-- **ARCHIVIATO/EVASO**: bloccati da CONFERMA/RIPRISTINA singola
+- **ARCHIVIATO**: bloccato da CONFERMA singola (ma ripristinabile)
+- **EVASO**: bloccato da CONFERMA singola
 - **Generazione tracciato**: esclude ARCHIVIATO/EVASO
+
+### RIPRISTINA Singola Riga (v11.5 - HARD RESET)
+
+Il bottone RIPRISTINA su singola riga effettua un **HARD RESET**:
+- Azzera `q_evasa` e `q_da_evadere`
+- La riga torna a stato `ESTRATTO`
+- L'ordine passa a `PARZ_EVASO` (se aveva altre righe evase) o `ESTRATTO`
+
+**Stati ripristinabili:** ARCHIVIATO, CONFERMATO, IN_TRACCIATO, PARZIALE, **EVASO**
+
+**ATTENZIONE:** I tracciati già generati NON vengono annullati. L'operatore è responsabile di gestire eventuali discrepanze.
 
 ---
 

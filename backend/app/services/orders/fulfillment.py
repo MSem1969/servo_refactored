@@ -387,11 +387,13 @@ def ripristina_riga(
     operatore: str
 ) -> Dict[str, Any]:
     """
-    Ripristina una riga allo stato pre-conferma/pre-archiviazione.
+    Ripristina una riga allo stato pre-conferma/pre-evasione.
 
-    NOTA: Permette il ripristino di righe ARCHIVIATO per consentire
-    all'utente di annullare un'archiviazione fatta per errore.
-    Solo EVASO (completamente processato) non è ripristinabile.
+    v11.5: HARD RESET - permette anche il ripristino di righe EVASO.
+    Azzera q_evasa e q_da_evadere, la riga torna a ESTRATTO.
+
+    NOTA: I tracciati già generati NON vengono annullati.
+    L'operatore è responsabile di gestire eventuali discrepanze.
     """
     db = get_db()
 
@@ -406,38 +408,40 @@ def ripristina_riga(
         return {'success': False, 'error': 'Riga non trovata'}
 
     q_totale = (riga['q_venduta'] or 0) + (riga['q_sconto_merce'] or 0) + (riga['q_omaggio'] or 0)
-    q_evasa = riga['q_evasa'] or 0
+    q_evasa_precedente = riga['q_evasa'] or 0
 
-    # Solo EVASO (completamente processato) non è ripristinabile
-    if riga['stato_riga'] == 'EVASO':
-        return {'success': False, 'error': 'Riga già evasa - non ripristinabile'}
-
-    if q_evasa >= q_totale and q_totale > 0:
-        return {'success': False, 'error': f'Riga già completamente evasa ({q_evasa}/{q_totale}), non ripristinabile'}
-
-    # ARCHIVIATO può essere ripristinato (undo dell'archiviazione)
-    # CONFERMATO, IN_TRACCIATO possono essere ripristinati
-    # PARZIALE può essere ripristinato (torna a PARZIALE, azzera q_da_evadere)
-    stati_ripristinabili = ('ARCHIVIATO', 'CONFERMATO', 'IN_TRACCIATO', 'PARZIALE')
+    # v11.5: Tutti gli stati sono ripristinabili (incluso EVASO)
+    # ARCHIVIATO: undo archiviazione
+    # CONFERMATO/IN_TRACCIATO: revoca conferma
+    # PARZIALE: azzera q_evasa e q_da_evadere
+    # EVASO: HARD RESET - azzera q_evasa e torna a ESTRATTO
+    stati_ripristinabili = ('ARCHIVIATO', 'CONFERMATO', 'IN_TRACCIATO', 'PARZIALE', 'EVASO')
     if riga['stato_riga'] not in stati_ripristinabili:
         return {'success': False, 'error': f'Stato riga {riga["stato_riga"]} non ripristinabile'}
 
-    # Determina nuovo stato in base a q_evasa
-    nuovo_stato = 'PARZIALE' if q_evasa > 0 else 'ESTRATTO'
+    # v11.5: HARD RESET - azzera SEMPRE q_evasa e q_da_evadere
+    # La riga torna a ESTRATTO (disponibile per nuova evasione)
+    nuovo_stato = 'ESTRATTO'
 
     db.execute("""
         UPDATE ORDINI_DETTAGLIO
         SET q_da_evadere = 0,
-            stato_riga = ?
-        WHERE id_dettaglio = ?
-    """, (nuovo_stato, id_dettaglio))
+            q_evasa = 0,
+            q_residua = %s,
+            stato_riga = %s
+        WHERE id_dettaglio = %s
+    """, (q_totale, nuovo_stato, id_dettaglio))
 
     _aggiorna_contatori_ordine(id_testata)
     db.commit()
 
+    # Log dettagliato per audit (importante per EVASO)
+    log_msg = f"HARD RESET: {riga['stato_riga']} -> {nuovo_stato}"
+    if q_evasa_precedente > 0:
+        log_msg += f" (q_evasa azzerato: {q_evasa_precedente} -> 0)"
+
     log_operation('RIPRISTINA_RIGA', 'ORDINI_DETTAGLIO', id_dettaglio,
-                 f"Ripristinato da {riga['stato_riga']} a {nuovo_stato}",
-                 operatore=operatore)
+                 log_msg, operatore=operatore)
 
     return {
         'success': True,
@@ -445,7 +449,10 @@ def ripristina_riga(
         'stato_precedente': riga['stato_riga'],
         'stato_nuovo': nuovo_stato,
         'q_da_evadere_precedente': riga['q_da_evadere'] or 0,
-        'operatore': operatore
+        'q_evasa_precedente': q_evasa_precedente,
+        'q_evasa_nuovo': 0,
+        'operatore': operatore,
+        'warning': 'I tracciati già generati restano validi. Verificare eventuali discrepanze.' if q_evasa_precedente > 0 else None
     }
 
 

@@ -1416,10 +1416,12 @@ async def ripristina_riga_endpoint(
     request: RipristinaRequest
 ) -> Dict[str, Any]:
     """
-    Ripristina una singola riga allo stato pre-conferma.
+    Ripristina una singola riga allo stato pre-conferma/pre-evasione.
 
-    Resetta q_da_evadere a 0 e stato_riga a ESTRATTO (o PARZIALE se aveva già q_evasa).
-    NON modifica q_evasa (quantità già esportate in tracciati precedenti).
+    v11.5: HARD RESET - azzera q_evasa e q_da_evadere, riga torna a ESTRATTO.
+    Permette anche il ripristino di righe EVASO.
+
+    NOTA: I tracciati già generati NON vengono annullati.
 
     Args:
         id_testata: ID ordine
@@ -1427,7 +1429,7 @@ async def ripristina_riga_endpoint(
         operatore: Nome operatore
 
     Returns:
-        success, stato_precedente, stato_nuovo, q_da_evadere_precedente
+        success, stato_precedente, stato_nuovo, q_evasa_precedente, warning
     """
     try:
         result = ripristina_riga(
@@ -1439,14 +1441,23 @@ async def ripristina_riga_endpoint(
         if not result['success']:
             raise HTTPException(status_code=400, detail=result.get('error', 'Errore ripristino riga'))
 
-        return {
+        response = {
             "success": True,
             "id_dettaglio": result['id_dettaglio'],
             "stato_precedente": result['stato_precedente'],
             "stato_nuovo": result['stato_nuovo'],
             "q_da_evadere_precedente": result['q_da_evadere_precedente'],
+            "q_evasa_precedente": result.get('q_evasa_precedente', 0),
+            "q_evasa_nuovo": result.get('q_evasa_nuovo', 0),
             "message": f"Riga ripristinata: {result['stato_precedente']} -> {result['stato_nuovo']}"
         }
+
+        # v11.5: Includi warning se c'era q_evasa > 0
+        if result.get('warning'):
+            response['warning'] = result['warning']
+            response['message'] += f" (ATTENZIONE: q_evasa azzerato da {result.get('q_evasa_precedente', 0)})"
+
+        return response
     except HTTPException:
         raise
     except Exception as e:
