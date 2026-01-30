@@ -68,6 +68,21 @@ def generate_to_d_line(data: Dict[str, Any]) -> str:
     # QuantityDiscountPieces resta sempre 0
     q_omaggio_totale = q_sconto_merce + q_omaggio
 
+    # v11.5: VALIDAZIONE RIGIDA - totale tracciato <= q_da_evadere
+    # Se q_da_evadere è specificato, verifica che non ci sia duplicazione quantità
+    q_da_evadere = data.get('_q_da_evadere_originale') or data.get('q_da_evadere')
+    if q_da_evadere is not None:
+        q_da_evadere = int(q_da_evadere) if q_da_evadere else 0
+        totale_tracciato = q_venduta + q_omaggio_totale  # SalesQuantity + QuantityFreePieces
+        if totale_tracciato > q_da_evadere:
+            n_riga = data.get('n_riga', '?')
+            raise ValueError(
+                f"Formatter TO_D - Riga {n_riga}: totale tracciato ({totale_tracciato}) > "
+                f"q_da_evadere ({q_da_evadere}). "
+                f"SalesQuantity={q_venduta}, QuantityFreePieces={q_omaggio_totale}. "
+                f"Possibile duplicazione quantità."
+            )
+
     # Data consegna
     data_consegna = format_date_edi(data.get('data_consegna') or '')
 

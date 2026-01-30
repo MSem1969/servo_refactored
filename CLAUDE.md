@@ -111,6 +111,26 @@ HAL_FARVI 271952954                      10905              00407890672     PATR
 
 **REGOLA OMAGGIO:** `QuantityFreePieces = q_sconto_merce + q_omaggio` (QuantityDiscountPieces sempre 0)
 
+### VALIDAZIONE QUANTITÀ (v11.5 - CRITICA)
+
+**REGOLE VINCOLANTI:**
+1. `SalesQuantity + QuantityFreePieces` **NON DEVE MAI** superare `q_da_evadere`
+2. Se `q_venduta = 0`, allora `SalesQuantity = 0` (anche se ci sono omaggi)
+3. I valori originali (q_venduta, q_sconto_merce, q_omaggio) **NON vengono sovrascritti** da q_da_evadere
+
+**Evasione Totale (`q_da_evadere >= q_totale`):**
+- SalesQuantity = q_venduta (valore originale)
+- QuantityFreePieces = q_sconto_merce + q_omaggio (valori originali)
+
+**Evasione Parziale (`q_da_evadere < q_totale`):**
+- Le quantità vengono proporzionate mantenendo il rapporto originale
+- `ratio = q_da_evadere / q_totale`
+- Gli arrotondamenti vengono distribuiti preferibilmente su q_venduta
+
+**Validazione:**
+- Il generatore blocca con errore se `totale_tracciato > q_da_evadere`
+- Il formatter TO_D effettua doppio controllo di sicurezza
+
 ---
 
 ## Database - Campi Quantità

@@ -131,6 +131,21 @@ def generate_tracciati_per_ordine(
             det_dict['min_id'] = ordine_dict.get('min_id') or ''
             det_dict['codice_sito'] = ordine_dict.get('anag_codice_sito')
 
+            # v11.5: VALIDAZIONE RIGIDA QUANTITÀ TRACCIATO
+            # Verifica che il totale nel tracciato non superi q_da_evadere
+            q_venduta = int(det_dict.get('q_venduta') or 0)
+            q_sconto_merce = int(det_dict.get('q_sconto_merce') or 0)
+            q_omaggio = int(det_dict.get('q_omaggio') or 0)
+            q_da_evadere = det_dict.get('q_da_evadere')
+            totale_tracciato = q_venduta + q_sconto_merce + q_omaggio
+
+            if q_da_evadere is not None:
+                q_da_evadere = int(q_da_evadere) if q_da_evadere else 0
+                det_dict['_q_da_evadere_originale'] = q_da_evadere
+                if totale_tracciato > q_da_evadere:
+                    # Skip riga con errore e logga warning
+                    continue
+
             line = generate_to_d_line(det_dict)
             lines_d.append(line)
 
@@ -425,7 +440,8 @@ def valida_e_genera_tracciato(
     lines_d = []
     righe_esportate = []
 
-    for det in dettagli:
+    try:
+      for det in dettagli:
         det_dict = dict(det)
 
         # Prepara dati per tracciato
@@ -433,14 +449,80 @@ def valida_e_genera_tracciato(
         det_dict['min_id'] = ordine_dict.get('min_id') or ''
         det_dict['codice_sito'] = ordine_dict.get('anag_codice_sito')
 
-        # USA q_da_evadere per la quantita nel tracciato (NON q_evasa che e il cumulativo)
+        # v11.5: VALIDAZIONE RIGIDA QUANTITÀ TRACCIATO
+        # I valori nel tracciato devono corrispondere ESATTAMENTE ai valori originali
+        # q_da_evadere è usato solo per controllo, NON per sovrascrivere le quantità
         q_da_evadere = det_dict.get('q_da_evadere', 0) or 0
-        det_dict['q_venduta'] = q_da_evadere
         det_dict['_q_da_evadere_originale'] = q_da_evadere  # Salva per post-processing
+
+        # Calcola quantità originali (valori da DB, NON modificati)
+        q_venduta_orig = int(det_dict.get('q_venduta') or 0)
+        q_sconto_merce_orig = int(det_dict.get('q_sconto_merce') or 0)
+        q_omaggio_orig = int(det_dict.get('q_omaggio') or 0)
+        q_totale_orig = q_venduta_orig + q_sconto_merce_orig + q_omaggio_orig
+
+        # REGOLA: Se SalesQuantity è 0, DEVE restare 0 anche se ci sono omaggi
+        # Il totale nel tracciato (SalesQuantity + QuantityFreePieces) non deve MAI
+        # superare q_da_evadere (la quantità effettivamente da evadere)
+
+        if q_da_evadere >= q_totale_orig:
+            # Evasione totale: usa i valori originali SENZA modifiche
+            # q_venduta resta il valore originale (può essere 0)
+            pass  # I valori in det_dict sono già corretti dal DB
+        else:
+            # Evasione parziale: proporziona le quantità
+            # Mantiene la proporzione originale tra q_venduta e omaggi
+            if q_totale_orig > 0:
+                ratio = q_da_evadere / q_totale_orig
+                # Calcola le quantità proporzionate
+                q_venduta_prop = int(q_venduta_orig * ratio)
+                q_sconto_merce_prop = int(q_sconto_merce_orig * ratio)
+                q_omaggio_prop = int(q_omaggio_orig * ratio)
+
+                # Aggiusta arrotondamenti per garantire totale = q_da_evadere
+                totale_prop = q_venduta_prop + q_sconto_merce_prop + q_omaggio_prop
+                diff = q_da_evadere - totale_prop
+
+                # Distribuisci la differenza (preferibilmente su q_venduta se > 0)
+                if diff != 0:
+                    if q_venduta_prop > 0:
+                        q_venduta_prop += diff
+                    elif q_omaggio_prop > 0:
+                        q_omaggio_prop += diff
+                    else:
+                        q_sconto_merce_prop += diff
+
+                det_dict['q_venduta'] = q_venduta_prop
+                det_dict['q_sconto_merce'] = q_sconto_merce_prop
+                det_dict['q_omaggio'] = q_omaggio_prop
+
+        # VALIDAZIONE FINALE: verifica che il totale tracciato <= q_da_evadere
+        q_venduta_final = int(det_dict.get('q_venduta') or 0)
+        q_sconto_merce_final = int(det_dict.get('q_sconto_merce') or 0)
+        q_omaggio_final = int(det_dict.get('q_omaggio') or 0)
+        totale_tracciato = q_venduta_final + q_sconto_merce_final + q_omaggio_final
+
+        if totale_tracciato > q_da_evadere:
+            # Errore critico: le quantità nel tracciato superano quelle da evadere
+            raise ValueError(
+                f"Riga {det_dict.get('n_riga')}: totale tracciato ({totale_tracciato}) > "
+                f"q_da_evadere ({q_da_evadere}). "
+                f"Dettaglio: q_venduta={q_venduta_final}, q_sconto_merce={q_sconto_merce_final}, "
+                f"q_omaggio={q_omaggio_final}"
+            )
 
         line = generate_to_d_line(det_dict)
         lines_d.append(line)
         righe_esportate.append(det_dict)
+
+    except ValueError as e:
+        # v11.5: Errore di validazione quantità - restituisci messaggio utente chiaro
+        return {
+            'success': False,
+            'error': f"ERRORE VALIDAZIONE QUANTITÀ TRACCIATO\n\n{str(e)}\n\n"
+                     "Il totale delle quantità nel tracciato (SalesQuantity + QuantityFreePieces) "
+                     "non può superare la quantità da evadere. Verificare i dati dell'ordine."
+        }
 
     # 4. Scrivi file
     with open(path_t, 'w', encoding=config.ENCODING) as f:
