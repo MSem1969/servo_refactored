@@ -33,6 +33,7 @@ import Button from './Button';
  * @param {boolean} closeOnEsc - Chiudi con ESC
  * @param {boolean} draggable - Abilita trascinamento modal (default: true)
  * @param {object} actions - Azioni footer { confirm, cancel, confirmText, cancelText, confirmVariant, loading }
+ * @param {React.Node} headerActions - v11.4: Azioni aggiuntive nel header (es. PdfViewerButton)
  */
 const ModalBase = ({
   isOpen,
@@ -48,6 +49,7 @@ const ModalBase = ({
   closeOnEsc = true,
   draggable = true,
   actions,
+  headerActions,
   className = '',
 }) => {
   // v11.4: Stato per drag
@@ -184,7 +186,7 @@ const ModalBase = ({
             }`}
             onMouseDown={handleMouseDown}
           >
-            <div>
+            <div className="flex-1">
               <h3 className={`font-semibold text-lg ${titleColorClasses[variant]}`}>
                 {title}
                 {draggable && (
@@ -197,6 +199,12 @@ const ModalBase = ({
                 <p className="text-sm text-slate-500 mt-0.5">{subtitle}</p>
               )}
             </div>
+            {/* v11.4: Header actions (es. PDF viewer button) */}
+            {headerActions && (
+              <div className="flex items-center gap-2 mx-3">
+                {headerActions}
+              </div>
+            )}
             {showCloseButton && (
               <button
                 onClick={onClose}

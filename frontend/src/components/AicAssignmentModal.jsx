@@ -375,6 +375,7 @@ const AicAssignmentModal = ({
       subtitle={subtitle}
       size="lg"
       variant={variant}
+      headerActions={<PdfViewerButton pdfFile={pdfFile} variant="compact" />}
     >
       {loading ? (
         <Loading text="Caricamento dettagli..." />
@@ -385,11 +386,6 @@ const AicAssignmentModal = ({
         </div>
       ) : (
         <div className="space-y-6">
-          {/* v11.4: Bottone Visualizza PDF */}
-          <div className="flex justify-end">
-            <PdfViewerButton pdfFile={pdfFile} />
-          </div>
-
           {/* Info ordine/pattern/anomalia */}
           <InfoSection
             mode={mode}

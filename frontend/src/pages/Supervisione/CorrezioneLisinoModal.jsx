@@ -206,6 +206,7 @@ const CorrezioneLisinoModal = ({ isOpen, onClose, supervisione, operatore, onSuc
       subtitle={subtitleText}
       size="lg"
       variant="primary"
+      headerActions={<PdfViewerButton pdfFile={pdfFile} variant="compact" />}
       actions={{
         confirm: handleSubmit,
         confirmText: 'Salva Correzione',
@@ -219,11 +220,6 @@ const CorrezioneLisinoModal = ({ isOpen, onClose, supervisione, operatore, onSuc
         </div>
       ) : (
         <div className="space-y-4">
-          {/* v11.4: Bottone Visualizza PDF */}
-          <div className="flex justify-end">
-            <PdfViewerButton pdfFile={pdfFile} />
-          </div>
-
           {/* Suggerimenti pattern */}
           {hasSuggerimenti && (
             <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
