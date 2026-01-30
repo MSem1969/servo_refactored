@@ -194,7 +194,9 @@ const CorrezioneLisinoModal = ({ isOpen, onClose, supervisione, operatore, onSuc
   const suggerimenti = detail?.suggerimenti || {};
   const hasSuggerimenti = Object.keys(suggerimenti).length > 0;
 
-  const subtitleText = `AIC: ${supervisione?.codice_aic} - ${(supervisione?.descrizione_prodotto || detail?.riga_corrente?.descrizione_prodotto || 'N/A').toUpperCase()}`;
+  // v11.4: Usa descrizione_riga (da ordini_dettaglio) invece di descrizione_prodotto (che contiene messaggio anomalia)
+  const descrizioneProdotto = detail?.descrizione_riga || riga?.descrizione || supervisione?.descrizione_normalizzata || 'N/A';
+  const subtitleText = `AIC: ${supervisione?.codice_aic || detail?.codice_aic || ''} - ${descrizioneProdotto.toUpperCase()}`;
 
   return (
     <ModalBase
