@@ -6,6 +6,10 @@ Sistema estrazione ordini farmaceutici da PDF → tracciati ministeriali TO_T/TO
 
 **Stack:** FastAPI + PostgreSQL + React + Vite + TailwindCSS + React Query
 
+**Documentazione correlata:**
+- [SCHEMA_DB_SERVO.md](./SCHEMA_DB_SERVO.md) - Schema completo database (53 tabelle, 19 viste)
+- [RECOVERY.md](./RECOVERY.md) - Guida disaster recovery e backup
+
 ---
 
 ## Comandi
