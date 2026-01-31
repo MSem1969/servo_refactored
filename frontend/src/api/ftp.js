@@ -22,7 +22,7 @@ export const ftpApi = {
   },
 
   // Crea nuovo endpoint (NO 2FA)
-  createEndpoint: (data) => api.post('/ftp-endpoints', data).then(r => r.data),
+  createEndpoint: (data) => api.post('/ftp-endpoints/', data).then(r => r.data),
 
   // Richiedi OTP per operazione sensibile
   requestOtp: (endpointId, operation) =>
