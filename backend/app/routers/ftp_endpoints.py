@@ -206,14 +206,14 @@ async def get_ftp_log(
 
         query = f"""
             SELECT
-                l.id, l.id_esportazione, l.operazione, l.esito,
-                l.host, l.file_remoto, l.messaggio, l.dettagli,
-                l.timestamp, l.id_endpoint,
+                l.id, l.id_esportazione, l.azione, l.esito,
+                l.file_name, l.ftp_path, l.messaggio,
+                l.created_at, l.id_endpoint,
                 e.nome as endpoint_nome
             FROM ftp_log l
             LEFT JOIN ftp_endpoints e ON l.id_endpoint = e.id
             {where_clause}
-            ORDER BY l.timestamp DESC
+            ORDER BY l.created_at DESC
             LIMIT %s
         """
         params.append(limit)
@@ -226,13 +226,13 @@ async def get_ftp_log(
             logs.append({
                 'id': row['id'],
                 'id_esportazione': row['id_esportazione'],
-                'operazione': row['operazione'],
+                'operazione': row['azione'],
                 'esito': row['esito'],
-                'host': row['host'],
-                'file_remoto': row['file_remoto'],
+                'host': row['ftp_path'],
+                'file_remoto': row['file_name'],
                 'messaggio': row['messaggio'],
-                'dettagli': row['dettagli'],
-                'timestamp': row['timestamp'].isoformat() if row['timestamp'] else None,
+                'dettagli': None,
+                'timestamp': row['created_at'].isoformat() if row['created_at'] else None,
                 'id_endpoint': row['id_endpoint'],
                 'endpoint_nome': row['endpoint_nome'],
             })
@@ -807,7 +807,8 @@ async def get_ftp_stats(
                 COUNT(*) FILTER (WHERE attivo = FALSE) as disattivi
             FROM ftp_endpoints
         """)
-        endpoints = dict(cursor.fetchone())
+        row = cursor.fetchone()
+        endpoints = {'totale': row['totale'], 'attivi': row['attivi'], 'disattivi': row['disattivi']}
 
         # Log ultimi 24h
         cursor = db.execute("""
@@ -816,16 +817,17 @@ async def get_ftp_stats(
                 COUNT(*) FILTER (WHERE esito = 'SUCCESS') as successo,
                 COUNT(*) FILTER (WHERE esito = 'FAILED') as falliti
             FROM ftp_log
-            WHERE timestamp > NOW() - INTERVAL '24 hours'
+            WHERE created_at > NOW() - INTERVAL '24 hours'
         """)
-        log_24h = dict(cursor.fetchone())
+        row = cursor.fetchone()
+        log_24h = {'totale': row['totale'], 'successo': row['successo'], 'falliti': row['falliti']}
 
         # Ultimo invio per endpoint
         cursor = db.execute("""
             SELECT
                 e.id, e.nome, e.vendor_code,
-                MAX(l.timestamp) as ultimo_invio,
-                (SELECT esito FROM ftp_log WHERE id_endpoint = e.id ORDER BY timestamp DESC LIMIT 1) as ultimo_esito
+                MAX(l.created_at) as ultimo_invio,
+                (SELECT esito FROM ftp_log WHERE id_endpoint = e.id ORDER BY created_at DESC LIMIT 1) as ultimo_esito
             FROM ftp_endpoints e
             LEFT JOIN ftp_log l ON l.id_endpoint = e.id
             GROUP BY e.id, e.nome, e.vendor_code
