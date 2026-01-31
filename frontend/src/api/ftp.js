@@ -6,7 +6,7 @@ import api from './client';
 
 export const ftpApi = {
   // Lista tutti gli endpoint FTP
-  getEndpoints: () => api.get('/ftp-endpoints').then(r => r.data),
+  getEndpoints: () => api.get('/ftp-endpoints/').then(r => r.data),
 
   // Lista vendor e depositi disponibili
   getVendors: () => api.get('/ftp-endpoints/vendors').then(r => r.data),
