@@ -152,14 +152,14 @@ async def list_available_vendors(
         # Vendor predefiniti
         predefined = ['ANGELINI', 'BAYER', 'CODIFI', 'MENARINI', 'DOC_GENERICI', 'OPELLA', 'VIATRIS', 'CHIESI']
 
-        # Vendor dagli ordini
+        # Vendor dagli ordini (converti a stringa per sicurezza)
         cursor = db.execute("""
             SELECT DISTINCT id_vendor FROM ordini_testata WHERE id_vendor IS NOT NULL
         """)
-        from_orders = [row['id_vendor'] for row in cursor.fetchall()]
+        from_orders = [str(row['id_vendor']) for row in cursor.fetchall() if row['id_vendor']]
 
-        # Unisci e ordina
-        all_vendors = sorted(set(predefined + from_orders))
+        # Unisci e ordina (solo stringhe)
+        all_vendors = sorted(set(predefined + [v for v in from_orders if isinstance(v, str)]))
 
         # Depositi disponibili (da ftp_endpoints o default)
         try:
