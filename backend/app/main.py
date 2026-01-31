@@ -51,7 +51,7 @@ from .routers.utenti import router as utenti_router
 async def lifespan(app: FastAPI):
     """Gestisce startup e shutdown dell'applicazione."""
     # Startup
-    print("🚀 SERV.O v11.3 - Avvio...")
+    print("🚀 SERV.O v11.6 - Avvio...")
 
     # Crea directories
     os.makedirs(config.UPLOAD_DIR, exist_ok=True)
@@ -180,6 +180,10 @@ app.include_router(report.router, prefix=API_PREFIX, tags=["Report"])
 # Router Permessi (v10.0)
 from .routers import permessi
 app.include_router(permessi.router, prefix=API_PREFIX, tags=["Permessi"])
+
+# Router FTP Endpoints (v11.6)
+from .routers import ftp_endpoints
+app.include_router(ftp_endpoints.router, prefix=API_PREFIX, tags=["FTP Endpoints"])
 
 
 # =============================================================================

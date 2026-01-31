@@ -1,7 +1,7 @@
 # =============================================================================
-# SERV.O v10.4 - BACKEND REQUIREMENTS
+# SERV.O v11.6 - BACKEND REQUIREMENTS
 # =============================================================================
-# Aggiornato: 2026-01-20
+# Aggiornato: 2026-01-31
 # =============================================================================
 
 # ===== Database PostgreSQL =====
@@ -20,6 +20,7 @@ email-validator==2.2.0      # Validazione email (pydantic EmailStr)
 # ===== Autenticazione e Sicurezza =====
 PyJWT==2.8.0                # Token JWT
 passlib[bcrypt]==1.7.4      # Hashing password (con backend bcrypt)
+cryptography==42.0.0        # AES-256 encryption (v11.6 FTP passwords)
 
 # ===== PDF Processing =====
 pdfplumber==0.10.3          # Estrazione testo e tabelle da PDF

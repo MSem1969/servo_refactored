@@ -63,6 +63,9 @@ export { reportApi } from './report';
 // Permessi
 export { permessiApi } from './permessi';
 
+// FTP Endpoints (v11.6)
+export { ftpApi } from './ftp';
+
 // Default export: axios client
 import api from './client';
 export default api;

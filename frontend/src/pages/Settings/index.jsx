@@ -13,6 +13,7 @@ import UtentiPage from "../UtentiPage";
 import BackupPage from "../BackupPage";
 import EmailTab from "./EmailTab";
 import PermessiTab from "./PermessiTab";
+import FtpTab from "./FtpTab";
 
 /**
  * Componente SettingsPage modernizzato
@@ -618,6 +619,7 @@ Ultimo Backup: ${systemInfo.last_backup || "Mai"}
         { id: "general", label: "Generale", icon: "⚙️" },
         { id: "automation", label: "Automazione", icon: "🤖" },
         { id: "email", label: "Email", icon: "📧" },
+        { id: "ftp", label: "FTP", icon: "📤" },
         { id: "database", label: "Database", icon: "🗄️" },
         { id: "backup", label: "Backup", icon: "💾" },
         { id: "system", label: "Sistema", icon: "📊" },
@@ -756,6 +758,11 @@ Ultimo Backup: ${systemInfo.last_backup || "Mai"}
         {/* Tab Email - Solo Admin */}
         {activeTab === "email" && isAdmin && (
           <EmailTab />
+        )}
+
+        {/* Tab FTP - Solo Admin (v11.6) */}
+        {activeTab === "ftp" && isAdmin && (
+          <FtpTab />
         )}
 
         {/* Tab Automazione - Solo Admin */}
