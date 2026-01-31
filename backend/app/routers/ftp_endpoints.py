@@ -154,9 +154,9 @@ async def list_available_vendors(
 
         # Vendor dagli ordini
         cursor = db.execute("""
-            SELECT DISTINCT vendor FROM ordini_testata WHERE vendor IS NOT NULL
+            SELECT DISTINCT id_vendor FROM ordini_testata WHERE id_vendor IS NOT NULL
         """)
-        from_orders = [row['vendor'] for row in cursor.fetchall()]
+        from_orders = [row['id_vendor'] for row in cursor.fetchall()]
 
         # Unisci e ordina
         all_vendors = sorted(set(predefined + from_orders))
