@@ -74,9 +74,9 @@ def _get_client_info(request: Request) -> tuple:
     return ip, user_agent
 
 
-def _check_admin_role(current_user: dict) -> None:
+def _check_admin_role(current_user) -> None:
     """Verifica che l'utente sia admin."""
-    if current_user.get('ruolo') != 'admin':
+    if current_user.ruolo != 'admin':
         raise HTTPException(403, "Solo gli admin possono gestire gli endpoint FTP")
 
 
@@ -293,7 +293,7 @@ async def create_ftp_endpoint(
             data.ftp_host, data.ftp_port, data.ftp_path, data.ftp_username, encrypted_password,
             data.ftp_passive_mode, data.ftp_timeout, data.attivo, data.ordine,
             data.max_tentativi, data.intervallo_retry_sec,
-            current_user['id_operatore'], current_user['id_operatore']
+            current_user.id_operatore, current_user.id_operatore
         ))
 
         new_id = cursor.fetchone()['id']
@@ -302,7 +302,7 @@ async def create_ftp_endpoint(
         log_operation(
             'FTP_ENDPOINT_CREATE', 'ftp_endpoints', new_id,
             f'Creato endpoint FTP: {data.nome} ({data.vendor_code}/{data.deposito or "TUTTI"})',
-            operatore=current_user['username']
+            operatore=current_user.username
         )
 
         return {
@@ -351,7 +351,7 @@ async def request_endpoint_otp(
 
     # Richiedi OTP
     result = request_otp(
-        id_operatore=current_user['id_operatore'],
+        id_operatore=current_user.id_operatore,
         tipo_operazione=operation,
         riferimento_id=endpoint_id,
         ip_address=ip,
@@ -386,7 +386,7 @@ async def view_endpoint_password(
 
     # Verifica OTP
     otp_result = verify_otp(
-        id_operatore=current_user['id_operatore'],
+        id_operatore=current_user.id_operatore,
         codice=otp_data.codice,
         tipo_operazione='FTP_VIEW_PASSWORD',
         riferimento_id=endpoint_id,
@@ -412,7 +412,7 @@ async def view_endpoint_password(
         log_operation(
             'FTP_PASSWORD_VIEW', 'ftp_endpoints', endpoint_id,
             f'Password visualizzata per: {endpoint["nome"]}',
-            operatore=current_user['username']
+            operatore=current_user.username
         )
 
         return {
@@ -444,7 +444,7 @@ async def update_ftp_endpoint(
 
     # Verifica OTP
     otp_result = verify_otp(
-        id_operatore=current_user['id_operatore'],
+        id_operatore=current_user.id_operatore,
         codice=otp_code,
         tipo_operazione='FTP_EDIT',
         riferimento_id=endpoint_id,
@@ -524,7 +524,7 @@ async def update_ftp_endpoint(
 
         updates.append("updated_at = NOW()")
         updates.append("updated_by = %s")
-        params.append(current_user['id_operatore'])
+        params.append(current_user.id_operatore)
 
         params.append(endpoint_id)
 
@@ -539,7 +539,7 @@ async def update_ftp_endpoint(
         log_operation(
             'FTP_ENDPOINT_UPDATE', 'ftp_endpoints', endpoint_id,
             f'Aggiornato endpoint FTP: {endpoint["nome"]}',
-            operatore=current_user['username']
+            operatore=current_user.username
         )
 
         return {
@@ -574,7 +574,7 @@ async def delete_ftp_endpoint(
 
     # Verifica OTP
     otp_result = verify_otp(
-        id_operatore=current_user['id_operatore'],
+        id_operatore=current_user.id_operatore,
         codice=otp_code,
         tipo_operazione='FTP_EDIT',
         riferimento_id=endpoint_id,
@@ -599,7 +599,7 @@ async def delete_ftp_endpoint(
         log_operation(
             'FTP_ENDPOINT_DELETE', 'ftp_endpoints', endpoint_id,
             f'Eliminato endpoint FTP: {endpoint["nome"]} ({endpoint["vendor_code"]})',
-            operatore=current_user['username']
+            operatore=current_user.username
         )
 
         return {
@@ -647,7 +647,7 @@ async def toggle_endpoint_active(
             UPDATE ftp_endpoints
             SET attivo = %s, updated_at = NOW(), updated_by = %s
             WHERE id = %s
-        """, (new_status, current_user['id_operatore'], endpoint_id))
+        """, (new_status, current_user.id_operatore, endpoint_id))
 
         db.commit()
 
@@ -655,7 +655,7 @@ async def toggle_endpoint_active(
         log_operation(
             'FTP_ENDPOINT_TOGGLE', 'ftp_endpoints', endpoint_id,
             f'Endpoint {action}: {endpoint["nome"]}',
-            operatore=current_user['username']
+            operatore=current_user.username
         )
 
         return {
@@ -743,7 +743,7 @@ async def test_ftp_connection(
             log_operation(
                 'FTP_TEST_SUCCESS', 'ftp_endpoints', endpoint_id,
                 f'Test connessione OK: {endpoint["nome"]} ({elapsed:.2f}s)',
-                operatore=current_user['username']
+                operatore=current_user.username
             )
 
             return {
