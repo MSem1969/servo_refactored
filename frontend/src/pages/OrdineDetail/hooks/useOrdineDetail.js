@@ -201,17 +201,32 @@ export function useOrdineDetail(ordineId, currentUser) {
   const ripristinaRiga = useCallback(async (riga) => {
     const idRiga = riga.id_dettaglio || riga.id;
     const qDaEvadere = riga.q_da_evadere || 0;
+    const qEvasa = riga.q_evasa || 0;
+    const statoRiga = riga.stato_riga;
 
-    if (qDaEvadere === 0) {
-      alert('Questa riga non ha quantità "Da Evadere" impostata.');
+    // v11.5: Per righe EVASO, mostra conferma HARD RESET
+    if (statoRiga === 'EVASO') {
+      if (!window.confirm(`HARD RESET - RIGA EVASA\n\n` +
+          `Prodotto: ${riga.descrizione || riga.descrizione_prodotto || '-'}\n` +
+          `Quantità evasa: ${qEvasa}\n\n` +
+          `ATTENZIONE:\n` +
+          `- La quantità evasa sarà AZZERATA\n` +
+          `- La riga tornerà a stato ESTRATTO\n` +
+          `- I tracciati già generati NON saranno annullati\n` +
+          `- Potrai generare un nuovo tracciato per questa riga\n\n` +
+          `Confermi il ripristino?`)) {
+        return;
+      }
+    } else if (qDaEvadere === 0 && qEvasa === 0) {
+      alert('Questa riga non ha quantità da ripristinare.');
       return;
-    }
-
-    if (!window.confirm(`Vuoi annullare la conferma di questa riga?\n\n` +
-        `Prodotto: ${riga.descrizione || riga.descrizione_prodotto || '-'}\n` +
-        `Da Evadere attuale: ${qDaEvadere}\n\n` +
-        `La quantità "Da Evadere" sarà azzerata.`)) {
-      return;
+    } else {
+      if (!window.confirm(`Vuoi annullare la conferma di questa riga?\n\n` +
+          `Prodotto: ${riga.descrizione || riga.descrizione_prodotto || '-'}\n` +
+          `Da Evadere attuale: ${qDaEvadere}\n\n` +
+          `La quantità "Da Evadere" sarà azzerata.`)) {
+        return;
+      }
     }
 
     try {

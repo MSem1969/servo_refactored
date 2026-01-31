@@ -409,7 +409,16 @@ function RigaActions({
           )}
 
           {riga.stato_riga === 'EVASO' && (
-            <span className="text-xs text-green-600 font-medium">✓ Completato</span>
+            <>
+              <span className="text-xs text-green-600 font-medium">✓ Completato</span>
+              <button
+                onClick={() => onRipristinaRiga(riga)}
+                className="w-full px-2 py-1 text-xs bg-amber-100 hover:bg-amber-200 text-amber-700 rounded whitespace-nowrap"
+                title="Hard Reset: azzera q_evasa e riporta a ESTRATTO"
+              >
+                ↩ Ripristina
+              </button>
+            </>
           )}
 
           {riga.stato_riga !== 'ARCHIVIATO' && riga.stato_riga !== 'EVASO' && (
