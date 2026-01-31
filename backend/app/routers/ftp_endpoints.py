@@ -15,7 +15,7 @@ from ..auth import get_current_user
 from ..services.crypto import encrypt_password, decrypt_password, CryptoError
 from ..services.auth import OTPService, request_otp, verify_otp
 
-router = APIRouter(prefix="/ftp-endpoints", tags=["FTP Endpoints"])
+router = APIRouter(prefix="/ftp-endpoints", tags=["FTP Endpoints"], redirect_slashes=False)
 
 
 # =============================================================================
