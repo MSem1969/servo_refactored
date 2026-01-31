@@ -161,11 +161,14 @@ async def list_available_vendors(
         # Unisci e ordina
         all_vendors = sorted(set(predefined + from_orders))
 
-        # Depositi disponibili
-        cursor = db.execute("""
-            SELECT DISTINCT deposito FROM ftp_config WHERE deposito IS NOT NULL
-        """)
-        depositi = [row['deposito'] for row in cursor.fetchall()]
+        # Depositi disponibili (da ftp_endpoints o default)
+        try:
+            cursor = db.execute("""
+                SELECT DISTINCT deposito FROM ftp_endpoints WHERE deposito IS NOT NULL
+            """)
+            depositi = [row['deposito'] for row in cursor.fetchall()]
+        except Exception:
+            depositi = []
         if not depositi:
             depositi = ['CT', 'CL']  # Default
 
