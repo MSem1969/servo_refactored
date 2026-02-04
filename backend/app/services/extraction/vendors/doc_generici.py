@@ -1,5 +1,5 @@
 """
-EXTRACTOR_TO - Estrattore DOC_GENERICI v1.0
+EXTRACTOR_TO - Estrattore DOC_GENERICI v1.1
 ============================================
 Transfer Order DOC Generici (ordini via grossisti)
 
@@ -7,11 +7,16 @@ Particolarità:
 - Doppio indirizzo (fiscale + consegna)
 - NO prezzi/sconti nel documento
 - Classe farmaco (A-A, C-C, I-I)
-- Supporto multipagina
+- Supporto multipagina con delimitatore "Pagina n di y"
 - Codici AIC anche non standard (integratori 9xx)
 - Lookup su indirizzo CONSEGNA (non fiscale)
 
 Regole: REGOLE_DOC_GENERICI.md
+
+v1.1 (2026-02-04):
+- Fix gestione ordini multipagina: usa "Pagina n di y" come delimitatore
+- Fine ordine = quando n = y (ultima pagina)
+- Pagine intermedie (n < y) vengono accumulate nello stesso ordine
 """
 
 import re
@@ -29,7 +34,12 @@ def extract_doc_generici(text: str, lines: List[str], pdf_path: str = None) -> L
     Estrattore per Transfer Order DOC GENERICI.
 
     MULTI-ORDINE: Ogni PDF può contenere più ordini!
-    Ogni ordine inizia con "Num. XXXXXXXXXX DEL" e finisce con "Totale: NNN"
+
+    Delimitazione ordini (v1.1):
+    - Ogni ordine inizia con "Num. XXXXXXXXXX DEL"
+    - Ogni ordine termina con "Pagina n di y" dove n = y (ultima pagina)
+    - Se n < y, l'ordine continua nella pagina successiva
+    - Header ripetuto su pagine successive viene ignorato (stesso numero ordine)
 
     Applica regole:
     - DOCGEN-H01..H11 (header)
@@ -51,20 +61,51 @@ def extract_doc_generici(text: str, lines: List[str], pdf_path: str = None) -> L
     # Pattern per identificare inizio nuovo ordine
     pattern_nuovo_ordine = re.compile(r'Num\.\s*(\d{10})\s+DEL\s+(\d{2}/\d{2}/\d{4})', re.I)
 
+    # Pattern per identificare fine pagina/ordine: "Pagina n di y"
+    pattern_pagina = re.compile(r'Pagina\s+(\d+)\s+di\s+(\d+)', re.I)
+
     for i, line in enumerate(lines):
         # Rileva inizio nuovo ordine
         m = pattern_nuovo_ordine.search(line)
         if m:
-            # Se c'è un ordine precedente, finalizzalo
+            nuovo_numero = m.group(1)
+            nuova_data = m.group(2)
+
+            # Verifica se è lo stesso ordine (pagina successiva) o un ordine diverso
+            if current_order and current_order.get('numero_ordine') == nuovo_numero:
+                # Stesso numero ordine = continuazione su pagina successiva
+                # Non creare nuovo ordine, continua ad accumulare righe
+                # (l'header ripetuto viene ignorato, i campi sono già popolati)
+                continue
+
+            # Numero ordine diverso: finalizza ordine precedente e inizia nuovo
             if current_order and current_order.get('numero_ordine'):
                 _finalize_order(current_order, current_lines)
                 orders.append(current_order)
 
             # Inizia nuovo ordine
             current_order = _create_new_order()
-            current_order['numero_ordine'] = m.group(1)
-            current_order['data_ordine'] = parse_date(m.group(2))
+            current_order['numero_ordine'] = nuovo_numero
+            current_order['data_ordine'] = parse_date(nuova_data)
             current_lines = [line]
+            continue
+
+        # Controlla se siamo a fine pagina (Pagina n di y)
+        m_pag = pattern_pagina.search(line)
+        if m_pag and current_order:
+            pagina_corrente = int(m_pag.group(1))
+            pagina_totale = int(m_pag.group(2))
+
+            # Aggiungi la riga (contiene info pagina)
+            current_lines.append(line)
+
+            # Se è l'ultima pagina dell'ordine (n = y), finalizza
+            if pagina_corrente == pagina_totale:
+                _finalize_order(current_order, current_lines)
+                orders.append(current_order)
+                current_order = None
+                current_lines = []
+            # Altrimenti (n < y) l'ordine continua, non finalizzare
             continue
 
         # Accumula righe per l'ordine corrente
@@ -74,7 +115,8 @@ def extract_doc_generici(text: str, lines: List[str], pdf_path: str = None) -> L
             # Estrai header fields mentre scorre
             _extract_header_fields(current_order, line, lines, i)
 
-    # Finalizza l'ultimo ordine
+    # Finalizza l'ultimo ordine se non è già stato finalizzato
+    # (caso di PDF senza footer "Pagina n di y")
     if current_order and current_order.get('numero_ordine'):
         _finalize_order(current_order, current_lines)
         orders.append(current_order)
