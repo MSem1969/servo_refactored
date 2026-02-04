@@ -217,7 +217,7 @@ async def upload_listino_prezzo(id_supervisione: int, operatore: str = Query(...
 
     # Verifica supervisione
     sup = db.execute("""
-        SELECT sp.*, ot.vendor
+        SELECT sp.*, ot.id_vendor as vendor
         FROM supervisione_prezzo sp
         JOIN ordini_testata ot ON sp.id_testata = ot.id_testata
         WHERE sp.id_supervisione = %s AND sp.stato = 'PENDING'

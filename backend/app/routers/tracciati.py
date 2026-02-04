@@ -480,7 +480,7 @@ async def ftp_pending() -> Dict[str, Any]:
         db = get_db()
 
         pending = db.execute("""
-            SELECT e.*, ot.vendor, ot.numero_ordine_vendor, ot.deposito_riferimento
+            SELECT e.*, ot.id_vendor as vendor, ot.numero_ordine_vendor, ot.deposito_riferimento
             FROM esportazioni e
             JOIN esportazioni_dettaglio ed ON e.id_esportazione = ed.id_esportazione
             JOIN ordini_testata ot ON ed.id_testata = ot.id_testata

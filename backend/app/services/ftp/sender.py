@@ -82,7 +82,7 @@ class FTPSender:
         max_tentativi = ftp_config['max_tentativi'] if ftp_config else 3
 
         exports = self.db.execute("""
-            SELECT e.*, ot.vendor, ot.deposito_riferimento
+            SELECT e.*, ot.id_vendor as vendor, ot.deposito_riferimento
             FROM esportazioni e
             JOIN esportazioni_dettaglio ed ON e.id_esportazione = ed.id_esportazione
             JOIN ordini_testata ot ON ed.id_testata = ot.id_testata
@@ -110,7 +110,7 @@ class FTPSender:
         """
         # Recupera info esportazione
         export = self.db.execute("""
-            SELECT e.*, ot.vendor, ot.deposito_riferimento
+            SELECT e.*, ot.id_vendor as vendor, ot.deposito_riferimento
             FROM esportazioni e
             JOIN esportazioni_dettaglio ed ON e.id_esportazione = ed.id_esportazione
             JOIN ordini_testata ot ON ed.id_testata = ot.id_testata
@@ -248,7 +248,7 @@ class FTPSender:
     def get_failed_exports_for_alert(self) -> List[Dict[str, Any]]:
         """Recupera esportazioni FAILED che richiedono alert."""
         exports = self.db.execute("""
-            SELECT e.*, ot.vendor, ot.numero_ordine_vendor
+            SELECT e.*, ot.id_vendor as vendor, ot.numero_ordine_vendor
             FROM esportazioni e
             JOIN esportazioni_dettaglio ed ON e.id_esportazione = ed.id_esportazione
             JOIN ordini_testata ot ON ed.id_testata = ot.id_testata
