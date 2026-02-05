@@ -1,5 +1,5 @@
 """
-EXTRACTOR_TO - Estrattore RECKITT v11.2
+EXTRACTOR_TO - Estrattore RECKITT v11.3
 =======================================
 Reckitt Benckiser Healthcare (Italia) S.p.A.
 
@@ -106,26 +106,43 @@ def extract_reckitt(text: str, lines: List[str], pdf_path: str = None) -> List[D
         data['nome_agente'] = m.group(1).strip()[:50]
         data['data_consegna'] = parse_date(m.group(2))
 
-    # Cliente: "Cliente : FARMACIA 22 MARZO SAS DI BUCCARELLI VINCENZO (1000053731)"
-    m = re.search(r'Cliente\s*:\s*([^(]+)\s*\((\d+)\)', text)
-    if m:
-        data['ragione_sociale'] = m.group(1).strip()[:50]
-        data['codice_cliente_sap'] = m.group(2)
+    # === CLIENTE E INDIRIZZO (Approccio semantico/sequenziale) ===
+    # Formato RECKITT con testo spezzato su più righe e nome agente in mezzo:
+    # "Cliente : FARMACIA MAGLIULO DR.SSA ANTONELLA MAGLIULO & c. (1000091"
+    # "MICHELE VAIANO 28-11-2025 760) VIA MICHELE CARAVELLI 27/29, TORRE ANNUNZIATA, NA, 80058"
+    #
+    # Sequenza: RAGIONE SOCIALE → (codice SAP) → [agente+data opzionale] → INDIRIZZO, CIVICO, CITTÀ, PROV, CAP
+    # Il codice cliente SAP non è necessario per i tracciati.
 
-    # Indirizzo: sulla stessa riga dopo la data consegna
-    # Pattern: "27-11-2025 CORSO 22 MARZO, 23 , MILANO, MI, 20129"
-    m = re.search(r'\d{2}-\d{2}-\d{4}\s+([A-Z0-9][^,\n]+,\s*\d+\s*,\s*[A-Z]+,\s*[A-Z]{2},\s*\d{5})', text)
-    if m:
-        addr_line = m.group(1).strip()
-        # Parse indirizzo: "CORSO 22 MARZO, 23 , MILANO, MI, 20129"
-        addr_parts = [p.strip() for p in addr_line.split(',')]
-        if len(addr_parts) >= 4:
-            # Via e civico sono le prime parti
-            indirizzo_parts = addr_parts[:-3]
-            data['indirizzo'] = ', '.join(indirizzo_parts)[:50]
-            data['citta'] = addr_parts[-3].strip()[:50]
-            data['provincia'] = addr_parts[-2].strip()[:5]
-            data['cap'] = addr_parts[-1].strip()[:5]
+    # Normalizza il testo: rimuovi newline per gestire testo spezzato
+    text_normalized = re.sub(r'\s+', ' ', text)
+
+    # Keywords che identificano l'inizio dell'indirizzo
+    addr_keywords = r'(?:VIA|VIALE|CORSO|PIAZZA|PIAZZALE|LARGO|VICOLO|STRADA|CONTRADA|LOC\.|LOCALITA)'
+
+    # Pattern unico che cattura tutta la sequenza:
+    # - "Cliente :" seguito da ragione sociale
+    # - Parentesi con codice (ignorato)
+    # - [opzionale: nome agente e data] - ignorato
+    # - Keyword indirizzo seguito da indirizzo, CITTÀ, PROV, CAP
+    cliente_pattern = re.search(
+        r'Cliente\s*:\s*'                          # Marker "Cliente :"
+        r'([A-Z][A-Z0-9\s\.\'\&\-]+?)'             # Ragione sociale (gruppo 1)
+        r'\s*\([^)]+\)\s*'                         # (codice SAP) - ignorato
+        r'.*?'                                     # Qualsiasi cosa (agente, data) - ignorato
+        r'(' + addr_keywords + r'[A-Z0-9\s\.\,\/\-]+?)'  # Indirizzo da keyword (gruppo 2)
+        r',\s*([A-Z][A-Z\s\']+?)'                  # Città (gruppo 3)
+        r',\s*([A-Z]{2})'                          # Provincia (gruppo 4)
+        r',\s*(\d{5})',                            # CAP (gruppo 5)
+        text_normalized, re.I
+    )
+
+    if cliente_pattern:
+        data['ragione_sociale'] = cliente_pattern.group(1).strip()[:80]
+        data['indirizzo'] = cliente_pattern.group(2).strip()[:50]
+        data['citta'] = cliente_pattern.group(3).strip()[:50]
+        data['provincia'] = cliente_pattern.group(4).upper()[:5]
+        data['cap'] = cliente_pattern.group(5).strip()[:5]
 
     # === ESTRAZIONE PRODOTTI ===
     if pdf_path and PDFPLUMBER_AVAILABLE:
