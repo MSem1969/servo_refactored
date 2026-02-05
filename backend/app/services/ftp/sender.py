@@ -28,41 +28,29 @@ class FTPSender:
 
     def __init__(self):
         self.db = get_db()
-        self._vendor_mapping: Dict[str, str] = {}
+        self._vendor_mapping: Dict[int, str] = {}
         self._load_vendor_mapping()
 
     def _load_vendor_mapping(self):
-        """Carica mapping vendor -> path FTP dal database."""
+        """Carica mapping id_vendor -> path FTP dal database."""
         mappings = self.db.execute("""
-            SELECT vendor_code, ftp_path FROM ftp_vendor_mapping
-            WHERE attivo = TRUE
+            SELECT id_vendor, ftp_path FROM ftp_vendor_mapping
+            WHERE attivo = TRUE AND id_vendor IS NOT NULL
         """).fetchall()
 
-        self._vendor_mapping = {m['vendor_code']: m['ftp_path'] for m in mappings}
+        self._vendor_mapping = {m['id_vendor']: m['ftp_path'] for m in mappings}
 
-    def get_ftp_path_for_vendor(self, vendor: str) -> Optional[str]:
+    def get_ftp_path_for_vendor(self, id_vendor: int) -> Optional[str]:
         """
         Restituisce il path FTP per un vendor.
 
         Args:
-            vendor: Codice vendor (es: ANGELINI, DOC_GENERICI)
+            id_vendor: ID vendor (FK verso tabella vendor)
 
         Returns:
             Path FTP (es: ./ANGELINI) o None se non mappato
         """
-        # Normalizza vendor code
-        vendor_normalized = vendor.upper().replace(' ', '_')
-
-        # Cerca match diretto
-        if vendor_normalized in self._vendor_mapping:
-            return self._vendor_mapping[vendor_normalized]
-
-        # Cerca match parziale
-        for code, path in self._vendor_mapping.items():
-            if code in vendor_normalized or vendor_normalized in code:
-                return path
-
-        return None
+        return self._vendor_mapping.get(id_vendor)
 
     def get_pending_exports(self) -> List[Dict[str, Any]]:
         """
