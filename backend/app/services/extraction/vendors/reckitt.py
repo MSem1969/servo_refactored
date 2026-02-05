@@ -1,5 +1,5 @@
 """
-EXTRACTOR_TO - Estrattore RECKITT v11.3
+EXTRACTOR_TO - Estrattore RECKITT v11.4
 =======================================
 Reckitt Benckiser Healthcare (Italia) S.p.A.
 
@@ -11,6 +11,13 @@ Particolarità:
 - Cliente con codice SAP tra parentesi es: (1000053731)
 - Indirizzo in formato: VIA, NUM, CITTA, PROV, CAP
 - Sconto Merce (SM) nella colonna dedicata
+- Supporto multipagina con delimitatore "Pagina n di y"
+- Supporto multi-ordine nello stesso PDF
+
+v11.4 (2026-02-05):
+- Aggiunta gestione multi-ordine come DOC_GENERICI
+- Fine ordine = quando Pagina n = y (ultima pagina)
+- Fix estrazione header con approccio semantico/sequenziale
 """
 
 import re
@@ -67,7 +74,15 @@ def _normalize_aic_reckitt(codice: str, descrizione: str = '') -> Tuple[str, str
 
 def extract_reckitt(text: str, lines: List[str], pdf_path: str = None) -> List[Dict]:
     """
-    Estrattore RECKITT v1.0.
+    Estrattore RECKITT v11.4.
+
+    MULTI-ORDINE: Ogni PDF può contenere più ordini!
+
+    Delimitazione ordini:
+    - Ogni ordine inizia con numero "SO########_##"
+    - Ogni ordine termina con "Pagina n di y" dove n = y (ultima pagina)
+    - Se n < y, l'ordine continua nella pagina successiva
+    - Header ripetuto su pagine successive viene ignorato (stesso numero ordine)
 
     Usa pdfplumber per estrarre tabelle strutturate.
     Fallback su parsing testo se pdf_path non disponibile.
@@ -78,41 +93,135 @@ def extract_reckitt(text: str, lines: List[str], pdf_path: str = None) -> List[D
         pdf_path: Percorso al file PDF (opzionale)
 
     Returns:
-        Lista con un singolo ordine estratto
+        Lista di dict, uno per ogni ordine nel PDF
     """
-    data = {'vendor': 'RECKITT', 'righe': []}
+    orders = []
+    current_order = None
+    current_lines = []
 
-    # === HEADER ===
-    # Formato RECKITT: etichette e valori su righe separate
-    # Riga 1: "Ordine N. DATA TIPO ORDINE SOCIETA'"
-    # Riga 2: "SO00001517001235_01 21-11-2025 Transfer Order IT04 - HEALTHCARE"
-    # Riga 3: "VENDITORE DATA CONSEGNA Cliente : ..."
-    # Riga 4: "GABRIELE PAGANI 27-11-2025 CORSO 22 MARZO, 23 , MILANO, MI, 20129"
+    # Pattern per identificare inizio nuovo ordine: SO0000151700XXXX_01
+    pattern_nuovo_ordine = re.compile(r'\b(SO\d{10,}_\d{2})\b')
 
-    # Numero ordine: formato SO########_## sulla seconda riga
-    m = re.search(r'\b(SO\d{10,}_\d{2})\b', text)
-    if m:
-        data['numero_ordine'] = m.group(1).strip()
+    # Pattern per identificare fine pagina/ordine: "Pagina n di y"
+    pattern_pagina = re.compile(r'Pagina\s+(\d+)\s+di\s+(\d+)', re.I)
 
-    # Data ordine: prima data DD-MM-YYYY dopo il numero ordine
-    m = re.search(r'SO\d+_\d+\s+(\d{2}-\d{2}-\d{4})', text)
-    if m:
-        data['data_ordine'] = parse_date(m.group(1))
+    for i, line in enumerate(lines):
+        # Rileva inizio nuovo ordine
+        m = pattern_nuovo_ordine.search(line)
+        if m:
+            nuovo_numero = m.group(1)
 
-    # Data consegna: data sulla riga del venditore (dopo VENDITORE ... DATA CONSEGNA)
-    # Pattern: nome agente seguito da data
+            # Verifica se è lo stesso ordine (pagina successiva) o un ordine diverso
+            if current_order and current_order.get('numero_ordine') == nuovo_numero:
+                # Stesso numero ordine = continuazione su pagina successiva
+                # Non creare nuovo ordine, continua ad accumulare righe
+                continue
+
+            # Numero ordine diverso: finalizza ordine precedente e inizia nuovo
+            if current_order and current_order.get('numero_ordine'):
+                _finalize_order(current_order, current_lines, pdf_path)
+                orders.append(current_order)
+
+            # Inizia nuovo ordine
+            current_order = _create_new_order()
+            current_order['numero_ordine'] = nuovo_numero
+
+            # Estrai data ordine dalla stessa riga
+            m_data = re.search(r'SO\d+_\d+\s+(\d{2}-\d{2}-\d{4})', line)
+            if m_data:
+                current_order['data_ordine'] = parse_date(m_data.group(1))
+
+            current_lines = [line]
+            continue
+
+        # Controlla se siamo a fine pagina (Pagina n di y)
+        m_pag = pattern_pagina.search(line)
+        if m_pag and current_order:
+            pagina_corrente = int(m_pag.group(1))
+            pagina_totale = int(m_pag.group(2))
+
+            # Aggiungi la riga
+            current_lines.append(line)
+
+            # Se è l'ultima pagina dell'ordine (n = y), finalizza
+            if pagina_corrente == pagina_totale:
+                _finalize_order(current_order, current_lines, pdf_path)
+                orders.append(current_order)
+                current_order = None
+                current_lines = []
+            # Altrimenti (n < y) l'ordine continua, non finalizzare
+            continue
+
+        # Accumula righe per l'ordine corrente
+        if current_order:
+            current_lines.append(line)
+
+    # Finalizza l'ultimo ordine se non è già stato finalizzato
+    # (caso di PDF senza footer "Pagina n di y")
+    if current_order and current_order.get('numero_ordine'):
+        _finalize_order(current_order, current_lines, pdf_path)
+        orders.append(current_order)
+
+    return orders
+
+
+def _create_new_order() -> Dict:
+    """Crea struttura dati per nuovo ordine RECKITT."""
+    return {
+        'vendor': 'RECKITT',
+        'numero_ordine': '',
+        'data_ordine': '',
+        'data_consegna': '',
+        'nome_agente': '',
+        'ragione_sociale': '',
+        'indirizzo': '',
+        'cap': '',
+        'citta': '',
+        'provincia': '',
+        'righe': [],
+    }
+
+
+def _finalize_order(order: Dict, lines: List[str], pdf_path: str = None):
+    """
+    Finalizza un ordine estraendo header e prodotti dalle righe accumulate.
+
+    NOTA: Per supportare multi-ordine, l'estrazione prodotti usa SEMPRE
+    il text parsing sulle righe accumulate (non pdfplumber che legge tutto il PDF).
+
+    Args:
+        order: Dizionario ordine da completare
+        lines: Righe di testo accumulate per questo ordine
+        pdf_path: Percorso PDF (non usato per prodotti in multi-ordine)
+    """
+    # Ricostruisci il testo dalle righe
+    text = '\n'.join(lines)
+
+    # === ESTRAI HEADER ===
+    _extract_header(order, text)
+
+    # === ESTRAI PRODOTTI ===
+    # Usa sempre text parsing per garantire estrazione solo delle righe
+    # di questo ordine (pdfplumber leggerebbe tutto il PDF)
+    order['righe'] = _extract_products_from_text(text, lines)
+
+
+def _extract_header(order: Dict, text: str):
+    """
+    Estrae campi header dal testo dell'ordine.
+
+    Approccio semantico/sequenziale per gestire testo spezzato su più righe.
+    """
+    # Data consegna e nome agente
     m = re.search(r'VENDITORE\s+DATA\s+CONSEGNA[^\n]*\n([A-Z][A-Z\s]+?)\s+(\d{2}-\d{2}-\d{4})', text)
     if m:
-        data['nome_agente'] = m.group(1).strip()[:50]
-        data['data_consegna'] = parse_date(m.group(2))
+        order['nome_agente'] = m.group(1).strip()[:50]
+        order['data_consegna'] = parse_date(m.group(2))
 
     # === CLIENTE E INDIRIZZO (Approccio semantico/sequenziale) ===
     # Formato RECKITT con testo spezzato su più righe e nome agente in mezzo:
     # "Cliente : FARMACIA MAGLIULO DR.SSA ANTONELLA MAGLIULO & c. (1000091"
     # "MICHELE VAIANO 28-11-2025 760) VIA MICHELE CARAVELLI 27/29, TORRE ANNUNZIATA, NA, 80058"
-    #
-    # Sequenza: RAGIONE SOCIALE → (codice SAP) → [agente+data opzionale] → INDIRIZZO, CIVICO, CITTÀ, PROV, CAP
-    # Il codice cliente SAP non è necessario per i tracciati.
 
     # Normalizza il testo: rimuovi newline per gestire testo spezzato
     text_normalized = re.sub(r'\s+', ' ', text)
@@ -120,11 +229,7 @@ def extract_reckitt(text: str, lines: List[str], pdf_path: str = None) -> List[D
     # Keywords che identificano l'inizio dell'indirizzo
     addr_keywords = r'(?:VIA|VIALE|CORSO|PIAZZA|PIAZZALE|LARGO|VICOLO|STRADA|CONTRADA|LOC\.|LOCALITA)'
 
-    # Pattern unico che cattura tutta la sequenza:
-    # - "Cliente :" seguito da ragione sociale
-    # - Parentesi con codice (ignorato)
-    # - [opzionale: nome agente e data] - ignorato
-    # - Keyword indirizzo seguito da indirizzo, CITTÀ, PROV, CAP
+    # Pattern unico che cattura tutta la sequenza
     cliente_pattern = re.search(
         r'Cliente\s*:\s*'                          # Marker "Cliente :"
         r'([A-Z][A-Z0-9\s\.\'\&\-]+?)'             # Ragione sociale (gruppo 1)
@@ -138,23 +243,11 @@ def extract_reckitt(text: str, lines: List[str], pdf_path: str = None) -> List[D
     )
 
     if cliente_pattern:
-        data['ragione_sociale'] = cliente_pattern.group(1).strip()[:80]
-        data['indirizzo'] = cliente_pattern.group(2).strip()[:50]
-        data['citta'] = cliente_pattern.group(3).strip()[:50]
-        data['provincia'] = cliente_pattern.group(4).upper()[:5]
-        data['cap'] = cliente_pattern.group(5).strip()[:5]
-
-    # === ESTRAZIONE PRODOTTI ===
-    if pdf_path and PDFPLUMBER_AVAILABLE:
-        try:
-            data['righe'] = _extract_products_from_pdf(pdf_path, data)
-        except Exception as e:
-            print(f"   ⚠️ Errore estrazione RECKITT con PDF: {e}")
-            data['righe'] = _extract_products_from_text(text, lines)
-    else:
-        data['righe'] = _extract_products_from_text(text, lines)
-
-    return [data]
+        order['ragione_sociale'] = cliente_pattern.group(1).strip()[:80]
+        order['indirizzo'] = cliente_pattern.group(2).strip()[:50]
+        order['citta'] = cliente_pattern.group(3).strip()[:50]
+        order['provincia'] = cliente_pattern.group(4).upper()[:5]
+        order['cap'] = cliente_pattern.group(5).strip()[:5]
 
 
 def _extract_products_from_pdf(pdf_path: str, data: Dict) -> List[Dict]:
