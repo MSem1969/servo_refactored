@@ -142,6 +142,7 @@ async def reset_sistema(
             "log_criteri_applicati",
             "audit_modifiche",
             # 2. Esportazioni e tracciati
+            "ftp_log",  # Ha FK verso esportazioni
             "esportazioni_dettaglio",
             "esportazioni",
             "tracciati_dettaglio",
@@ -150,7 +151,9 @@ async def reset_sistema(
             "crm_allegati",
             "crm_messaggi",
             "crm_tickets",
-            # 4. Supervisione (tutte le tipologie)
+            # 4. Supervisione (tutte le tipologie - ordine per FK)
+            "supervisione_anagrafica",  # Ha FK verso anomalie e ordini_testata
+            "supervisione_unificata",   # Ha FK verso ordini_testata
             "supervisione_espositore",
             "supervisione_listino",
             "supervisione_lookup",
