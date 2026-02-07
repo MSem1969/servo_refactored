@@ -165,45 +165,6 @@ def modifica_riga_dettaglio(
 # ANOMALIE - MODIFICA
 # =============================================================================
 
-def _sblocca_ordine_se_anomalie_risolte(id_testata: int) -> bool:
-    """Sblocca ordine quando tutte le anomalie sono risolte/ignorate."""
-    db = get_db()
-
-    anomalie_aperte = db.execute("""
-        SELECT COUNT(*) as cnt FROM anomalie
-        WHERE id_testata = ? AND stato IN ('APERTA', 'IN_GESTIONE')
-    """, (id_testata,)).fetchone()
-
-    supervisioni_pending = db.execute("""
-        SELECT COUNT(*) as cnt FROM supervisione_espositore
-        WHERE id_testata = ? AND stato = 'PENDING'
-    """, (id_testata,)).fetchone()
-
-    anomalie_cnt = anomalie_aperte['cnt'] if anomalie_aperte else 0
-    supervisioni_cnt = supervisioni_pending['cnt'] if supervisioni_pending else 0
-
-    if anomalie_cnt == 0 and supervisioni_cnt == 0:
-        result = db.execute("""
-            UPDATE ordini_testata
-            SET stato = 'ESTRATTO'
-            WHERE id_testata = ? AND stato IN ('ANOMALIA', 'PENDING_REVIEW')
-            RETURNING id_testata
-        """, (id_testata,)).fetchone()
-
-        db.commit()
-
-        if result:
-            log_operation(
-                'SBLOCCO_ORDINE',
-                'ORDINI_TESTATA',
-                id_testata,
-                'Ordine sbloccato - tutte le anomalie risolte'
-            )
-            return True
-
-    return False
-
-
 def update_anomalia_stato(
     id_anomalia: int,
     nuovo_stato: str,
@@ -234,13 +195,18 @@ def update_anomalia_stato(
         """, (nuovo_stato, note, id_anomalia))
 
         sup_stato = 'APPROVED' if nuovo_stato == 'RISOLTA' else 'REJECTED'
-        db.execute("""
-            UPDATE supervisione_espositore
-            SET stato = ?,
-                timestamp_decisione = CURRENT_TIMESTAMP,
-                note = COALESCE(note || ' - ', '') || 'Risolto da anomalia'
-            WHERE id_anomalia = ? AND stato = 'PENDING'
-        """, (sup_stato, id_anomalia))
+        for sup_table in ['supervisione_espositore', 'supervisione_lookup', 'supervisione_listino',
+                          'supervisione_prezzo', 'supervisione_aic']:
+            try:
+                db.execute(f"""
+                    UPDATE {sup_table}
+                    SET stato = %s,
+                        timestamp_decisione = CURRENT_TIMESTAMP,
+                        note = COALESCE(note || ' - ', '') || 'Risolto da anomalia'
+                    WHERE id_anomalia = %s AND stato = 'PENDING'
+                """, (sup_stato, id_anomalia))
+            except Exception:
+                pass
     else:
         db.execute(
             "UPDATE anomalie SET stato = ? WHERE id_anomalia = ?",
@@ -268,7 +234,8 @@ def update_anomalia_stato(
     if anomalia and nuovo_stato in ('RISOLTA', 'IGNORATA'):
         id_testata = anomalia['id_testata']
         if id_testata:
-            _sblocca_ordine_se_anomalie_risolte(id_testata)
+            from ..supervision.requests import sblocca_ordine_se_completo
+            sblocca_ordine_se_completo(id_testata)
 
     return True
 

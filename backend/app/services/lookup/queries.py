@@ -83,7 +83,7 @@ def popola_header_da_anagrafica(id_testata: int, operatore: str = None) -> bool:
         SELECT id_farmacia_lookup, id_parafarmacia_lookup,
                codice_ministeriale_estratto, cap, citta, provincia, indirizzo,
                ragione_sociale_1, ragione_sociale_1_estratta, deposito_riferimento,
-               fonte_anagrafica
+               fonte_anagrafica, partita_iva_estratta
         FROM ordini_testata WHERE id_testata = %s
     """, (id_testata,)).fetchone()
 
@@ -139,6 +139,7 @@ def popola_header_da_anagrafica(id_testata: int, operatore: str = None) -> bool:
         'provincia': ordine['provincia'],
         'indirizzo': ordine['indirizzo'],
         'deposito_riferimento': ordine['deposito_riferimento'],
+        'partita_iva_estratta': ordine['partita_iva_estratta'],
         'fonte_anagrafica': ordine['fonte_anagrafica'] if 'fonte_anagrafica' in ordine.keys() else None
     }
 
@@ -150,6 +151,11 @@ def popola_header_da_anagrafica(id_testata: int, operatore: str = None) -> bool:
         'codice_ministeriale_estratto': min_id,  # MIN_ID sempre dall'anagrafica
         'deposito_riferimento': deposito_riferimento or '',  # Da anagrafica_clienti
     }
+
+    # P.IVA dall'anagrafica (popola se vuota nell'ordine)
+    partita_iva_anagrafica = farm_data.get('partita_iva', '')
+    if not ordine['partita_iva_estratta'] and partita_iva_anagrafica:
+        nuovi_valori['partita_iva_estratta'] = partita_iva_anagrafica
 
     # Popola campi SOLO se vuoti nell'ordine (non sovrascrivere dati estratti)
     if not ordine['cap'] and farm_data.get('cap') and not _has_corrupted_chars(farm_data.get('cap') or ''):
@@ -185,6 +191,7 @@ def popola_header_da_anagrafica(id_testata: int, operatore: str = None) -> bool:
             indirizzo = COALESCE(NULLIF(%s, ''), indirizzo),
             ragione_sociale_1 = COALESCE(NULLIF(%s, ''), ragione_sociale_1),
             deposito_riferimento = COALESCE(NULLIF(%s, ''), deposito_riferimento),
+            partita_iva_estratta = COALESCE(NULLIF(%s, ''), partita_iva_estratta),
             fonte_anagrafica = %s,
             data_modifica_anagrafica = CURRENT_TIMESTAMP,
             operatore_modifica_anagrafica = %s
@@ -197,6 +204,7 @@ def popola_header_da_anagrafica(id_testata: int, operatore: str = None) -> bool:
         nuovi_valori.get('indirizzo', ''),
         ragione_sociale_da_usare or '',
         deposito_riferimento or '',
+        nuovi_valori.get('partita_iva_estratta', ''),
         fonte_anagrafica,
         operatore,
         id_testata
@@ -291,7 +299,8 @@ def lookup_manuale(
     id_testata: int,
     id_farmacia: int = None,
     id_parafarmacia: int = None,
-    min_id_manuale: str = None
+    min_id_manuale: str = None,
+    operatore: str = None
 ) -> bool:
     """
     Assegna manualmente una farmacia/parafarmacia a un ordine.
@@ -301,10 +310,13 @@ def lookup_manuale(
         id_farmacia: ID farmacia da database (opzionale)
         id_parafarmacia: ID parafarmacia da database (opzionale)
         min_id_manuale: Codice ministeriale inserito manualmente (opzionale)
+        operatore: Username operatore (per audit e supervisione)
 
     Returns:
         True se successo
     """
+    from ..supervision.requests import sblocca_ordine_se_completo
+
     db = get_db()
 
     # Supporto MIN_ID manuale
@@ -332,7 +344,25 @@ def lookup_manuale(
             WHERE id_testata = %s AND tipo_anomalia = 'LOOKUP' AND stato = 'APERTA'
         """, (f'MIN_ID inserito manualmente: {min_id_norm}', id_testata))
 
+        # Risolvi supervisione_lookup collegata
+        db.execute("""
+            UPDATE supervisione_lookup
+            SET stato = 'APPROVED',
+                operatore = %s,
+                timestamp_decisione = CURRENT_TIMESTAMP,
+                min_id_assegnato = %s,
+                note = 'Risolto da assegnazione manuale MIN_ID'
+            WHERE id_testata = %s AND stato = 'PENDING'
+        """, (operatore, min_id_norm, id_testata))
+
         db.commit()
+
+        # Popola header da anagrafica (tenta lookup da MIN_ID)
+        popola_header_da_anagrafica(id_testata, operatore)
+
+        # Sblocca ordine se tutte le anomalie/supervisioni sono risolte
+        sblocca_ordine_se_completo(id_testata)
+
         return True
 
     # Assegnazione da database
@@ -362,14 +392,29 @@ def lookup_manuale(
         WHERE id_testata = %s AND tipo_anomalia = 'LOOKUP' AND stato = 'APERTA'
     """, (id_testata,))
 
+    # Risolvi supervisione_lookup collegata
+    db.execute("""
+        UPDATE supervisione_lookup
+        SET stato = 'APPROVED',
+            operatore = %s,
+            timestamp_decisione = CURRENT_TIMESTAMP,
+            min_id_assegnato = COALESCE(
+                (SELECT codice_ministeriale_estratto FROM ordini_testata WHERE id_testata = %s),
+                ''
+            ),
+            id_farmacia_assegnata = %s,
+            id_parafarmacia_assegnata = %s,
+            note = 'Risolto da assegnazione manuale database'
+        WHERE id_testata = %s AND stato = 'PENDING'
+    """, (operatore, id_testata, id_farmacia, id_parafarmacia, id_testata))
+
     db.commit()
 
     # Popola header con dati anagrafica
-    popola_header_da_anagrafica(id_testata)
+    popola_header_da_anagrafica(id_testata, operatore)
 
-    # Sblocca ordine se tutte le anomalie sono risolte
-    from ..orders.commands import _sblocca_ordine_se_anomalie_risolte
-    _sblocca_ordine_se_anomalie_risolte(id_testata)
+    # Sblocca ordine se tutte le anomalie/supervisioni sono risolte
+    sblocca_ordine_se_completo(id_testata)
 
     return True
 

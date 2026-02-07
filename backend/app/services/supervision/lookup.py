@@ -204,7 +204,7 @@ def approva_supervisione_lookup(
             timestamp_decisione = CURRENT_TIMESTAMP,
             note = %s,
             min_id_assegnato = %s,
-            id_farmacia_selezionata = %s
+            id_farmacia_assegnata = %s
         WHERE id_supervisione = %s
     """, (operatore, note, min_id, id_farmacia, id_supervisione))
 

@@ -255,16 +255,24 @@ def blocca_ordine_per_supervisione(id_testata: int):
 
 def sblocca_ordine_se_completo(id_testata: int):
     """
-    Sblocca ordine se non ci sono piu supervisioni pending.
+    Sblocca ordine se non ci sono piu supervisioni pending ne anomalie aperte.
 
     v8.1: Verifica stato righe per determinare se ESTRATTO o CONFERMATO.
     - Se tutte le righe sono confermate → stato = CONFERMATO
     - Altrimenti → stato = ESTRATTO
 
+    v11.5: Aggiunta verifica anomalie aperte (unificato con _sblocca_ordine_se_anomalie_risolte)
+
     Args:
         id_testata: ID ordine da verificare
     """
     db = get_db()
+
+    # Verifica anomalie aperte
+    anomalie_aperte = db.execute("""
+        SELECT COUNT(*) FROM anomalie
+        WHERE id_testata = %s AND stato IN ('APERTA', 'IN_GESTIONE')
+    """, (id_testata,)).fetchone()[0]
 
     # Verifica supervisioni espositore pending
     pending_esp = db.execute("""
@@ -298,7 +306,7 @@ def sblocca_ordine_se_completo(id_testata: int):
 
     total_pending = pending_esp + pending_listino + pending_lookup + pending_prezzo + pending_aic
 
-    if total_pending == 0:
+    if total_pending == 0 and anomalie_aperte == 0:
         # v8.1: Determina stato ordine in base allo stato delle righe
         # Conta righe totali e righe in stati "confermati"
         righe_stats = db.execute("""

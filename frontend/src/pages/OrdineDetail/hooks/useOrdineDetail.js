@@ -445,7 +445,7 @@ export function useOrdineDetail(ordineId, currentUser) {
 
   const assignFarmacia = useCallback(async (idTestata, idFarmacia, idParafarmacia, minIdManuale = null) => {
     try {
-      const res = await lookupApi.manuale(idTestata, idFarmacia, idParafarmacia, minIdManuale);
+      const res = await lookupApi.manuale(idTestata, idFarmacia, idParafarmacia, minIdManuale, currentUser?.username);
       if (res.success) {
         alert(minIdManuale ? `MIN_ID ${minIdManuale} assegnato` : 'Farmacia assegnata');
         setShowAnomaliaDetailModal(false);
@@ -458,7 +458,7 @@ export function useOrdineDetail(ordineId, currentUser) {
       setError('Errore: ' + err.message);
       return false;
     }
-  }, [loadOrdine]);
+  }, [loadOrdine, currentUser]);
 
   const closeAnomaliaModal = useCallback(() => {
     setShowAnomaliaDetailModal(false);

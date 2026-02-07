@@ -159,15 +159,17 @@ def get_ordine_detail(id_testata: int) -> Optional[Dict[str, Any]]:
 
     result = dict(ordine)
 
+    # Recupera deposito_riferimento raw da ordini_testata (per modal Modifica Header)
+    testata_extra = db.execute("""
+        SELECT deposito_riferimento FROM ordini_testata WHERE id_testata = %s
+    """, (id_testata,)).fetchone()
+    raw_deposito = testata_extra['deposito_riferimento'] if testata_extra else None
+    result['deposito_riferimento'] = raw_deposito or ''
+
     # Recupera deposito: priorità al valore manuale, poi anagrafica_clienti
     # 1. Prima controlla deposito_riferimento assegnato manualmente
-    deposito_manuale = db.execute("""
-        SELECT deposito_riferimento FROM ordini_testata
-        WHERE id_testata = ? AND deposito_riferimento IS NOT NULL AND deposito_riferimento != ''
-    """, (id_testata,)).fetchone()
-
-    if deposito_manuale and deposito_manuale[0]:
-        deposito = deposito_manuale[0]
+    if raw_deposito:
+        deposito = raw_deposito
     else:
         # 2. Fallback: cerca in anagrafica_clienti
         piva = result.get('partita_iva')
@@ -175,15 +177,16 @@ def get_ordine_detail(id_testata: int) -> Optional[Dict[str, Any]]:
         deposito = None
 
         if piva:
-            # Prova prima con multipunto (P.IVA + min_id)
+            # Prova prima con multipunto (P.IVA + min_id normalizzato)
             if min_id:
+                min_id_norm = min_id.lstrip('0')
                 cliente = db.execute("""
                     SELECT deposito_riferimento FROM anagrafica_clienti
-                    WHERE partita_iva = %s AND min_id = %s
+                    WHERE partita_iva = %s AND LTRIM(min_id, '0') = %s
                     LIMIT 1
-                """, (piva, min_id)).fetchone()
+                """, (piva, min_id_norm)).fetchone()
                 if cliente:
-                    deposito = cliente[0]
+                    deposito = cliente['deposito_riferimento']
 
             # Fallback: solo P.IVA
             if not deposito:
@@ -193,7 +196,7 @@ def get_ordine_detail(id_testata: int) -> Optional[Dict[str, Any]]:
                     LIMIT 1
                 """, (piva,)).fetchone()
                 if cliente:
-                    deposito = cliente[0]
+                    deposito = cliente['deposito_riferimento']
 
     result['deposito'] = deposito
 
