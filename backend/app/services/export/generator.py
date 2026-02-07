@@ -42,7 +42,7 @@ def _applica_workaround_erp_doc(det_dict: dict, vendor: str) -> None:
         ('prezzo_scontare', prezzo_scontare),
         ('prezzo_pubblico', float(det_dict.get('prezzo_pubblico') or 0)),
     ]:
-        det_dict[campo] = round(valore * q_venduta, 2)
+        det_dict[campo] = valore * q_venduta
 
 
 def generate_tracciati_per_ordine(
