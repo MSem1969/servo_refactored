@@ -20,6 +20,30 @@ router = APIRouter(prefix="/listino", tags=["Supervisione Listino"])
 # ENDPOINT SUPERVISIONE LISTINO
 # =============================================================================
 
+@router.get("/by-anomalia/{id_anomalia}", summary="Lookup supervisione listino per anomalia")
+async def get_supervisione_listino_by_anomalia(id_anomalia: int):
+    """
+    Cerca la supervisione listino associata a un'anomalia.
+
+    Ponte tra il mondo anomalie (OrdineDetail) e il mondo supervisione (CorrezioneLisinoModal).
+    Ritorna gli stessi dati di GET /{id_supervisione}.
+    """
+    db = get_db()
+
+    # Trova id_supervisione dalla anomalia
+    row = db.execute("""
+        SELECT id_supervisione FROM supervisione_listino
+        WHERE id_anomalia = %s AND stato = 'PENDING'
+        LIMIT 1
+    """, (id_anomalia,)).fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Nessuna supervisione listino PENDING per questa anomalia")
+
+    # Delega al detail endpoint (stessa logica)
+    return await get_supervisione_listino_detail(row['id_supervisione'])
+
+
 @router.get("/{id_supervisione}", summary="Dettaglio supervisione listino")
 async def get_supervisione_listino_detail(id_supervisione: int):
     """

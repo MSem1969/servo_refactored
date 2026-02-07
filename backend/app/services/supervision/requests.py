@@ -319,7 +319,7 @@ def sblocca_ordine_se_completo(id_testata: int):
         db.execute("""
             UPDATE ordini_testata
             SET stato = %s
-            WHERE id_testata = %s AND stato = 'PENDING_REVIEW'
+            WHERE id_testata = %s AND stato IN ('PENDING_REVIEW', 'ANOMALIA')
         """, (nuovo_stato, id_testata))
         db.commit()
 

@@ -6,7 +6,7 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react';
-import { ordiniApi, anomalieApi, lookupApi } from '../../../api';
+import { ordiniApi, anomalieApi, lookupApi, supervisioneApi } from '../../../api';
 
 const INITIAL_FORM_MODIFICA = {
   codice_aic: '',
@@ -51,6 +51,9 @@ export function useOrdineDetail(ordineId, currentUser) {
   const [showAnomaliaDetailModal, setShowAnomaliaDetailModal] = useState(false);
   const [anomaliaDetail, setAnomaliaDetail] = useState(null);
   const [loadingAnomaliaDetail, setLoadingAnomaliaDetail] = useState(false);
+
+  // v11.5: Correzione listino modal state
+  const [correzioneListinoModal, setCorrezioneListinoModal] = useState({ isOpen: false, supervisione: null });
 
   // =============================================================================
   // DATA LOADING
@@ -463,6 +466,37 @@ export function useOrdineDetail(ordineId, currentUser) {
   }, []);
 
   // =============================================================================
+  // CORREZIONE LISTINO HANDLERS (v11.5)
+  // =============================================================================
+
+  const handleOpenCorrezioneListino = useCallback(async (anomaliaDetailData) => {
+    const idAnomalia = anomaliaDetailData?.anomalia?.id_anomalia;
+    if (!idAnomalia) return;
+
+    try {
+      const supData = await supervisioneApi.getListinoByAnomalia(idAnomalia);
+      // Chiudi modal anomalia e apri modal correzione
+      setShowAnomaliaDetailModal(false);
+      setAnomaliaDetail(null);
+      setCorrezioneListinoModal({ isOpen: true, supervisione: supData });
+    } catch (err) {
+      const msg = err.response?.status === 404
+        ? 'Supervisione listino non trovata per questa anomalia'
+        : 'Errore nel caricamento della supervisione: ' + (err.response?.data?.detail || err.message);
+      alert(msg);
+    }
+  }, []);
+
+  const handleCloseCorrezioneListino = useCallback(() => {
+    setCorrezioneListinoModal({ isOpen: false, supervisione: null });
+  }, []);
+
+  const handleCorrezioneListinoSuccess = useCallback(() => {
+    setCorrezioneListinoModal({ isOpen: false, supervisione: null });
+    loadOrdine();
+  }, [loadOrdine]);
+
+  // =============================================================================
   // SUPERVISIONE HANDLERS
   // =============================================================================
 
@@ -580,6 +614,7 @@ export function useOrdineDetail(ordineId, currentUser) {
     showAnomaliaDetailModal,
     anomaliaDetail,
     loadingAnomaliaDetail,
+    correzioneListinoModal,
 
     // Actions
     loadOrdine,
@@ -599,6 +634,9 @@ export function useOrdineDetail(ordineId, currentUser) {
     risolviAnomaliaDetail,
     assignFarmacia,
     closeAnomaliaModal,
+    handleOpenCorrezioneListino,
+    handleCloseCorrezioneListino,
+    handleCorrezioneListinoSuccess,
     approvaSuper,
     rifiutaSuper,
     fixEspositore

@@ -9,6 +9,7 @@ import React, { useState } from 'react';
 import { Loading, ErrorBox, Button } from '../../common';
 import { AnomaliaDetailModal } from '../../components';
 import ModificaHeaderModal from '../../components/ModificaHeaderModal';
+import CorrezioneLisinoModal from '../Supervisione/CorrezioneLisinoModal';
 
 // Sub-components
 import OrdineHeader from './OrdineHeader';
@@ -61,6 +62,7 @@ export default function OrdineDetailPage({ ordineId, currentUser, onBack, onNavi
     showAnomaliaDetailModal,
     anomaliaDetail,
     loadingAnomaliaDetail,
+    correzioneListinoModal,
 
     // Actions
     loadOrdine,
@@ -80,6 +82,9 @@ export default function OrdineDetailPage({ ordineId, currentUser, onBack, onNavi
     risolviAnomaliaDetail,
     assignFarmacia,
     closeAnomaliaModal,
+    handleOpenCorrezioneListino,
+    handleCloseCorrezioneListino,
+    handleCorrezioneListinoSuccess,
     approvaSuper,
     rifiutaSuper,
     fixEspositore
@@ -274,6 +279,17 @@ export default function OrdineDetailPage({ ordineId, currentUser, onBack, onNavi
         onSaveParent={saveRigaParent}
         onRisolvi={risolviAnomaliaDetail}
         onAssignFarmacia={assignFarmacia}
+        onCorreggiPrezzo={handleOpenCorrezioneListino}
+      />
+
+      {/* v11.5: Modal Correzione Listino (da anomalia LISTINO/PREZZO) */}
+      <CorrezioneLisinoModal
+        isOpen={correzioneListinoModal.isOpen}
+        onClose={handleCloseCorrezioneListino}
+        supervisione={correzioneListinoModal.supervisione}
+        operatore={currentUser?.username || 'operatore'}
+        onSuccess={handleCorrezioneListinoSuccess}
+        scope={['admin', 'supervisore', 'supervisor'].includes(currentUser?.ruolo?.toLowerCase()) ? 'supervisore' : 'operatore'}
       />
 
       {/* Modal Modifica Header (v11.3) */}

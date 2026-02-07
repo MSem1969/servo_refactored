@@ -33,6 +33,8 @@ export function AnomaliaDetailModal({
   fromSupervisione = false,        // Se true, mostra opzioni supervisore
   supervisione = null,             // Dati supervisione (per propagazione)
   onSupervisioneSuccess = null,    // Callback dopo azione supervisore
+  // v11.5: Callback per correzione prezzo da OrdineDetail
+  onCorreggiPrezzo = null,
 }) {
   // v11.4: Determina se utente è supervisore
   const { operatore, isSupervisor } = useMemo(() => {
@@ -351,6 +353,30 @@ export function AnomaliaDetailModal({
                     />
                   )}
                 </>
+              )}
+
+              {/* v11.5: Bottone Correggi Prezzo per anomalie LISTINO/PREZZO (da OrdineDetail) */}
+              {isListinoAnomalia && onCorreggiPrezzo && anomaliaDetail.anomalia?.stato !== 'RISOLTA' && (
+                <div className="bg-green-50 rounded-lg p-4">
+                  <h4 className="font-semibold text-green-800 mb-3 flex items-center gap-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Correzione Prezzo
+                  </h4>
+                  <p className="text-sm text-green-700 mb-3">
+                    Correggi prezzo netto, prezzo pubblico e sconti per questa riga.
+                  </p>
+                  <button
+                    onClick={() => onCorreggiPrezzo(anomaliaDetail)}
+                    className="w-full px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium flex items-center justify-center gap-2"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    Correggi Prezzo
+                  </button>
+                </div>
               )}
 
               {/* v10.5: LISTINO ANOMALIA - Mostra info riga se presente */}

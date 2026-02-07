@@ -51,6 +51,7 @@ export const supervisioneApi = {
   getStorico: (limit = 50) => api.get(`/supervisione/criteri/storico/applicazioni?limit=${limit}`).then(r => r.data),
 
   // === SUPERVISIONE LISTINO ===
+  getListinoByAnomalia: (idAnomalia) => api.get(`/supervisione/listino/by-anomalia/${idAnomalia}`).then(r => r.data),
   getListinoDetail: (id) => api.get(`/supervisione/listino/${id}`).then(r => r.data),
   correggiListino: (id, data) => api.post(`/supervisione/listino/${id}/correggi`, data).then(r => r.data),
   archiviaListino: (id, data) => api.post(`/supervisione/listino/${id}/archivia`, data).then(r => r.data),

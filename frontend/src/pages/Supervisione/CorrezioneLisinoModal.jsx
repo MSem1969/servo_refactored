@@ -17,14 +17,14 @@ const ALIQUOTE_IVA = [
   { value: '0', label: '0% (esente)' },
 ];
 
-const CorrezioneLisinoModal = ({ isOpen, onClose, supervisione, operatore, onSuccess }) => {
+const CorrezioneLisinoModal = ({ isOpen, onClose, supervisione, operatore, onSuccess, scope = 'supervisore' }) => {
   const [loading, setLoading] = useState(false);
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [detail, setDetail] = useState(null);
   const [pdfFile, setPdfFile] = useState(null); // v11.4: PDF file per visualizzazione
 
   // v11.3: Modalità inserimento - 'diretto' o 'calcolato'
-  const [modalitaInserimento, setModalitaInserimento] = useState('diretto');
+  const [modalitaInserimento, setModalitaInserimento] = useState('calcolato');
 
   const [formData, setFormData] = useState({
     prezzo_netto: '',
@@ -90,8 +90,8 @@ const CorrezioneLisinoModal = ({ isOpen, onClose, supervisione, operatore, onSuc
             note: '',
           });
 
-          // Se c'è già un prezzo netto, usa modalità diretta
-          setModalitaInserimento(prezzoNetto ? 'diretto' : 'diretto');
+          // Default: modalità calcolata (prezzo pubblico + sconti)
+          setModalitaInserimento('calcolato');
         })
         .catch(err => console.error('Errore caricamento dettaglio listino:', err))
         .finally(() => setLoadingDetail(false));
@@ -530,14 +530,15 @@ const CorrezioneLisinoModal = ({ isOpen, onClose, supervisione, operatore, onSuc
             />
           </div>
 
-          {/* Checkbox listino */}
-          <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-            <label className="flex items-center gap-3 cursor-pointer">
+          {/* Checkbox listino - disabilitato per operatore */}
+          <div className={`p-4 rounded-lg border ${scope === 'operatore' ? 'bg-slate-50 border-slate-200 opacity-60' : 'bg-amber-50 border-amber-200'}`}>
+            <label className={`flex items-center gap-3 ${scope === 'operatore' ? 'cursor-not-allowed' : 'cursor-pointer'}`}>
               <input
                 type="checkbox"
                 checked={formData.applica_a_listino}
                 onChange={(e) => handleChange('applica_a_listino', e.target.checked)}
-                className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                disabled={scope === 'operatore'}
+                className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
               />
               <div>
                 <span className="text-sm font-medium text-amber-800">Aggiungi al listino vendor</span>
