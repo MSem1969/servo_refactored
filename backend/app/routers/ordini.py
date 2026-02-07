@@ -954,19 +954,31 @@ async def modifica_header_ordine(
 
         # 3. Salva valori originali per audit
         valori_originali = {
-            'partita_iva': ordine.get('partita_iva') or ordine.get('partita_iva_estratta'),
-            'min_id': ordine.get('min_id'),
-            'ragione_sociale': ordine.get('ragione_sociale') or ordine.get('ragione_sociale_1'),
+            'partita_iva': ordine.get('partita_iva_estratta'),
+            'min_id': ordine.get('codice_ministeriale_estratto'),
+            'ragione_sociale': ordine.get('ragione_sociale_1'),
             'deposito_riferimento': ordine.get('deposito_riferimento'),
             'indirizzo': ordine.get('indirizzo'),
             'cap': ordine.get('cap'),
-            'localita': ordine.get('localita') or ordine.get('citta'),
+            'localita': ordine.get('citta'),
             'provincia': ordine.get('provincia'),
             'lookup_method': ordine.get('lookup_method'),
             'lookup_score': ordine.get('lookup_score'),
         }
 
         # 4. Costruisci UPDATE dinamico
+        # Mapping frontend field → colonna DB reale in ordini_testata
+        FIELD_TO_COLUMN = {
+            'partita_iva': 'partita_iva_estratta',
+            'min_id': 'codice_ministeriale_estratto',
+            'ragione_sociale': 'ragione_sociale_1',
+            'localita': 'citta',
+            'deposito_riferimento': 'deposito_riferimento',
+            'indirizzo': 'indirizzo',
+            'cap': 'cap',
+            'provincia': 'provincia',
+        }
+
         updates = []
         params = []
         campi_modificati = []
@@ -984,21 +996,9 @@ async def modifica_header_ordine(
 
         for field, value in field_mapping.items():
             if value is not None:
-                # Mapping nomi campo frontend -> colonne DB reali
-                # Usa solo colonne che esistono in ordini_testata
-                if field == 'partita_iva':
-                    updates.append("partita_iva_estratta = %s")
-                    params.append(value.strip())
-                elif field == 'ragione_sociale':
-                    updates.append("ragione_sociale_1 = %s")
-                    params.append(value.strip())
-                elif field == 'localita':
-                    updates.append("citta = %s")
-                    params.append(value.strip())
-                else:
-                    updates.append(f"{field} = %s")
-                    params.append(value.strip() if isinstance(value, str) else value)
-
+                db_column = FIELD_TO_COLUMN[field]
+                updates.append(f"{db_column} = %s")
+                params.append(value.strip() if isinstance(value, str) else value)
                 campi_modificati.append(field)
 
         if not campi_modificati:
@@ -1008,19 +1008,9 @@ async def modifica_header_ordine(
         # PRIORITÀ MASSIMA: lookup_method = MANUALE, score = 100
         updates.append("lookup_method = 'MANUALE'")
         updates.append("lookup_score = 100")
-
-        # Audit trail
-        updates.append("valori_originali_header = %s")
-        params.append(json.dumps(valori_originali, default=str))
-
-        updates.append("data_modifica_header = CURRENT_TIMESTAMP")
-
-        updates.append("operatore_modifica_header = %s")
+        updates.append("data_modifica_anagrafica = CURRENT_TIMESTAMP")
+        updates.append("operatore_modifica_anagrafica = %s")
         params.append(request.operatore)
-
-        if request.note:
-            updates.append("note_modifica_header = %s")
-            params.append(request.note)
 
         params.append(id_testata)  # WHERE clause
 
@@ -1058,9 +1048,9 @@ async def modifica_header_ordine(
                     res = db.execute(f"""
                         UPDATE {sup_table}
                         SET stato = 'APPROVED',
-                            resolved_by = %s,
-                            resolved_at = CURRENT_TIMESTAMP,
-                            note_admin = %s
+                            operatore = %s,
+                            timestamp_decisione = CURRENT_TIMESTAMP,
+                            note = %s
                         WHERE id_testata = %s AND stato = 'PENDING'
                     """, (request.operatore, nota_sup, id_testata))
                     if hasattr(res, 'rowcount'):
