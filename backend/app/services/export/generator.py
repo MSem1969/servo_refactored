@@ -18,6 +18,33 @@ from .formatters import generate_to_t_line, generate_to_d_line
 from .validators import valida_campi_tracciato
 
 
+def _applica_workaround_erp_doc(det_dict: dict, vendor: str) -> None:
+    """
+    Workaround bug ERP DOC_GENERICI: l'ERP tratta il prezzo unitario come
+    valore complessivo riga e lo divide per quantità.
+    Moltiplichiamo prezzo × q_venduta così dopo la divisione ERP
+    il prezzo unitario risulta corretto.
+
+    Da rimuovere quando il bug ERP sarà corretto.
+    """
+    if vendor != 'DOC_GENERICI':
+        return
+
+    q_venduta = int(det_dict.get('q_venduta') or 0)
+    if q_venduta <= 0:
+        return
+
+    # Risolvi fallback prezzo_scontare -> prezzo_listino (come in to_d.py)
+    prezzo_scontare = float(det_dict.get('prezzo_scontare') or det_dict.get('prezzo_listino') or 0)
+
+    for campo, valore in [
+        ('prezzo_netto', float(det_dict.get('prezzo_netto') or 0)),
+        ('prezzo_scontare', prezzo_scontare),
+        ('prezzo_pubblico', float(det_dict.get('prezzo_pubblico') or 0)),
+    ]:
+        det_dict[campo] = round(valore * q_venduta, 2)
+
+
 def generate_tracciati_per_ordine(
     output_dir: str = None,
     ordini_ids: List[int] = None
@@ -145,6 +172,9 @@ def generate_tracciati_per_ordine(
                 if totale_tracciato > q_da_evadere:
                     # Skip riga con errore e logga warning
                     continue
+
+            # Workaround ERP DOC: prezzo × quantità
+            _applica_workaround_erp_doc(det_dict, vendor)
 
             line = generate_to_d_line(det_dict)
             lines_d.append(line)
@@ -510,6 +540,9 @@ def valida_e_genera_tracciato(
                 f"Dettaglio: q_venduta={q_venduta_final}, q_sconto_merce={q_sconto_merce_final}, "
                 f"q_omaggio={q_omaggio_final}"
             )
+
+        # Workaround ERP DOC: prezzo × quantità
+        _applica_workaround_erp_doc(det_dict, vendor)
 
         line = generate_to_d_line(det_dict)
         lines_d.append(line)
