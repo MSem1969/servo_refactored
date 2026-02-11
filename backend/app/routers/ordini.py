@@ -323,7 +323,7 @@ async def get_ordini_viewed(
     """
     db = get_db()
 
-    user_id = current_user.id_utente if current_user else None
+    user_id = current_user.id_operatore if current_user else None
     if not user_id:
         return {"success": True, "data": []}
 
@@ -370,7 +370,7 @@ async def track_ordine_view(
     if not ordine:
         raise HTTPException(status_code=404, detail="Ordine non trovato")
 
-    user_id = current_user.id_utente if current_user else None
+    user_id = current_user.id_operatore if current_user else None
     username = current_user.username if current_user else 'unknown'
     ruolo = current_user.ruolo if current_user else 'operatore'
 
