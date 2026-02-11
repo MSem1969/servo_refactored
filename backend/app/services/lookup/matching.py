@@ -29,12 +29,17 @@ FUZZY_THRESHOLD = config.FUZZY_THRESHOLD  # Default: 60
 # LOOKUP ANAGRAFICA CLIENTI (v11.2)
 # =============================================================================
 
-def lookup_cliente_by_piva(piva: str) -> Optional[Dict[str, Any]]:
+def lookup_cliente_by_piva(piva: str, min_id: str = None) -> Optional[Dict[str, Any]]:
     """
     Cerca cliente in anagrafica_clienti per P.IVA.
 
+    Usato per ottenere deposito_riferimento e validazione cliente (LKP-A05).
+    NON deve essere usato per determinare il MIN_ID ai fini del matching
+    (il matching avviene su anagrafica_farmacie ministeriale).
+
     Args:
         piva: Partita IVA normalizzata (senza zeri iniziali)
+        min_id: Se fornito, disambigua il record corretto in caso multipunto
 
     Returns:
         Dict con min_id e deposito_riferimento se trovato, None altrimenti
@@ -44,6 +49,23 @@ def lookup_cliente_by_piva(piva: str) -> Optional[Dict[str, Any]]:
 
     db = get_db()
 
+    # Se abbiamo il MIN_ID (dal matching ministeriale), cerchiamo il record esatto
+    if min_id:
+        min_id_norm = min_id.lstrip('0')
+        cliente = db.execute("""
+            SELECT min_id, deposito_riferimento, ragione_sociale_1, codice_cliente
+            FROM anagrafica_clienti
+            WHERE partita_iva = %s AND LTRIM(min_id, '0') = %s
+        """, (piva, min_id_norm)).fetchone()
+        if cliente and cliente.get('min_id'):
+            return {
+                'min_id': cliente['min_id'],
+                'deposito_riferimento': cliente.get('deposito_riferimento'),
+                'ragione_sociale': cliente.get('ragione_sociale_1'),
+                'codice_cliente': cliente.get('codice_cliente'),
+            }
+
+    # Fallback: cerca per sola P.IVA (ok se monopunto)
     cliente = db.execute("""
         SELECT min_id, deposito_riferimento, ragione_sociale_1, codice_cliente
         FROM anagrafica_clienti
@@ -65,8 +87,9 @@ def lookup_farmacia_extended(data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Versione estesa di lookup_farmacia che include deposito_riferimento.
 
-    v11.2: Prima cerca in anagrafica_clienti per P.IVA per ottenere MIN_ID,
-           poi usa quel MIN_ID per collegare ad anagrafica_farmacie.
+    Gerarchia: il matching avviene su anagrafica_farmacie (ministeriale).
+    L'anagrafica_clienti è usata solo per deposito_riferimento e validazione,
+    disambiguata tramite il MIN_ID risultante dal matching ministeriale.
 
     Args:
         data: Dict con dati estratti
@@ -81,11 +104,29 @@ def lookup_farmacia_extended(data: Dict[str, Any]) -> Dict[str, Any]:
         - deposito_riferimento: str o None (da anagrafica_clienti)
         - cliente_trovato: bool (True se P.IVA trovata in anagrafica_clienti)
     """
+    db = get_db()
     id_farm, id_parafarm, method, source, score = lookup_farmacia(data)
 
-    # Cerca anche in anagrafica_clienti per ottenere deposito_riferimento
+    # Recupera il MIN_ID dal match ministeriale per disambiguare anagrafica_clienti
+    matched_min_id = None
+    if id_farm:
+        row = db.execute(
+            "SELECT min_id FROM anagrafica_farmacie WHERE id_farmacia = %s",
+            (id_farm,)
+        ).fetchone()
+        if row:
+            matched_min_id = row['min_id']
+    elif id_parafarm:
+        row = db.execute(
+            "SELECT codice_sito FROM anagrafica_parafarmacie WHERE id_parafarmacia = %s",
+            (id_parafarm,)
+        ).fetchone()
+        if row:
+            matched_min_id = row['codice_sito']
+
+    # Cerca in anagrafica_clienti per deposito_riferimento, disambiguando con MIN_ID
     piva_raw = data.get('partita_iva', '').strip()
-    cliente_info = lookup_cliente_by_piva(piva_raw)
+    cliente_info = lookup_cliente_by_piva(piva_raw, min_id=matched_min_id)
 
     return {
         'id_farmacia': id_farm,
@@ -142,22 +183,11 @@ def lookup_farmacia(data: Dict[str, Any]) -> Tuple[Optional[int], Optional[int],
         return None, None, 'NESSUNO', 'FARMACIA', 0
 
     # =========================================================================
-    # 0a. LOOKUP VIA ANAGRAFICA_CLIENTI (v11.2)
+    # 0. LOOKUP DIRETTO PER MIN_ID (caso ANGELINI con ID MIN nel PDF)
     # =========================================================================
-    # Se non abbiamo MIN_ID dal PDF ma abbiamo P.IVA, cerchiamo il MIN_ID
-    # nella tabella anagrafica_clienti (ANAG_TOT_V.csv) che contiene il link
-    # tra P.IVA cliente e MIN_ID farmacia.
-    if not min_id and piva and len(piva) >= 8:
-        cliente_info = lookup_cliente_by_piva(piva_raw)
-        if cliente_info and cliente_info.get('min_id'):
-            # Trovato MIN_ID in anagrafica_clienti, usalo per il lookup
-            min_id = cliente_info['min_id']
-            # Nota: il deposito_riferimento viene recuperato separatamente
-            # tramite lookup_farmacia_extended() nel pdf_processor
-
-    # =========================================================================
-    # 0b. LOOKUP DIRETTO PER MIN_ID (caso ANGELINI con ID MIN o da anagrafica_clienti)
-    # =========================================================================
+    # NOTA: il MIN_ID deve provenire dal documento (PDF), NON dall'anagrafica_clienti.
+    # L'anagrafica ministeriale (ANAGRAFICA_FARMACIE) è la fonte primaria per il matching.
+    # L'anagrafica_clienti serve solo per deposito_riferimento e validazione (LKP-A05).
     if min_id and len(min_id) >= 4:
         min_id_norm = min_id.lstrip('0')
 

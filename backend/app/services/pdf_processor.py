@@ -482,14 +482,7 @@ def _insert_order(
         # Dati incompleti - lookup necessario
         id_farm, id_parafarm, lookup_method, lookup_source, lookup_score = lookup_farmacia(order_data)
 
-    # v11.2: Recupera deposito_riferimento da anagrafica_clienti
-    deposito_riferimento = None
-    if piva_estratta:
-        cliente_info = lookup_cliente_by_piva(piva_estratta)
-        if cliente_info:
-            deposito_riferimento = cliente_info.get('deposito_riferimento')
-
-    # Genera chiave univoca
+    # Genera chiave univoca - recupera MIN_ID dal match ministeriale
     cod_min = order_data.get('codice_ministeriale', '')
     if not cod_min and id_farm:
         farm_row = db.execute(
@@ -503,6 +496,14 @@ def _insert_order(
             (id_parafarm,)
         ).fetchone()
         cod_min = para_row['codice_sito'] if para_row else ''
+
+    # v11.2: Recupera deposito_riferimento da anagrafica_clienti
+    # Usa il MIN_ID dal match ministeriale per disambiguare in caso multipunto
+    deposito_riferimento = None
+    if piva_estratta:
+        cliente_info = lookup_cliente_by_piva(piva_estratta, min_id=cod_min)
+        if cliente_info:
+            deposito_riferimento = cliente_info.get('deposito_riferimento')
     
     chiave_univoca = generate_order_key(vendor, order_data.get('numero_ordine', 'ND'), cod_min)
 
