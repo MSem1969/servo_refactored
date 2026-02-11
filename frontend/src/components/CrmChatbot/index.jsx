@@ -38,7 +38,7 @@ export default function CrmChatbot({ currentUser }) {
       </div>
 
       {/* Area principale - Dettaglio o nuovo ticket */}
-      <div className="flex-1 flex flex-col overflow-y-auto">
+      <div className="flex-1 flex flex-col overflow-hidden">
         {showNewTicket ? (
           <NewTicketForm
             onSuccess={handleNewTicketSuccess}

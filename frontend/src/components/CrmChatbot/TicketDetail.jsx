@@ -103,7 +103,7 @@ export default function TicketDetail({ ticketId, currentUserId }) {
   return (
     <div className="flex flex-col h-full">
       {/* Header ticket */}
-      <div className="p-4 border-b border-slate-200 bg-slate-50">
+      <div className="p-4 border-b border-slate-200 bg-slate-50 shrink-0">
         <div className="flex items-start justify-between gap-3 mb-2">
           <div>
             <div className="flex items-center gap-2 mb-1">
@@ -170,9 +170,9 @@ export default function TicketDetail({ ticketId, currentUserId }) {
         />
       )}
 
-      {/* Input nuovo messaggio */}
-      {ticketData.stato !== 'chiuso' && (
-        <div className="p-4 border-t border-slate-200 bg-white">
+      {/* Footer - Input messaggi o stato chiuso */}
+      <div className="p-4 border-t border-slate-200 bg-white shrink-0">
+        {ticketData.stato !== 'chiuso' ? (
           <div className="flex gap-2">
             <div className="flex-1 flex gap-2">
               <textarea
@@ -211,8 +211,20 @@ export default function TicketDetail({ ticketId, currentUserId }) {
               Invia
             </Button>
           </div>
-        </div>
-      )}
+        ) : (
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-slate-500">Ticket chiuso il {new Date(ticketData.updated_at || ticketData.created_at).toLocaleDateString('it-IT')}</span>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => handleStatusChange('aperto')}
+              loading={updateStatusMutation.isPending}
+            >
+              Riapri ticket
+            </Button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

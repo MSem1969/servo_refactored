@@ -119,7 +119,14 @@ export default function DatabasePage({ currentUser, onOpenOrdine }) {
   return (
     <div className="space-y-6">
       {/* Stats Cards */}
-      <StatsCards stats={stats} />
+      <StatsCards
+        stats={stats}
+        activeFilter={filters.stato}
+        onStatClick={(stato) => {
+          setFilters(prev => ({ ...prev, stato: prev.stato === stato ? '' : stato }));
+          setActiveTab('ordini');
+        }}
+      />
 
       {/* Main Content */}
       <div className="bg-white rounded-xl border border-slate-200">
