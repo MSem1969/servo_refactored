@@ -9,22 +9,23 @@
  */
 import React, { useState, useEffect } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { ordiniApi } from '../api';
+import { ordiniApi, reportApi } from '../api';
 import Modal from './Modal';
 import { PdfViewerButton } from '../common';
 
-// Opzioni deposito disponibili
-const DEPOSITI_OPTIONS = [
-  { value: '', label: '-- Seleziona deposito --' },
-  { value: 'CT', label: 'CT - Catania (SOFAD)' },
-  { value: 'CL', label: 'CL - Caltanissetta (SOFAD)' },
-  { value: 'PE', label: 'PE - Pescara (SAFAR)' },
-  { value: 'CB', label: 'CB - Campobasso (SAFAR)' },
-  { value: '001', label: '001 - Deposito Default (FARVI)' },
-];
-
 export default function ModificaHeaderModal({ ordine, isOpen, onClose, onSuccess, currentUser }) {
   const queryClient = useQueryClient();
+
+  // Carica depositi dinamicamente da anagrafica_clienti
+  const [depositiOptions, setDepositiOptions] = useState([]);
+  useEffect(() => {
+    if (isOpen) {
+      reportApi.getDepositi().then(res => {
+        const opts = (res.depositi || []).map(d => ({ value: d, label: d }));
+        setDepositiOptions(opts);
+      }).catch(() => setDepositiOptions([]));
+    }
+  }, [isOpen]);
 
   const [formData, setFormData] = useState({
     partita_iva: '',
@@ -274,7 +275,8 @@ export default function ModificaHeaderModal({ ordine, isOpen, onClose, onSuccess
               onChange={(e) => handleChange('deposito_riferimento', e.target.value)}
               className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
-              {DEPOSITI_OPTIONS.map(opt => (
+              <option value="">-- Seleziona deposito --</option>
+              {depositiOptions.map(opt => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>

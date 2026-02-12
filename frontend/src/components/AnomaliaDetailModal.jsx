@@ -14,7 +14,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { TipoAnomaliaBadge, StatoAnomaliaBadge, SeveritaBadge } from '../common/StatusBadge';
 import { PdfViewerButton } from '../common';
-import { lookupApi } from '../api';
+import { lookupApi, reportApi } from '../api';
 // v8.2: Import diretto per evitare problemi con barrel export
 import { anomalieApi } from '../api/anomalie';
 // v11.0: Import AicAssignmentModal unificato (TIER 2.1)
@@ -76,6 +76,9 @@ export function AnomaliaDetailModal({
     anomaliaDetail?.anomalia?.tipo_anomalia === 'PREZZO' ||
     anomaliaDetail?.anomalia?.codice_anomalia?.startsWith('LST-') ||
     anomaliaDetail?.anomalia?.codice_anomalia?.startsWith('PRICE-');
+
+  // v11.6: Anomalia DEPOSITO (DEP-A01)
+  const isDepositoAnomalia = anomaliaDetail?.anomalia?.codice_anomalia?.startsWith('DEP-');
 
   // v10.5: Anomalia ESPOSITORE
   const isEspositoreAnomalia = anomaliaDetail?.anomalia?.tipo_anomalia === 'ESPOSITORE' ||
@@ -355,6 +358,18 @@ export function AnomaliaDetailModal({
                 </>
               )}
 
+              {/* v11.6: DEPOSITO ANOMALIA (DEP-A01) - Azione correttiva: selezione deposito */}
+              {isDepositoAnomalia && anomaliaDetail.anomalia?.stato !== 'RISOLTA' && (
+                <DepositoSection
+                  anomalia={anomaliaDetail.anomalia}
+                  ordineData={anomaliaDetail.ordine_data}
+                  onSuccess={() => {
+                    onRisolvi?.();
+                    onClose();
+                  }}
+                />
+              )}
+
               {/* v11.5: Bottone Correggi Prezzo per anomalie LISTINO/PREZZO (da OrdineDetail) */}
               {isListinoAnomalia && onCorreggiPrezzo && anomaliaDetail.anomalia?.stato !== 'RISOLTA' && (
                 <div className="bg-green-50 rounded-lg p-4">
@@ -393,8 +408,8 @@ export function AnomaliaDetailModal({
               )}
 
               {/* v10.6: Sezione Propagazione per anomalie che possono essere propagate */}
-              {/* ESCLUSE: LOOKUP (richiede selezione), AIC (ha sua sezione), ESPOSITORE (uniche per ordine) */}
-              {!isLookupAnomalia && !isAicAnomalia && !isEspositoreAnomalia && anomaliaDetail.anomalia?.stato !== 'RISOLTA' && (
+              {/* ESCLUSE: LOOKUP (richiede selezione), AIC (ha sua sezione), ESPOSITORE (uniche per ordine), DEPOSITO (ha sua sezione) */}
+              {!isLookupAnomalia && !isAicAnomalia && !isEspositoreAnomalia && !isDepositoAnomalia && anomaliaDetail.anomalia?.stato !== 'RISOLTA' && (
                 <PropagazioneSection
                   anomalia={anomaliaDetail.anomalia}
                   onSuccess={() => {
@@ -803,6 +818,14 @@ function LookupSection({
   const [depositoSubmitting, setDepositoSubmitting] = React.useState(false);
   const [depositoError, setDepositoError] = React.useState(null);
 
+  // v11.6: Lista depositi da anagrafica_clienti (per dropdown)
+  const [depositoOptions, setDepositoOptions] = React.useState([]);
+  React.useEffect(() => {
+    reportApi.getDepositi().then(res => {
+      setDepositoOptions(res.depositi || []);
+    }).catch(() => setDepositoOptions([]));
+  }, []);
+
   // v11.4: Stato per propagazione (supervisore)
   const [livelloPropagazione, setLivelloPropagazione] = React.useState('ORDINE');
 
@@ -1148,14 +1171,16 @@ function LookupSection({
               ) : (
                 <div className="inline-flex items-center gap-2">
                   <span className="text-red-500 font-medium">MANCANTE</span>
-                  <input
-                    type="text"
+                  <select
                     value={depositoRiferimento}
-                    onChange={(e) => setDepositoRiferimento(e.target.value.slice(0, 10))}
-                    placeholder="Cod."
-                    className="w-16 px-2 py-1 border border-purple-300 rounded text-xs font-mono"
-                    maxLength={10}
-                  />
+                    onChange={(e) => setDepositoRiferimento(e.target.value)}
+                    className="w-24 px-2 py-1 border border-purple-300 rounded text-xs font-mono"
+                  >
+                    <option value="">--</option>
+                    {depositoOptions.map(dep => (
+                      <option key={dep} value={dep}>{dep}</option>
+                    ))}
+                  </select>
                   <button
                     onClick={handleAssignDeposito}
                     disabled={!depositoRiferimento}
@@ -1597,12 +1622,12 @@ function LookupSection({
         </div>
       )}
 
-      {/* v11.4: Inserimento manuale Deposito (per tutti i LOOKUP/ANAGRAFICA) */}
+      {/* v11.6: Selezione Deposito da anagrafica_clienti (per tutti i LOOKUP/ANAGRAFICA) */}
       {mode === 'deposito' && (
         <div className="bg-purple-50 rounded-lg p-4">
           <h4 className="font-semibold text-purple-800 mb-3">Assegnazione Deposito</h4>
           <p className="text-sm text-purple-700 mb-4">
-            Inserisci manualmente il codice deposito di riferimento per procedere con l'ordine.
+            Seleziona il deposito di riferimento dall'anagrafica clienti.
           </p>
 
           {depositoError && (
@@ -1612,14 +1637,16 @@ function LookupSection({
           )}
 
           <div className="flex gap-2 mb-4">
-            <input
-              type="text"
+            <select
               value={depositoRiferimento}
-              onChange={(e) => setDepositoRiferimento(e.target.value.slice(0, 10))}
-              placeholder="Codice deposito (es: 001)"
+              onChange={(e) => setDepositoRiferimento(e.target.value)}
               className="flex-1 px-3 py-2 border border-purple-300 rounded text-sm font-mono focus:ring-2 focus:ring-purple-500"
-              maxLength={10}
-            />
+            >
+              <option value="">-- Seleziona deposito --</option>
+              {depositoOptions.map(dep => (
+                <option key={dep} value={dep}>{dep}</option>
+              ))}
+            </select>
             <button
               onClick={handleAssignDeposito}
               disabled={!depositoRiferimento}
@@ -1628,24 +1655,6 @@ function LookupSection({
               Assegna
             </button>
           </div>
-
-          {depositoRiferimento && (
-            <div className="p-3 bg-purple-100 border border-purple-200 rounded">
-              <div className="flex items-center justify-between">
-                <div>
-                  <span className="text-sm font-medium text-purple-800">Deposito da assegnare:</span>
-                  <span className="ml-2 font-mono text-lg">{depositoRiferimento}</span>
-                </div>
-                <button
-                  onClick={handleAssignDeposito}
-                  disabled={!depositoRiferimento}
-                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-300 text-white rounded text-sm font-medium"
-                >
-                  Assegna
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       )}
       {/* Fine blocco !assignedData */}
@@ -2023,6 +2032,170 @@ function EspositoreRisolviSection({ anomalia, onSuccess }) {
           </>
         )}
       </button>
+    </div>
+  );
+}
+
+// =============================================================================
+// v11.6: Sub-componente Risoluzione DEPOSITO (DEP-A01)
+// Azione correttiva: seleziona deposito corretto da anagrafica_clienti
+// =============================================================================
+
+function DepositoSection({ anomalia, ordineData, onSuccess }) {
+  const [depositoOptions, setDepositoOptions] = useState([]);
+  const [loadingDepositi, setLoadingDepositi] = useState(true);
+  const [selectedDeposito, setSelectedDeposito] = useState('');
+  const [note, setNote] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(false);
+
+  const operatore = useMemo(() => {
+    try {
+      const user = JSON.parse(localStorage.getItem('servo_user') || '{}');
+      return user.username || 'operatore';
+    } catch {
+      return 'operatore';
+    }
+  }, []);
+
+  // Carica lista depositi da anagrafica_clienti
+  useEffect(() => {
+    setLoadingDepositi(true);
+    reportApi.getDepositi().then(res => {
+      setDepositoOptions(res.depositi || []);
+    }).catch(() => {
+      setDepositoOptions([]);
+    }).finally(() => setLoadingDepositi(false));
+  }, []);
+
+  const handleRisolvi = async () => {
+    if (!selectedDeposito) return;
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      await anomalieApi.risolviDeposito(anomalia.id_anomalia, {
+        deposito_riferimento: selectedDeposito,
+        operatore,
+        note: note || `Deposito corretto: ${selectedDeposito} (da ${operatore})`
+      });
+      setSuccess(true);
+      setTimeout(() => {
+        onSuccess?.();
+      }, 1000);
+    } catch (err) {
+      setError(err.response?.data?.detail || err.message || 'Errore durante risoluzione deposito');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (success) {
+    return (
+      <div className="bg-green-50 rounded-lg p-4">
+        <div className="flex items-center gap-2 text-green-700 font-medium">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+          </svg>
+          Deposito corretto assegnato: <span className="font-bold">{selectedDeposito}</span>
+        </div>
+      </div>
+    );
+  }
+
+  // Deposito attuale dall'ordine
+  const depositoAttuale = ordineData?.deposito_riferimento || ordineData?.deposito || anomalia?.deposito_attuale;
+
+  return (
+    <div className="bg-purple-50 rounded-lg p-4">
+      <h4 className="font-semibold text-purple-800 mb-3 flex items-center gap-2">
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+        </svg>
+        Correzione Deposito di Riferimento
+      </h4>
+
+      <p className="text-sm text-purple-700 mb-4">
+        Il deposito assegnato non corrisponde a quello previsto in anagrafica clienti.
+        Seleziona il deposito corretto per risolvere l'anomalia.
+      </p>
+
+      {depositoAttuale && (
+        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded">
+          <span className="text-sm text-red-700">
+            Deposito attuale: <span className="font-bold font-mono">{depositoAttuale}</span>
+            <span className="ml-2 text-red-500">(non corretto)</span>
+          </span>
+        </div>
+      )}
+
+      {error && (
+        <div className="mb-4 p-3 bg-red-100 border border-red-300 rounded text-red-700 text-sm">
+          {error}
+        </div>
+      )}
+
+      <div className="space-y-3">
+        <div>
+          <label className="block text-sm font-medium text-purple-800 mb-1">
+            Deposito Corretto
+          </label>
+          {loadingDepositi ? (
+            <div className="px-3 py-2 text-sm text-purple-500">Caricamento depositi...</div>
+          ) : (
+            <select
+              value={selectedDeposito}
+              onChange={(e) => setSelectedDeposito(e.target.value)}
+              className="w-full px-3 py-2 border border-purple-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+            >
+              <option value="">-- Seleziona deposito --</option>
+              {depositoOptions.map(dep => (
+                <option key={dep} value={dep}>{dep}</option>
+              ))}
+            </select>
+          )}
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-purple-800 mb-1">
+            Note (opzionale)
+          </label>
+          <input
+            type="text"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Es: Deposito corretto verificato con anagrafica"
+            className="w-full px-3 py-2 border border-purple-300 rounded text-sm focus:ring-2 focus:ring-purple-500"
+          />
+        </div>
+
+        <button
+          onClick={handleRisolvi}
+          disabled={!selectedDeposito || submitting}
+          className={`w-full py-2 rounded-lg font-medium flex items-center justify-center gap-2 ${
+            !selectedDeposito || submitting
+              ? 'bg-purple-200 text-purple-400 cursor-not-allowed'
+              : 'bg-purple-600 hover:bg-purple-700 text-white'
+          }`}
+        >
+          {submitting ? (
+            <>
+              <span className="animate-spin">...</span>
+              Assegnazione in corso...
+            </>
+          ) : (
+            <>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              </svg>
+              {selectedDeposito
+                ? `Assegna Deposito ${selectedDeposito} e Risolvi`
+                : 'Seleziona un deposito'}
+            </>
+          )}
+        </button>
+      </div>
     </div>
   );
 }
