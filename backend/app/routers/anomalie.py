@@ -531,7 +531,7 @@ async def dettaglio_anomalia(id_anomalia: int) -> Dict[str, Any]:
         tipo_anomalia = anomalia_dict.get('tipo_anomalia') or ''
         codice_anomalia = anomalia_dict.get('codice_anomalia') or ''
 
-        if tipo_anomalia == 'LOOKUP' or (codice_anomalia and codice_anomalia.startswith('LKP-')):
+        if tipo_anomalia in ('LOOKUP', 'DEPOSITO') or (codice_anomalia and (codice_anomalia.startswith('LKP-') or codice_anomalia.startswith('DEP-'))):
             if anomalia_dict.get('id_testata'):
                 ordine = db.execute("""
                     SELECT
@@ -543,7 +543,8 @@ async def dettaglio_anomalia(id_anomalia: int) -> Dict[str, Any]:
                         citta,
                         provincia,
                         lookup_method,
-                        lookup_score
+                        lookup_score,
+                        deposito_riferimento
                     FROM ORDINI_TESTATA
                     WHERE id_testata = ?
                 """, (anomalia_dict['id_testata'],)).fetchone()

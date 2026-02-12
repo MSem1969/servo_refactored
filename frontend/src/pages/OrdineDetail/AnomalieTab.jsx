@@ -54,7 +54,13 @@ export default function AnomalieTab({
 
 // Sub-component: Sezione Supervisioni
 function SupervisioniSection({ supervisioni, onApprova, onRifiuta }) {
-  const pendingCount = supervisioni.filter(s => s.stato === 'PENDING').length;
+  // Filtra solo supervisioni espositore (ESP-*) - le altre hanno sezioni dedicate
+  const espSupervisioni = supervisioni.filter(s =>
+    !s.codice_anomalia || s.codice_anomalia.startsWith('ESP-')
+  );
+  const pendingCount = espSupervisioni.filter(s => s.stato === 'PENDING').length;
+
+  if (espSupervisioni.length === 0) return null;
 
   return (
     <div className="mb-6">
@@ -62,7 +68,7 @@ function SupervisioniSection({ supervisioni, onApprova, onRifiuta }) {
         Supervisione Espositori ({pendingCount} pending)
       </h3>
       <div className="space-y-3">
-        {supervisioni.map((sup) => (
+        {espSupervisioni.map((sup) => (
           <SupervisioneCard
             key={sup.id_supervisione}
             supervisione={sup}
