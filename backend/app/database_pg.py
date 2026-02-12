@@ -70,13 +70,31 @@ class PostgreSQLConnection:
         self._conn = conn
         self._cursor = None
 
+    def _reconnect(self):
+        """Riconnette al database sostituendo la connessione morta."""
+        global _pool
+        try:
+            _pool.putconn(self._conn, close=True)
+        except Exception:
+            pass
+        self._conn = _pool.getconn()
+        self._conn.autocommit = False
+
     def execute(self, sql: str, params: tuple = None):
         """
         Esegue una query SQL.
         Converte automaticamente ? in %s per compatibilita SQLite.
         """
         # Resetta transazione se in stato di errore
-        if self._conn.status == psycopg2.extensions.TRANSACTION_STATUS_INERROR:
+        try:
+            if self._conn.closed:
+                raise psycopg2.InterfaceError("connection already closed")
+            if self._conn.status == psycopg2.extensions.TRANSACTION_STATUS_INERROR:
+                self._conn.rollback()
+        except psycopg2.InterfaceError:
+            # Connessione morta - forza riconnessione tramite get_db()
+            self._reconnect()
+        except Exception:
             try:
                 self._conn.rollback()
             except:
@@ -86,7 +104,12 @@ class PostgreSQLConnection:
         pg_sql = self._convert_sql(sql)
 
         # Crea cursor con risultati come dizionari
-        cursor = self._conn.cursor(cursor_factory=RealDictCursor)
+        try:
+            cursor = self._conn.cursor(cursor_factory=RealDictCursor)
+        except psycopg2.InterfaceError:
+            # Connessione morta al momento di creare il cursor - riconnetti e riprova
+            self._reconnect()
+            cursor = self._conn.cursor(cursor_factory=RealDictCursor)
 
         # Per INSERT, aggiungi RETURNING per ottenere lastrowid
         # Ma NON per INSERT ... ON CONFLICT (upsert)
@@ -288,15 +311,18 @@ def get_db() -> PostgreSQLConnection:
         raw_conn.autocommit = False
         _connection = PostgreSQLConnection(raw_conn)
     else:
-        # Reset connessione SOLO se in stato di ERRORE
-        # NON fare rollback su INTRANS - è uno stato normale durante una transazione!
-        # Il rollback su INTRANS annullava le modifiche fatte nella stessa transazione.
+        # Verifica che la connessione sia ancora viva
         try:
+            # conn.closed != 0 indica connessione chiusa lato client o server
+            if _connection._conn.closed:
+                raise psycopg2.InterfaceError("connection already closed")
+            # Reset connessione SOLO se in stato di ERRORE
+            # NON fare rollback su INTRANS - è uno stato normale durante una transazione!
             status = _connection._conn.status
             if status == psycopg2.extensions.TRANSACTION_STATUS_INERROR:
                 _connection._conn.rollback()
         except Exception:
-            # Se la connessione è corrotta, ricreala
+            # Se la connessione è corrotta/chiusa, ricreala
             try:
                 _pool.putconn(_connection._conn, close=True)
             except Exception:
