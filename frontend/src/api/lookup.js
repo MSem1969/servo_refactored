@@ -8,12 +8,13 @@ export const lookupApi = {
   test: (data) => api.post('/lookup/test', data).then(r => r.data),
   batch: (limit = 100) => api.post(`/lookup/batch?limit=${limit}`).then(r => r.data),
 
-  manuale: (id, idFarmacia, idParafarmacia, minIdManuale = null, operatore = null) =>
+  manuale: (id, idFarmacia, idParafarmacia, minIdManuale = null, operatore = null, depositoRiferimento = null) =>
     api.put(`/lookup/manuale/${id}`, {
       id_farmacia: idFarmacia,
       id_parafarmacia: idParafarmacia,
       min_id_manuale: minIdManuale,
-      operatore: operatore
+      operatore: operatore,
+      deposito_riferimento: depositoRiferimento
     }).then(r => r.data),
 
   getPending: (limit = 50) => api.get(`/lookup/pending?limit=${limit}`).then(r => r.data),

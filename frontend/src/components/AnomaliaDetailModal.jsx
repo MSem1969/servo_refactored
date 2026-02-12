@@ -77,9 +77,6 @@ export function AnomaliaDetailModal({
     anomaliaDetail?.anomalia?.codice_anomalia?.startsWith('LST-') ||
     anomaliaDetail?.anomalia?.codice_anomalia?.startsWith('PRICE-');
 
-  // v11.6: Anomalia DEPOSITO (DEP-A01)
-  const isDepositoAnomalia = anomaliaDetail?.anomalia?.codice_anomalia?.startsWith('DEP-');
-
   // v10.5: Anomalia ESPOSITORE
   const isEspositoreAnomalia = anomaliaDetail?.anomalia?.tipo_anomalia === 'ESPOSITORE' ||
     anomaliaDetail?.anomalia?.codice_anomalia?.startsWith('ESP-');
@@ -271,14 +268,15 @@ export function AnomaliaDetailModal({
                   setSelectedResult={setSelectedResult}
                   onSearch={handleSearch}
                   onAssign={handleAssign}
-                  onAssignManualMinId={async (minId) => {
+                  onAssignFarmacia={onAssignFarmacia}
+                  onAssignManualMinId={async (minId, deposito = null) => {
                     if (onAssignFarmacia) {
-                      // Passa MIN_ID manuale come terzo parametro
                       const success = await onAssignFarmacia(
                         anomaliaDetail.anomalia.id_testata,
                         null,  // id_farmacia
                         null,  // id_parafarmacia
-                        minId  // manual MIN_ID
+                        minId, // manual MIN_ID
+                        deposito // deposito_riferimento
                       );
                       if (success) {
                         onClose();
@@ -358,18 +356,6 @@ export function AnomaliaDetailModal({
                 </>
               )}
 
-              {/* v11.6: DEPOSITO ANOMALIA (DEP-A01) - Azione correttiva: selezione deposito */}
-              {isDepositoAnomalia && anomaliaDetail.anomalia?.stato !== 'RISOLTA' && (
-                <DepositoSection
-                  anomalia={anomaliaDetail.anomalia}
-                  ordineData={anomaliaDetail.ordine_data}
-                  onSuccess={() => {
-                    onRisolvi?.();
-                    onClose();
-                  }}
-                />
-              )}
-
               {/* v11.5: Bottone Correggi Prezzo per anomalie LISTINO/PREZZO (da OrdineDetail) */}
               {isListinoAnomalia && onCorreggiPrezzo && anomaliaDetail.anomalia?.stato !== 'RISOLTA' && (
                 <div className="bg-green-50 rounded-lg p-4">
@@ -408,8 +394,8 @@ export function AnomaliaDetailModal({
               )}
 
               {/* v10.6: Sezione Propagazione per anomalie che possono essere propagate */}
-              {/* ESCLUSE: LOOKUP (richiede selezione), AIC (ha sua sezione), ESPOSITORE (uniche per ordine), DEPOSITO (ha sua sezione) */}
-              {!isLookupAnomalia && !isAicAnomalia && !isEspositoreAnomalia && !isDepositoAnomalia && anomaliaDetail.anomalia?.stato !== 'RISOLTA' && (
+              {/* ESCLUSE: LOOKUP (richiede selezione), AIC (ha sua sezione), ESPOSITORE (uniche per ordine) */}
+              {!isLookupAnomalia && !isAicAnomalia && !isEspositoreAnomalia && anomaliaDetail.anomalia?.stato !== 'RISOLTA' && (
                 <PropagazioneSection
                   anomalia={anomaliaDetail.anomalia}
                   onSuccess={() => {
@@ -802,6 +788,7 @@ function LookupSection({
   setSelectedResult,
   onSearch,
   onAssign,
+  onAssignFarmacia,  // v11.6: Callback diretto per passare deposito
   onAssignManualMinId,
   onClose,  // v10.6: Per chiudere modal dopo risoluzione deposito
   // v11.4: Props per supporto Supervisione
@@ -951,7 +938,8 @@ function LookupSection({
 
   const canResolve = assignedData && missingFields.length === 0;
 
-  // v11.4: Risolvi anomalia (step 2 - conferma e salva)
+  // v11.6: Risolvi anomalia (step 2 - conferma e salva)
+  // Passa deposito attraverso onAssignFarmacia per tutte le tipologie
   const handleRisolviAnomalia = async () => {
     if (!canResolve) return;
 
@@ -959,34 +947,25 @@ function LookupSection({
     setDepositoError(null);
 
     try {
-      const user = JSON.parse(localStorage.getItem('servo_user') || '{}');
-      const operatore = user.username || 'admin';
-
-      // Usa sempre onAssign con i dati completi (farmacia o manuale)
       if (assignedData.type === 'farmacia' || assignedData.type === 'parafarmacia') {
-        // Assegna farmacia/parafarmacia + deposito se necessario
-        if (onAssign) {
-          // Prima assegna la farmacia
-          onAssign();
-          // Se c'è un deposito manuale aggiunto, aggiorna anche quello
-          if (assignedData.deposito && !assignedData.id_farmacia?.deposito_riferimento) {
-            // TODO: aggiorna deposito ordine se necessario
-          }
+        // Assegna farmacia/parafarmacia + deposito via lookup_manuale
+        if (onAssignFarmacia) {
+          const success = await onAssignFarmacia(
+            idTestata,
+            assignedData.id_farmacia,
+            assignedData.id_parafarmacia,
+            null,  // min_id_manuale
+            assignedData.deposito || null  // deposito_riferimento
+          );
+          if (success && onClose) onClose();
         }
       } else {
-        // Assegnazione manuale (MIN_ID e/o Deposito)
+        // Assegnazione manuale (MIN_ID e/o Deposito) - passa deposito insieme al MIN_ID
         if (assignedData.min_id && onAssignManualMinId) {
-          onAssignManualMinId(assignedData.min_id);
+          onAssignManualMinId(assignedData.min_id, assignedData.deposito || null);
+        } else if (onClose) {
+          onClose();
         }
-        if (assignedData.deposito) {
-          const { anomalieApi } = await import('../api/anomalie');
-          await anomalieApi.risolviDeposito(anomalia.id_anomalia, {
-            deposito_riferimento: assignedData.deposito,
-            operatore,
-            note: `Deposito assegnato manualmente`
-          });
-        }
-        if (onClose) onClose();
       }
     } catch (err) {
       console.error('Errore risoluzione:', err);
@@ -2040,165 +2019,6 @@ function EspositoreRisolviSection({ anomalia, onSuccess }) {
 // v11.6: Sub-componente Risoluzione DEPOSITO (DEP-A01)
 // Azione correttiva: seleziona deposito corretto da anagrafica_clienti
 // =============================================================================
-
-function DepositoSection({ anomalia, ordineData, onSuccess }) {
-  const [depositoOptions, setDepositoOptions] = useState([]);
-  const [loadingDepositi, setLoadingDepositi] = useState(true);
-  const [selectedDeposito, setSelectedDeposito] = useState('');
-  const [note, setNote] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState(null);
-  const [success, setSuccess] = useState(false);
-
-  const operatore = useMemo(() => {
-    try {
-      const user = JSON.parse(localStorage.getItem('servo_user') || '{}');
-      return user.username || 'operatore';
-    } catch {
-      return 'operatore';
-    }
-  }, []);
-
-  // Carica lista depositi da anagrafica_clienti
-  useEffect(() => {
-    setLoadingDepositi(true);
-    reportApi.getDepositi().then(res => {
-      setDepositoOptions(res.depositi || []);
-    }).catch(() => {
-      setDepositoOptions([]);
-    }).finally(() => setLoadingDepositi(false));
-  }, []);
-
-  const handleRisolvi = async () => {
-    if (!selectedDeposito) return;
-    setSubmitting(true);
-    setError(null);
-
-    try {
-      await anomalieApi.risolviDeposito(anomalia.id_anomalia, {
-        deposito_riferimento: selectedDeposito,
-        operatore,
-        note: note || `Deposito corretto: ${selectedDeposito} (da ${operatore})`
-      });
-      setSuccess(true);
-      setTimeout(() => {
-        onSuccess?.();
-      }, 1000);
-    } catch (err) {
-      setError(err.response?.data?.detail || err.message || 'Errore durante risoluzione deposito');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  if (success) {
-    return (
-      <div className="bg-green-50 rounded-lg p-4">
-        <div className="flex items-center gap-2 text-green-700 font-medium">
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
-          Deposito corretto assegnato: <span className="font-bold">{selectedDeposito}</span>
-        </div>
-      </div>
-    );
-  }
-
-  // Deposito attuale dall'ordine
-  const depositoAttuale = ordineData?.deposito_riferimento || ordineData?.deposito || anomalia?.deposito_attuale;
-
-  return (
-    <div className="bg-purple-50 rounded-lg p-4">
-      <h4 className="font-semibold text-purple-800 mb-3 flex items-center gap-2">
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-        </svg>
-        Correzione Deposito di Riferimento
-      </h4>
-
-      <p className="text-sm text-purple-700 mb-4">
-        Il deposito assegnato non corrisponde a quello previsto in anagrafica clienti.
-        Seleziona il deposito corretto per risolvere l'anomalia.
-      </p>
-
-      {depositoAttuale && (
-        <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded">
-          <span className="text-sm text-red-700">
-            Deposito attuale: <span className="font-bold font-mono">{depositoAttuale}</span>
-            <span className="ml-2 text-red-500">(non corretto)</span>
-          </span>
-        </div>
-      )}
-
-      {error && (
-        <div className="mb-4 p-3 bg-red-100 border border-red-300 rounded text-red-700 text-sm">
-          {error}
-        </div>
-      )}
-
-      <div className="space-y-3">
-        <div>
-          <label className="block text-sm font-medium text-purple-800 mb-1">
-            Deposito Corretto
-          </label>
-          {loadingDepositi ? (
-            <div className="px-3 py-2 text-sm text-purple-500">Caricamento depositi...</div>
-          ) : (
-            <select
-              value={selectedDeposito}
-              onChange={(e) => setSelectedDeposito(e.target.value)}
-              className="w-full px-3 py-2 border border-purple-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-            >
-              <option value="">-- Seleziona deposito --</option>
-              {depositoOptions.map(dep => (
-                <option key={dep} value={dep}>{dep}</option>
-              ))}
-            </select>
-          )}
-        </div>
-
-        <div>
-          <label className="block text-sm font-medium text-purple-800 mb-1">
-            Note (opzionale)
-          </label>
-          <input
-            type="text"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="Es: Deposito corretto verificato con anagrafica"
-            className="w-full px-3 py-2 border border-purple-300 rounded text-sm focus:ring-2 focus:ring-purple-500"
-          />
-        </div>
-
-        <button
-          onClick={handleRisolvi}
-          disabled={!selectedDeposito || submitting}
-          className={`w-full py-2 rounded-lg font-medium flex items-center justify-center gap-2 ${
-            !selectedDeposito || submitting
-              ? 'bg-purple-200 text-purple-400 cursor-not-allowed'
-              : 'bg-purple-600 hover:bg-purple-700 text-white'
-          }`}
-        >
-          {submitting ? (
-            <>
-              <span className="animate-spin">...</span>
-              Assegnazione in corso...
-            </>
-          ) : (
-            <>
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-              {selectedDeposito
-                ? `Assegna Deposito ${selectedDeposito} e Risolvi`
-                : 'Seleziona un deposito'}
-            </>
-          )}
-        </button>
-      </div>
-    </div>
-  );
-}
 
 // v11.0: AicCorrectionSection rimosso - ora usa AicAssignmentModal unificato (TIER 2.1)
 

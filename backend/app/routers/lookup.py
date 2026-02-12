@@ -39,6 +39,7 @@ class LookupManualeRequest(BaseModel):
     id_parafarmacia: Optional[int] = None
     min_id_manuale: Optional[str] = None  # v6.2: MIN_ID inserito manualmente
     operatore: Optional[str] = None  # v11.5: Operatore per audit e supervisione
+    deposito_riferimento: Optional[str] = None  # v11.6: Deposito selezionato dall'operatore
 
 
 # =============================================================================
@@ -156,7 +157,8 @@ async def assegna_manuale(
                 id_farmacia=None,
                 id_parafarmacia=None,
                 min_id_manuale=request.min_id_manuale,
-                operatore=request.operatore
+                operatore=request.operatore,
+                deposito_riferimento=request.deposito_riferimento
             )
 
             if not success:
@@ -189,7 +191,8 @@ async def assegna_manuale(
             id_testata=id_testata,
             id_farmacia=request.id_farmacia,
             id_parafarmacia=request.id_parafarmacia,
-            operatore=request.operatore
+            operatore=request.operatore,
+            deposito_riferimento=request.deposito_riferimento
         )
 
         if not success:

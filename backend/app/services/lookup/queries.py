@@ -300,7 +300,8 @@ def lookup_manuale(
     id_farmacia: int = None,
     id_parafarmacia: int = None,
     min_id_manuale: str = None,
-    operatore: str = None
+    operatore: str = None,
+    deposito_riferimento: str = None
 ) -> bool:
     """
     Assegna manualmente una farmacia/parafarmacia a un ordine.
@@ -311,6 +312,7 @@ def lookup_manuale(
         id_parafarmacia: ID parafarmacia da database (opzionale)
         min_id_manuale: Codice ministeriale inserito manualmente (opzionale)
         operatore: Username operatore (per audit e supervisione)
+        deposito_riferimento: Deposito selezionato dall'operatore (opzionale, sovrascrive anagrafica)
 
     Returns:
         True se successo
@@ -359,6 +361,23 @@ def lookup_manuale(
 
         # Popola header da anagrafica (tenta lookup da MIN_ID)
         popola_header_da_anagrafica(id_testata, operatore)
+
+        # v11.6: Override deposito se esplicitamente selezionato dall'operatore
+        if deposito_riferimento:
+            db.execute("""
+                UPDATE ordini_testata
+                SET deposito_riferimento = %s
+                WHERE id_testata = %s
+            """, (deposito_riferimento, id_testata))
+            # Risolvi anche anomalie DEP-A01 collegate
+            db.execute("""
+                UPDATE ANOMALIE
+                SET stato = 'RISOLTA',
+                    data_risoluzione = CURRENT_TIMESTAMP,
+                    note_risoluzione = %s
+                WHERE id_testata = %s AND codice_anomalia LIKE 'DEP-%%' AND stato = 'APERTA'
+            """, (f'Deposito {deposito_riferimento} assegnato da lookup manuale', id_testata))
+            db.commit()
 
         # Sblocca ordine se tutte le anomalie/supervisioni sono risolte
         sblocca_ordine_se_completo(id_testata)
@@ -412,6 +431,23 @@ def lookup_manuale(
 
     # Popola header con dati anagrafica
     popola_header_da_anagrafica(id_testata, operatore)
+
+    # v11.6: Override deposito se esplicitamente selezionato dall'operatore
+    if deposito_riferimento:
+        db.execute("""
+            UPDATE ordini_testata
+            SET deposito_riferimento = %s
+            WHERE id_testata = %s
+        """, (deposito_riferimento, id_testata))
+        # Risolvi anche anomalie DEP-A01 collegate
+        db.execute("""
+            UPDATE ANOMALIE
+            SET stato = 'RISOLTA',
+                data_risoluzione = CURRENT_TIMESTAMP,
+                note_risoluzione = %s
+            WHERE id_testata = %s AND codice_anomalia LIKE 'DEP-%%' AND stato = 'APERTA'
+        """, (f'Deposito {deposito_riferimento} assegnato da lookup manuale', id_testata))
+        db.commit()
 
     # Sblocca ordine se tutte le anomalie/supervisioni sono risolte
     sblocca_ordine_se_completo(id_testata)

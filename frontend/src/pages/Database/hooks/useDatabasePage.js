@@ -447,9 +447,10 @@ export function useDatabasePage(currentUser, onOpenOrdine) {
     }
   }, [anomaliaDetail, loadAnomalies, loadAnomalieCount]);
 
-  const handleAssignFarmacia = useCallback(async (idTestata, idFarmacia, idParafarmacia, minIdManuale = null) => {
+  const handleAssignFarmacia = useCallback(async (idTestata, idFarmacia, idParafarmacia, minIdManuale = null, depositoRiferimento = null) => {
     try {
-      const res = await lookupApi.manuale(idTestata, idFarmacia, idParafarmacia, minIdManuale);
+      const operatore = currentUser?.username || null;
+      const res = await lookupApi.manuale(idTestata, idFarmacia, idParafarmacia, minIdManuale, operatore, depositoRiferimento);
       if (res.success) {
         alert(minIdManuale ? `MIN_ID ${minIdManuale} assegnato` : 'Farmacia assegnata');
         setShowAnomaliaDetailModal(false);
@@ -464,7 +465,7 @@ export function useDatabasePage(currentUser, onOpenOrdine) {
       alert('Errore: ' + err.message);
       return false;
     }
-  }, [activeTab, loadAnomalies, loadAnomalieCount, loadOrdini]);
+  }, [activeTab, currentUser, loadAnomalies, loadAnomalieCount, loadOrdini]);
 
   const closeAnomaliaModal = useCallback(() => {
     setShowAnomaliaDetailModal(false);
