@@ -187,7 +187,10 @@ def extract_opella(text: str, lines: List[str], pdf_path: str = None) -> List[Di
 
                     # Componi ragione sociale
                     if ragione_sociale_parts:
-                        data['ragione_sociale'] = ' '.join(ragione_sociale_parts).strip()[:100]
+                        rs = ' '.join(ragione_sociale_parts).strip()
+                        # v11.6: Rimuovi codice fornitore numerico iniziale (es. "100172037 F.CIA VOLPE SRL")
+                        rs = re.sub(r'^\d+\s+', '', rs)
+                        data['ragione_sociale'] = rs[:100]
                     if indirizzo:
                         data['indirizzo'] = indirizzo.strip()[:50]
                     if cap:
@@ -324,7 +327,10 @@ def _extract_opella_text_fallback(text: str, lines: List[str]) -> List[Dict]:
                         ragione_sociale_parts.append(current_line)
 
             if ragione_sociale_parts:
-                data['ragione_sociale'] = ' '.join(ragione_sociale_parts).strip()[:100]
+                rs = ' '.join(ragione_sociale_parts).strip()
+                # v11.6: Rimuovi codice fornitore numerico iniziale (es. "100172037 F.CIA VOLPE SRL")
+                rs = re.sub(r'^\d+\s+', '', rs)
+                data['ragione_sociale'] = rs[:100]
             if indirizzo:
                 data['indirizzo'] = indirizzo[:50]
             if cap:
