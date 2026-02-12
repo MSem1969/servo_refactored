@@ -36,6 +36,7 @@ from .approval import (
     approva_bulk_pattern_aic,
     rifiuta_supervisione_aic,
     _reset_pattern_aic,
+    _registra_approvazione_pattern_aic,
 )
 
 # Queries
@@ -73,6 +74,7 @@ __all__ = [
     'approva_bulk_pattern_aic',
     'rifiuta_supervisione_aic',
     '_reset_pattern_aic',
+    '_registra_approvazione_pattern_aic',
     # Queries
     'conta_anomalie_aic_aperte',
     'conta_supervisioni_aic_pending',

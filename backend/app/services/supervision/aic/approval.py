@@ -11,6 +11,46 @@ from .models import LivelloPropagazione
 from .propagation import AICPropagator
 
 
+SOGLIA_PROMOZIONE = 3
+
+
+def _registra_approvazione_pattern_aic(pattern_sig: str, operatore: str, codice_aic: str):
+    """
+    Registra approvazione nel pattern ML AIC.
+    Incrementa contatore e promuove se raggiunge soglia.
+    Standalone wrapper usato da anomalies/commands.py.
+    """
+    db = get_db()
+
+    db.execute("""
+        UPDATE criteri_ordinari_aic
+        SET count_approvazioni = count_approvazioni + 1,
+            operatori_approvatori = COALESCE(operatori_approvatori || ',', '') || %s,
+            codice_aic_default = COALESCE(codice_aic_default, %s)
+        WHERE pattern_signature = %s
+    """, (operatore, codice_aic, pattern_sig))
+
+    pattern = db.execute("""
+        SELECT count_approvazioni, is_ordinario
+        FROM criteri_ordinari_aic
+        WHERE pattern_signature = %s
+    """, (pattern_sig,)).fetchone()
+
+    if pattern and not pattern['is_ordinario'] and pattern['count_approvazioni'] >= SOGLIA_PROMOZIONE:
+        db.execute("""
+            UPDATE criteri_ordinari_aic
+            SET is_ordinario = TRUE,
+                data_promozione = CURRENT_TIMESTAMP
+            WHERE pattern_signature = %s
+        """, (pattern_sig,))
+        log_operation(
+            'PROMOZIONE_PATTERN',
+            'CRITERI_ORDINARI_AIC',
+            0,
+            f"Pattern {pattern_sig} promosso a ordinario dopo {SOGLIA_PROMOZIONE} approvazioni"
+        )
+
+
 def _reset_pattern_aic(pattern_sig: str):
     """
     Reset pattern ML AIC dopo rifiuto.
