@@ -759,33 +759,18 @@ def _insert_order(
         else:
             descrizione_deposito = f"Cliente senza deposito assegnato (P.IVA: {piva_estratta})"
 
-        cursor = db.execute("""
+        # v11.6: DEP-A01 anomaly only (no supervisione) - resolved via LOOKUP flow
+        db.execute("""
             INSERT INTO ANOMALIE
             (id_testata, tipo_anomalia, livello, codice_anomalia,
              descrizione, valore_anomalo, richiede_supervisione)
-            VALUES (%s, 'DEPOSITO', 'ERRORE', 'DEP-A01', %s, %s, TRUE)
-            RETURNING id_anomalia
+            VALUES (%s, 'DEPOSITO', 'ERRORE', 'DEP-A01', %s, %s, FALSE)
         """, (
             id_testata,
             CODICI_ANOMALIA['DEP-A01'],
             descrizione_deposito
         ))
-        id_anomalia_dep = cursor.fetchone()[0]
 
-        # Crea supervisione per DEP-A01
-        anomalia_dep = {
-            'tipo_anomalia': 'DEPOSITO',
-            'codice_anomalia': 'DEP-A01',
-            'vendor': vendor or 'UNKNOWN',
-            'partita_iva_estratta': piva_estratta,
-            'ragione_sociale_estratta': order_data.get('ragione_sociale', ''),
-            'citta_estratta': order_data.get('citta', ''),
-            'depositi_validi': 'CT, CL',
-            'cliente_in_anagrafica': cliente_exists > 0,
-        }
-        crea_richiesta_supervisione(id_testata, id_anomalia_dep, anomalia_dep)
-
-        richiede_supervisione = True
         result['anomalie'].append(
             f"Ordine {order_data.get('numero_ordine')}: {descrizione_deposito} - richiede impostazione manuale"
         )
@@ -809,34 +794,18 @@ def _insert_order(
             ).fetchone()
             piva_lookup = para_row['partita_iva'] if para_row else None
 
-        cursor = db.execute("""
+        # v11.6: DEP-A01 anomaly only (no supervisione) - resolved via LOOKUP flow
+        db.execute("""
             INSERT INTO ANOMALIE
             (id_testata, tipo_anomalia, livello, codice_anomalia,
              descrizione, valore_anomalo, richiede_supervisione)
-            VALUES (%s, 'DEPOSITO', 'ERRORE', 'DEP-A01', %s, %s, TRUE)
-            RETURNING id_anomalia
+            VALUES (%s, 'DEPOSITO', 'ERRORE', 'DEP-A01', %s, %s, FALSE)
         """, (
             id_testata,
             CODICI_ANOMALIA['DEP-A01'],
             f"P.IVA: {piva_lookup or 'N/D'} - Farmacia trovata via lookup ma deposito non determinabile"
         ))
-        id_anomalia_dep = cursor.fetchone()[0]
 
-        # Crea supervisione per DEP-A01
-        anomalia_dep = {
-            'tipo_anomalia': 'DEPOSITO',
-            'codice_anomalia': 'DEP-A01',
-            'vendor': vendor or 'UNKNOWN',
-            'partita_iva_estratta': piva_lookup or '',
-            'ragione_sociale_estratta': order_data.get('ragione_sociale', ''),
-            'citta_estratta': order_data.get('citta', ''),
-            'depositi_validi': 'CT, CL',
-            'id_farmacia_lookup': id_farm,
-            'id_parafarmacia_lookup': id_parafarm,
-        }
-        crea_richiesta_supervisione(id_testata, id_anomalia_dep, anomalia_dep)
-
-        richiede_supervisione = True
         result['anomalie'].append(
             f"Ordine {order_data.get('numero_ordine')}: deposito di riferimento mancante (farmacia trovata via lookup) - richiede impostazione manuale"
         )

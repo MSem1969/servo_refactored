@@ -173,7 +173,7 @@ export default function OrdineDetailPage({ ordineId, currentUser, onBack, onNavi
             {[
               { id: 'righe', label: `Righe (${righe.length})`, icon: '[R]' },
               { id: 'espositore', label: 'Espositore', icon: '[E]' },
-              { id: 'anomalie', label: `Anomalie (${anomalie.length + supervisioni.length})`, icon: '[!]' }
+              { id: 'anomalie', label: `Anomalie (${anomalie.length + supervisioni.filter(s => !s.codice_anomalia || s.codice_anomalia.startsWith('ESP-')).length})`, icon: '[!]' }
             ].map(tab => (
               <button
                 key={tab.id}
