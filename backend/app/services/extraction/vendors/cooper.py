@@ -160,7 +160,7 @@ def extract_cooper(text: str, lines: List[str], pdf_path: str = None) -> List[Di
 
     m = re.search(r'Agente:\s*([A-Z]+?)(?:\s*Telefono:|\s*Tel)', text, re.I)
     if m:
-        data['agente'] = m.group(1).strip()[:50]
+        data['nome_agente'] = m.group(1).strip()[:50]
 
     # === DATI SPEDIZIONE (Destinatario farmacia) ===
     _extract_spedizione_fallback(text, data)
@@ -203,7 +203,8 @@ def _extract_spedizione_fallback(text: str, data: Dict):
     # Pattern flessibili (con o senza spazi)
     m = re.search(r'Codice\s*Ministeriale:\s*(\d+)', spedizione_text, re.I)
     if m:
-        data['min_id'] = m.group(1).strip()
+        # v11.6: Chiave corretta 'codice_ministeriale' + padding a 9 cifre
+        data['codice_ministeriale'] = m.group(1).strip().zfill(9)
 
     # Ragione Sociale - v11.2: usa testo originale (spacing corretto da x_tolerance)
     # Pattern più ampio per catturare con o senza spazi
