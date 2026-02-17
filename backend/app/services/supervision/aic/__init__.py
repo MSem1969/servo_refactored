@@ -45,6 +45,8 @@ from .queries import (
     conta_supervisioni_aic_pending,
     search_aic_suggestions,
     get_storico_modifiche_aic,
+    crea_supervisione_aic,
+    valuta_anomalia_aic,
 )
 
 # Corrections
@@ -80,6 +82,8 @@ __all__ = [
     'conta_supervisioni_aic_pending',
     'search_aic_suggestions',
     'get_storico_modifiche_aic',
+    'crea_supervisione_aic',
+    'valuta_anomalia_aic',
     # Corrections
     'correggi_aic_errato',
     # Wrappers

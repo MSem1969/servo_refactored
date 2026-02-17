@@ -2,11 +2,13 @@
 # SERV.O v11.4 - AIC QUERIES
 # =============================================================================
 # Funzioni di query e contatori per AIC
+# v11.6: Aggiunto crea_supervisione_aic, valuta_anomalia_aic (migrato da aic.py)
 # =============================================================================
 
-from typing import Dict, List
+from typing import Dict, List, Tuple
 
-from ....database_pg import get_db
+from ....database_pg import get_db, log_operation
+from .validation import normalizza_descrizione, calcola_pattern_signature
 
 
 def conta_anomalie_aic_aperte() -> int:
@@ -126,3 +128,161 @@ def get_storico_modifiche_aic(
 
     rows = db.execute(query, params).fetchall()
     return [dict(r) for r in rows]
+
+
+# =============================================================================
+# FUNZIONI MIGRATED da aic.py (v11.6)
+# =============================================================================
+
+def _assicura_pattern_aic_esistente(pattern_sig: str, vendor: str, descrizione: str):
+    """
+    Assicura che un pattern AIC esista nella tabella criteri.
+    Crea record se non esiste.
+    """
+    db = get_db()
+
+    desc_norm = normalizza_descrizione(descrizione)
+
+    existing = db.execute(
+        "SELECT 1 FROM criteri_ordinari_aic WHERE pattern_signature = %s",
+        (pattern_sig,)
+    ).fetchone()
+
+    if not existing:
+        pattern_desc = f"AIC {vendor} - {desc_norm[:30]}"
+
+        db.execute("""
+            INSERT INTO criteri_ordinari_aic
+            (pattern_signature, pattern_descrizione, vendor, descrizione_normalizzata)
+            VALUES (%s, %s, %s, %s)
+        """, (
+            pattern_sig,
+            pattern_desc,
+            vendor,
+            desc_norm,
+        ))
+        db.commit()
+
+
+def crea_supervisione_aic(
+    id_testata: int,
+    id_anomalia: int,
+    anomalia: Dict
+) -> int:
+    """
+    Crea nuova richiesta di supervisione per anomalia AIC.
+
+    Args:
+        id_testata: ID ordine in ORDINI_TESTATA
+        id_anomalia: ID anomalia in ANOMALIE
+        anomalia: Dati completi anomalia con:
+            - vendor: codice vendor
+            - id_dettaglio: ID riga in ORDINI_DETTAGLIO
+            - n_riga: numero riga
+            - descrizione_prodotto: descrizione prodotto
+            - codice_originale: codice estratto dal PDF
+
+    Returns:
+        ID supervisione creata
+    """
+    db = get_db()
+
+    vendor = anomalia.get('vendor', 'UNKNOWN')
+    # Supporta sia 'descrizione_prodotto' (pdf_processor) che 'descrizione' (fallback)
+    descrizione = anomalia.get('descrizione_prodotto', anomalia.get('descrizione', ''))
+    desc_norm = normalizza_descrizione(descrizione)
+
+    # Calcola pattern signature
+    pattern_sig = calcola_pattern_signature(vendor, descrizione)
+
+    # Inserisci richiesta supervisione AIC
+    cursor = db.execute("""
+        INSERT INTO supervisione_aic
+        (id_testata, id_anomalia, id_dettaglio, codice_anomalia, vendor,
+         n_riga, descrizione_prodotto, descrizione_normalizzata, codice_originale,
+         pattern_signature, stato)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'PENDING')
+        RETURNING id_supervisione
+    """, (
+        id_testata,
+        id_anomalia,
+        anomalia.get('id_dettaglio'),
+        'AIC-A01',
+        vendor,
+        anomalia.get('n_riga'),
+        descrizione[:100] if descrizione else '',
+        desc_norm,
+        anomalia.get('codice_originale', ''),
+        pattern_sig,
+    ))
+
+    id_supervisione = cursor.fetchone()[0]
+    db.commit()
+
+    # Assicura che il pattern esista nella tabella criteri
+    _assicura_pattern_aic_esistente(pattern_sig, vendor, descrizione)
+
+    # Log operazione
+    log_operation(
+        'CREA_SUPERVISIONE',
+        'SUPERVISIONE_AIC',
+        id_supervisione,
+        f"Creata supervisione AIC per ordine {id_testata}, prodotto {desc_norm[:30]}"
+    )
+
+    return id_supervisione
+
+
+def valuta_anomalia_aic(id_testata: int, anomalia: Dict) -> Tuple[bool, str]:
+    """
+    Valuta anomalia AIC usando pattern appresi.
+    Se il pattern è ordinario E ha un AIC default, applica automaticamente.
+
+    Args:
+        id_testata: ID ordine
+        anomalia: Dati anomalia
+
+    Returns:
+        (applicato_auto, pattern_signature)
+        - applicato_auto: True se AIC applicato automaticamente
+        - pattern_signature: Signature del pattern
+    """
+    db = get_db()
+
+    vendor = anomalia.get('vendor', 'UNKNOWN')
+    # Supporta sia 'descrizione_prodotto' (pdf_processor) che 'descrizione' (fallback)
+    descrizione = anomalia.get('descrizione_prodotto', anomalia.get('descrizione', ''))
+
+    pattern_sig = calcola_pattern_signature(vendor, descrizione)
+
+    # Verifica se esiste pattern ordinario con AIC default
+    pattern = db.execute("""
+        SELECT codice_aic_default, is_ordinario, count_approvazioni
+        FROM criteri_ordinari_aic
+        WHERE pattern_signature = %s
+    """, (pattern_sig,)).fetchone()
+
+    if pattern and pattern['is_ordinario'] and pattern['codice_aic_default']:
+        # Pattern ordinario con AIC default: applica automaticamente
+        codice_aic = pattern['codice_aic_default']
+        id_dettaglio = anomalia.get('id_dettaglio')
+
+        if id_dettaglio:
+            # Aggiorna la riga con l'AIC
+            db.execute("""
+                UPDATE ordini_dettaglio
+                SET codice_aic = %s
+                WHERE id_dettaglio = %s AND (codice_aic IS NULL OR codice_aic = '' OR codice_aic !~ '^[0-9]{9}$')
+            """, (codice_aic, id_dettaglio))
+            db.commit()
+
+            log_operation(
+                'AUTO_APPLY_AIC',
+                'ORDINI_DETTAGLIO',
+                id_dettaglio,
+                f"AIC {codice_aic} applicato automaticamente da pattern {pattern_sig}"
+            )
+
+            return True, pattern_sig
+
+    return False, pattern_sig
