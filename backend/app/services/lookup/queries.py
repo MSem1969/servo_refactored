@@ -143,14 +143,16 @@ def popola_header_da_anagrafica(id_testata: int, operatore: str = None) -> bool:
         'fonte_anagrafica': ordine['fonte_anagrafica'] if 'fonte_anagrafica' in ordine.keys() else None
     }
 
-    # v11.3: Verifica caratteri corrotti - usa valore anagrafica solo se pulito
-    # MIN_ID viene sempre preso dall'anagrafica (è l'obiettivo principale del lookup)
-    # Gli altri campi vengono presi dall'anagrafica SOLO SE VUOTI nell'ordine
+    # v11.6: Dati estratti hanno PRIORITÀ sull'anagrafica.
+    # Ogni campo viene popolato dall'anagrafica SOLO SE VUOTO nell'ordine.
     # Ragione sociale: NON viene mai sovrascritta (caso subentro)
     nuovi_valori = {
-        'codice_ministeriale_estratto': min_id,  # MIN_ID sempre dall'anagrafica
         'deposito_riferimento': deposito_riferimento or '',  # Da anagrafica_clienti
     }
+
+    # MIN_ID: popola dall'anagrafica solo se vuoto nell'ordine
+    if not ordine['codice_ministeriale_estratto'] and min_id:
+        nuovi_valori['codice_ministeriale_estratto'] = min_id
 
     # P.IVA dall'anagrafica (popola se vuota nell'ordine)
     partita_iva_anagrafica = farm_data.get('partita_iva', '')
@@ -197,7 +199,7 @@ def popola_header_da_anagrafica(id_testata: int, operatore: str = None) -> bool:
             operatore_modifica_anagrafica = %s
         WHERE id_testata = %s
     """, (
-        min_id,
+        nuovi_valori.get('codice_ministeriale_estratto', ''),
         nuovi_valori.get('cap', ''),
         nuovi_valori.get('citta', ''),
         nuovi_valori.get('provincia', ''),
