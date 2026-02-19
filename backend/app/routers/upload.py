@@ -5,6 +5,7 @@
 # =============================================================================
 
 import os
+from urllib.parse import quote
 from fastapi import APIRouter, HTTPException, UploadFile, File, Form
 from fastapi.responses import JSONResponse, FileResponse
 from typing import Dict, Any, List, Optional
@@ -268,10 +269,15 @@ async def get_pdf(filename: str):
         if filename in f or f.endswith(filename):
             file_path = os.path.join(uploads_dir, f)
             if os.path.exists(file_path) and os.path.isfile(file_path):
+                # ASCII-safe filename for Content-Disposition + UTF-8 fallback
+                ascii_name = filename.encode('ascii', 'replace').decode('ascii')
+                utf8_name = quote(filename)
                 return FileResponse(
                     file_path,
                     media_type="application/pdf",
-                    headers={"Content-Disposition": f"inline; filename={filename}"}
+                    headers={
+                        "Content-Disposition": f"inline; filename=\"{ascii_name}\"; filename*=UTF-8''{utf8_name}"
+                    }
                 )
 
     raise HTTPException(404, f"PDF non trovato: {filename}")
