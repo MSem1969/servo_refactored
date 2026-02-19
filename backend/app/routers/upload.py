@@ -14,6 +14,7 @@ from ..services.pdf_processor import (
     process_pdf,
     get_recent_uploads,
     get_upload_stats,
+    get_upload_errors,
 )
 from ..services.extraction import detect_vendor, get_supported_vendors
 
@@ -200,6 +201,21 @@ async def recent_uploads(limit: int = 20) -> Dict[str, Any]:
         return {
             "success": True,
             "data": uploads
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/errors")
+async def upload_errors(limit: int = 50) -> Dict[str, Any]:
+    """
+    Ritorna acquisizioni in stato ERRORE con dettagli.
+    """
+    try:
+        errors = get_upload_errors(limit)
+        return {
+            "success": True,
+            "data": errors
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

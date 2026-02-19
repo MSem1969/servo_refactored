@@ -32,6 +32,11 @@ const UploadPage = () => {
   ]);
   const [statsLoading, setStatsLoading] = useState(true);
 
+  // Upload errors state
+  const [showUploadErrors, setShowUploadErrors] = useState(false);
+  const [uploadErrors, setUploadErrors] = useState([]);
+  const [uploadErrorsLoading, setUploadErrorsLoading] = useState(false);
+
   // Mail Monitor state
   const [mailStatus, setMailStatus] = useState(null);
   const [mailEmails, setMailEmails] = useState([]);
@@ -371,6 +376,30 @@ const UploadPage = () => {
     }
   };
 
+  // Carica errori upload
+  const loadUploadErrors = async () => {
+    setUploadErrorsLoading(true);
+    try {
+      const res = await uploadApi.getErrors(50);
+      if (res.success) {
+        setUploadErrors(res.data || []);
+      }
+    } catch (err) {
+      addLog("error", "Errore caricamento errori upload");
+    } finally {
+      setUploadErrorsLoading(false);
+    }
+  };
+
+  // Toggle pannello errori upload
+  const handleToggleUploadErrors = () => {
+    const next = !showUploadErrors;
+    setShowUploadErrors(next);
+    if (next && uploadErrors.length === 0) {
+      loadUploadErrors();
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Statistiche Upload */}
@@ -431,7 +460,15 @@ const UploadPage = () => {
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-xl border border-slate-200">
+        <div
+          className={`bg-white p-4 rounded-xl border transition-all cursor-pointer hover:shadow-md ${
+            showUploadErrors
+              ? "border-red-400 ring-2 ring-red-100"
+              : "border-slate-200 hover:border-red-300"
+          }`}
+          onClick={handleToggleUploadErrors}
+          title="Clicca per vedere i dettagli degli errori"
+        >
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center">
               ❌
@@ -446,9 +483,106 @@ const UploadPage = () => {
                 </p>
               )}
             </div>
+            <span className={`text-slate-400 transition-transform ${showUploadErrors ? "rotate-180" : ""}`}>
+              ▼
+            </span>
           </div>
         </div>
       </div>
+
+      {/* Pannello Errori Upload */}
+      {showUploadErrors && (
+        <div className="bg-white rounded-xl border border-red-200 overflow-hidden">
+          <div className="p-4 border-b border-red-100 flex justify-between items-center bg-gradient-to-r from-red-50 to-white">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 bg-red-100 rounded-lg flex items-center justify-center">
+                <span className="text-lg">❌</span>
+              </div>
+              <div>
+                <h3 className="font-medium text-slate-800">Errori Upload</h3>
+                <p className="text-xs text-slate-500">
+                  {uploadErrors.length} errori trovati
+                </p>
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                loadUploadErrors();
+              }}
+              disabled={uploadErrorsLoading}
+            >
+              🔄 Aggiorna
+            </Button>
+          </div>
+
+          <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
+            {uploadErrorsLoading ? (
+              <div className="p-6 text-center">
+                <Loading.Inline size="sm" />
+              </div>
+            ) : uploadErrors.length === 0 ? (
+              <div className="p-6 text-center text-slate-500 text-sm">
+                Nessun errore di upload
+              </div>
+            ) : (
+              uploadErrors.map((err) => (
+                <div
+                  key={err.id_acquisizione}
+                  className="p-3 hover:bg-red-50/50"
+                >
+                  <div className="flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-red-100 flex-shrink-0">
+                      📄
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-slate-800 truncate">
+                        {err.nome_file_originale || "(senza nome)"}
+                      </p>
+                      <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
+                        <span>{formatSize(err.dimensione_bytes)}</span>
+                        <span>•</span>
+                        <span>
+                          {new Date(err.data_upload).toLocaleString("it-IT", {
+                            day: "2-digit",
+                            month: "2-digit",
+                            year: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                        </span>
+                      </div>
+                      {err.messaggio_errore && (
+                        <p className="text-xs text-red-600 mt-1">
+                          {err.messaggio_errore}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {err.vendor && (
+                        <VendorBadge vendor={err.vendor} size="xs" />
+                      )}
+                      {err.nome_file_storage && (
+                        <a
+                          href={`/api/v1/upload/pdf/${err.nome_file_storage}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          📎 PDF
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Mail Monitor Section */}
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">

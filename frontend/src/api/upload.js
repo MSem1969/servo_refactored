@@ -25,5 +25,6 @@ export const uploadApi = {
 
   getRecent: (limit = 20) => api.get(`/upload/recent?limit=${limit}`).then(r => r.data),
   getStats: () => api.get('/upload/stats').then(r => r.data),
+  getErrors: (limit = 50) => api.get(`/upload/errors?limit=${limit}`).then(r => r.data),
   getVendors: () => api.get('/upload/vendors').then(r => r.data),
 };
