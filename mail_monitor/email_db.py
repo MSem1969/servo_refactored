@@ -3,6 +3,7 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from typing import Dict, Optional
 from pathlib import Path
+from datetime import date, timedelta
 from dotenv import load_dotenv
 
 # Carica variabili dal backend/.env
@@ -164,6 +165,39 @@ class EmailDB:
             return True
         except Exception as e:
             print(f"Errore aggiornamento errore: {e}")
+            return False
+
+    @staticmethod
+    def get_last_scan_date() -> Optional[date]:
+        """Restituisce la data dell'ultimo scan riuscito da email_config."""
+        conn = get_db()
+        try:
+            cur = conn.cursor()
+            cur.execute("SELECT last_scan_date FROM email_config LIMIT 1")
+            row = cur.fetchone()
+            conn.close()
+            if row and row['last_scan_date']:
+                return row['last_scan_date']
+            return None
+        except Exception as e:
+            print(f"Errore get_last_scan_date: {e}")
+            return None
+
+    @staticmethod
+    def update_last_scan_date(scan_date: date) -> bool:
+        """Aggiorna la data dell'ultimo scan riuscito in email_config."""
+        conn = get_db()
+        try:
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE email_config SET last_scan_date = %s, updated_at = CURRENT_TIMESTAMP",
+                (scan_date,)
+            )
+            conn.commit()
+            conn.close()
+            return True
+        except Exception as e:
+            print(f"Errore update_last_scan_date: {e}")
             return False
 
     @staticmethod

@@ -4,7 +4,7 @@ import hashlib
 import logging
 from pathlib import Path
 from typing import List, Dict, Optional
-from datetime import datetime
+from datetime import datetime, date
 import imapclient
 import pyzmail
 from config import Config
@@ -52,11 +52,19 @@ class MailClient:
             logger.error(f"Errore selezione cartella: {e}")
             return False
 
-    def cerca_email_con_pdf(self):
+    def cerca_email_con_pdf(self, since_date: date = None):
         if not self.client:
             return []
         try:
-            criteria = ['UNSEEN'] if Config.UNREAD_ONLY else ['ALL']
+            if since_date:
+                # Formato IMAP: DD-Mon-YYYY (es. 19-Feb-2026)
+                date_str = since_date.strftime('%d-%b-%Y')
+                criteria = ['SINCE', date_str]
+                logger.info(f"Ricerca email SINCE {date_str}")
+            else:
+                criteria = ['ALL']
+                logger.info("Ricerca TUTTE le email (nessun watermark)")
+
             uids = self.client.search(criteria)
             logger.info(f"Trovate {len(uids)} email")
 

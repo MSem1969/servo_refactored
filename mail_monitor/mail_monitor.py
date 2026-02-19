@@ -3,7 +3,7 @@ import sys
 import logging
 import time
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from config import Config
 from email_db import EmailDB
 from mail_client import MailClient
@@ -94,6 +94,15 @@ def main():
     if not uploader.verifica_backend():
         logger.warning("Backend non disponibile - continuo comunque")
 
+    # Leggi watermark dal DB
+    last_scan = EmailDB.get_last_scan_date()
+    if last_scan:
+        since_date = last_scan
+        logger.info(f"Watermark: scansione email da {since_date}")
+    else:
+        since_date = date.today() - timedelta(days=Config.INITIAL_SCAN_DAYS)
+        logger.info(f"Nessun watermark - primo avvio, scansione ultimi {Config.INITIAL_SCAN_DAYS} giorni (da {since_date})")
+
     # Connessione Mail
     mail = MailClient()
     if not mail.connetti():
@@ -105,8 +114,8 @@ def main():
             logger.error("Impossibile selezionare cartella")
             return 1
 
-        # Cerca email
-        uids = mail.cerca_email_con_pdf()
+        # Cerca email con filtro SINCE
+        uids = mail.cerca_email_con_pdf(since_date=since_date)
         logger.info(f"Email da processare: {len(uids)}")
 
         processate = 0
@@ -222,6 +231,13 @@ def main():
         logger.info("=" * 60)
         logger.info(f"RIEPILOGO: {processate} processate, {errori} errori")
         logger.info("=" * 60)
+
+        # Aggiorna watermark (anche se 0 processate, lo scan è andato a buon fine)
+        oggi = date.today()
+        if EmailDB.update_last_scan_date(oggi):
+            logger.info(f"Watermark aggiornato a {oggi}")
+        else:
+            logger.warning("Errore aggiornamento watermark")
 
         return 0
 

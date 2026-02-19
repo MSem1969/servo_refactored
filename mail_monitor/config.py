@@ -30,7 +30,9 @@ class Config:
     IMAP_PORT: int = int(os.getenv('IMAP_PORT', '993'))
     IMAP_USE_SSL: bool = os.getenv('IMAP_USE_SSL', 'true').lower() == 'true'
     MAIL_FOLDER: str = os.getenv('MAIL_FOLDER', 'INBOX')
+    # DEPRECATO: UNREAD_ONLY non più usato. Il filtro è basato su SINCE (watermark data).
     UNREAD_ONLY: bool = os.getenv('UNREAD_ONLY', 'true').lower() == 'true'
+    INITIAL_SCAN_DAYS: int = int(os.getenv('INITIAL_SCAN_DAYS', '7'))
 
     # Filtri email
     SUBJECT_KEYWORDS: List[str] = [
@@ -120,7 +122,7 @@ class Config:
         print(f"Password: {'*' * 16 if cls.MAIL_PASSWORD else '(non configurata)'}")
         print(f"IMAP: {cls.IMAP_HOST}:{cls.IMAP_PORT} (SSL: {cls.IMAP_USE_SSL})")
         print(f"Cartella: {cls.MAIL_FOLDER}")
-        print(f"Solo non lette: {cls.UNREAD_ONLY}")
+        print(f"Filtro: SINCE watermark (INITIAL_SCAN_DAYS={cls.INITIAL_SCAN_DAYS})")
         print(f"Keywords oggetto: {', '.join(cls.SUBJECT_KEYWORDS)}")
         print(
             f"Whitelist mittenti: {', '.join(cls.SENDER_WHITELIST) if cls.SENDER_WHITELIST else 'Nessuna (tutti)'}")
