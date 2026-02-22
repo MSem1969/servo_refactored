@@ -1157,12 +1157,12 @@ def _insert_detail_row(db, id_testata: int, riga: Dict) -> int:
         (id_testata, n_riga, codice_aic, codice_originale, descrizione,
          q_venduta, q_sconto_merce, q_omaggio, data_consegna_riga,
          sconto_1, sconto_2, sconto_3, sconto_4,
-         prezzo_netto, prezzo_pubblico, aliquota_iva,
+         prezzo_netto, prezzo_pubblico, prezzo_scontare, aliquota_iva,
          is_espositore, is_child, is_no_aic,
          tipo_riga, id_parent_espositore, espositore_metadata,
          q_originale, q_residua, q_esportata,
          descrizione_estratta, fonte_codice_aic, fonte_quantita)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 %s, %s, %s)
         RETURNING id_dettaglio
     """, (
@@ -1177,6 +1177,7 @@ def _insert_detail_row(db, id_testata: int, riga: Dict) -> int:
         riga.get('sconto1', 0), riga.get('sconto2', 0),
         riga.get('sconto3', 0), riga.get('sconto4', 0),
         riga.get('prezzo_netto', 0), riga.get('prezzo_pubblico', 0),
+        riga.get('prezzo_scontare', 0),
         riga.get('aliquota_iva', 10),
         is_esp, is_child, is_no_aic,
         tipo_riga, id_parent, esp_metadata,
