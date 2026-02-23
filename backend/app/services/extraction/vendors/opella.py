@@ -86,9 +86,15 @@ def extract_opella(text: str, lines: List[str], pdf_path: str = None) -> List[Di
     if m:
         data['gg_dilazione'] = int(m.group(1))
 
-    m = re.search(r'Data\s+di\s+consegna\s+richiesta:?\s*(\d{2}\.\d{2}\.\d{4})', text, re.I)
+    # v11.7: Data consegna dalla riga "INFORMAZIONI SULL'ORDINE ... DD.MM.YYYY"
+    m = re.search(r'Informazioni\s+sull[\'\u2019]ordine\s+\S+\s+(\d{2}\.\d{2}\.\d{4})', text, re.I)
     if m:
         data['data_consegna'] = parse_date(m.group(1))
+    else:
+        # Fallback: campo esplicito "Data di consegna richiesta"
+        m = re.search(r'Data\s+di\s+consegna\s+richiesta:?\s*(\d{2}\.\d{2}\.\d{4})', text, re.I)
+        if m:
+            data['data_consegna'] = parse_date(m.group(1))
 
     # === DESTINATARIO: Estrazione con coordinate X se pdf_path disponibile ===
     if pdf_path and PDFPLUMBER_AVAILABLE:
@@ -262,9 +268,15 @@ def _extract_opella_text_fallback(text: str, lines: List[str]) -> List[Dict]:
     if m:
         data['gg_dilazione'] = int(m.group(1))
 
-    m = re.search(r'Data\s+di\s+consegna\s+richiesta:?\s*(\d{2}\.\d{2}\.\d{4})', text, re.I)
+    # v11.7: Data consegna dalla riga "INFORMAZIONI SULL'ORDINE ... DD.MM.YYYY"
+    m = re.search(r'Informazioni\s+sull[\'\u2019]ordine\s+\S+\s+(\d{2}\.\d{2}\.\d{4})', text, re.I)
     if m:
         data['data_consegna'] = parse_date(m.group(1))
+    else:
+        # Fallback: campo esplicito "Data di consegna richiesta"
+        m = re.search(r'Data\s+di\s+consegna\s+richiesta:?\s*(\d{2}\.\d{2}\.\d{4})', text, re.I)
+        if m:
+            data['data_consegna'] = parse_date(m.group(1))
 
     # Estrazione destinatario da testo con analisi semantica
     INDIRIZZO_PATTERN = r'^(VIA|V\.|CORSO|C\.SO|PIAZZA|P\.ZZA|PIAZZALE|P\.LE|VIALE|V\.LE|LARGO|VICOLO|CONTRADA|LOC\.|LOCALITA|FRAZIONE|FRAZ\.|STRADA|S\.DA|VIA\s|C/O)\s'
