@@ -152,6 +152,11 @@ export default function ExportPage() {
   // State ordinamento
   const [sortConfig, setSortConfig] = useState({ field: 'vendor', direction: 'asc' });
 
+  // Label leggibili per stati
+  const STATO_LABELS = {
+    'DA_EVADERE': 'Da Evadere',
+  };
+
   // Opzioni tipo prodotto (statiche)
   const tipoProdottoOptions = [
     { value: 'VENDITA', label: 'Vendita' },
@@ -186,7 +191,7 @@ export default function ExportPage() {
         ]);
         setVendorOptions(vendorsRes.vendors?.map((v) => ({ value: v, label: v })) || []);
         setDepositiOptions(depositiRes.depositi?.map((d) => ({ value: d, label: d })) || []);
-        setStatiOptions(statiRes.stati?.map((s) => ({ value: s, label: s })) || []);
+        setStatiOptions(statiRes.stati?.map((s) => ({ value: s, label: STATO_LABELS[s] || s })) || []);
       } catch (err) {
         console.error('Errore caricamento opzioni:', err);
         setError('Errore caricamento filtri: ' + (err.response?.data?.detail || err.message));

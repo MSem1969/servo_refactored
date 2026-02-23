@@ -71,6 +71,24 @@ async def get_report_data(
     cliente_list = [c.strip() for c in clienti.split(',')] if clienti else None
     aic_list = [a.strip() for a in aic.split(',')] if aic else None
 
+    # Separa DA_EVADERE dagli stati reali
+    is_da_evadere = False
+    if stato_list and 'DA_EVADERE' in stato_list:
+        is_da_evadere = True
+        stato_list = [s for s in stato_list if s != 'DA_EVADERE']
+        if not stato_list:
+            stato_list = None
+
+    # Formule pezzi/valore in base a modalità
+    if is_da_evadere:
+        pezzi_formula = """GREATEST(
+            (COALESCE(d.q_venduta,0) + COALESCE(d.q_omaggio,0) + COALESCE(d.q_sconto_merce,0))
+            - COALESCE(d.q_evasa,0), 0)"""
+    else:
+        pezzi_formula = """COALESCE(d.q_venduta, 0) +
+                COALESCE(d.q_omaggio, 0) +
+                COALESCE(d.q_sconto_merce, 0)"""
+
     # Determina colonna data in base a tipo_data
     date_column = "t.data_consegna" if tipo_data == "consegna" else "t.data_ordine"
 
@@ -137,6 +155,11 @@ async def get_report_data(
         if tipo_conditions:
             conditions.append(f"({' OR '.join(tipo_conditions)})")
 
+    # Filtro DA_EVADERE: escludi righe evase/archiviate e solo residuo > 0
+    if is_da_evadere:
+        conditions.append("d.stato_riga NOT IN ('EVASO', 'ARCHIVIATO')")
+        conditions.append(f"({pezzi_formula}) > 0")
+
     # WHERE clause
     where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
@@ -180,18 +203,8 @@ async def get_report_data(
         SELECT
             {select_fields},
             COUNT(DISTINCT d.id_testata) AS n_ordini,
-            SUM(
-                COALESCE(d.q_venduta, 0) +
-                COALESCE(d.q_omaggio, 0) +
-                COALESCE(d.q_sconto_merce, 0)
-            ) AS pezzi,
-            SUM(
-                COALESCE(d.prezzo_netto, 0) * (
-                    COALESCE(d.q_venduta, 0) +
-                    COALESCE(d.q_omaggio, 0) +
-                    COALESCE(d.q_sconto_merce, 0)
-                )
-            ) AS valore
+            SUM({pezzi_formula}) AS pezzi,
+            SUM(COALESCE(d.prezzo_netto, 0) * ({pezzi_formula})) AS valore
         FROM ordini_dettaglio d
         JOIN v_ordini_completi t ON d.id_testata = t.id_testata
         {where_clause}
@@ -285,6 +298,25 @@ async def download_excel(
     cliente_list = [c.strip() for c in clienti.split(',')] if clienti else None
     aic_list = [a.strip() for a in aic.split(',')] if aic else None
 
+    # Separa DA_EVADERE dagli stati reali
+    stato_display = stato_list[:] if stato_list else None
+    is_da_evadere = False
+    if stato_list and 'DA_EVADERE' in stato_list:
+        is_da_evadere = True
+        stato_list = [s for s in stato_list if s != 'DA_EVADERE']
+        if not stato_list:
+            stato_list = None
+
+    # Formule pezzi/valore in base a modalità
+    if is_da_evadere:
+        pezzi_formula = """GREATEST(
+            (COALESCE(d.q_venduta,0) + COALESCE(d.q_omaggio,0) + COALESCE(d.q_sconto_merce,0))
+            - COALESCE(d.q_evasa,0), 0)"""
+    else:
+        pezzi_formula = """COALESCE(d.q_venduta, 0) +
+                COALESCE(d.q_omaggio, 0) +
+                COALESCE(d.q_sconto_merce, 0)"""
+
     # Determina colonna data in base a tipo_data
     date_column = "t.data_consegna" if tipo_data == "consegna" else "t.data_ordine"
 
@@ -337,6 +369,11 @@ async def download_excel(
         if tipo_conditions:
             conditions.append(f"({' OR '.join(tipo_conditions)})")
 
+    # Filtro DA_EVADERE: escludi righe evase/archiviate e solo residuo > 0
+    if is_da_evadere:
+        conditions.append("d.stato_riga NOT IN ('EVASO', 'ARCHIVIATO')")
+        conditions.append(f"({pezzi_formula}) > 0")
+
     where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     include_cliente = cliente_list is not None and len(cliente_list) > 0
 
@@ -361,18 +398,8 @@ async def download_excel(
         SELECT
             {select_fields},
             COUNT(DISTINCT d.id_testata) AS n_ordini,
-            SUM(
-                COALESCE(d.q_venduta, 0) +
-                COALESCE(d.q_omaggio, 0) +
-                COALESCE(d.q_sconto_merce, 0)
-            ) AS pezzi,
-            SUM(
-                COALESCE(d.prezzo_netto, 0) * (
-                    COALESCE(d.q_venduta, 0) +
-                    COALESCE(d.q_omaggio, 0) +
-                    COALESCE(d.q_sconto_merce, 0)
-                )
-            ) AS valore
+            SUM({pezzi_formula}) AS pezzi,
+            SUM(COALESCE(d.prezzo_netto, 0) * ({pezzi_formula})) AS valore
         FROM ordini_dettaglio d
         JOIN v_ordini_completi t ON d.id_testata = t.id_testata
         {where_clause}
@@ -415,7 +442,7 @@ async def download_excel(
 
     filtri_applicati.append(("Vendor", ", ".join(vendor_list) if vendor_list else "Tutti"))
     filtri_applicati.append(("Deposito", ", ".join(deposito_list) if deposito_list else "Tutti"))
-    filtri_applicati.append(("Stato", ", ".join(stato_list) if stato_list else "Tutti"))
+    filtri_applicati.append(("Stato", ", ".join(stato_display) if stato_display else "Tutti"))
     filtri_applicati.append(("Tipo Prodotto", ", ".join(tipo_list) if tipo_list else "Tutti"))
     filtri_applicati.append(("Clienti", ", ".join(cliente_list) if cliente_list else "Tutti"))
     filtri_applicati.append(("AIC", ", ".join(aic_list) if aic_list else "Tutti"))
@@ -539,9 +566,12 @@ def build_cascade_conditions(data_inizio, data_fine, vendors, stati, clienti, ai
         params.extend(vendor_list)
     if stati:
         stato_list = [s.strip() for s in stati.split(',')]
-        placeholders = ','.join(['%s'] * len(stato_list))
-        conditions.append(f"t.stato IN ({placeholders})")
-        params.extend(stato_list)
+        # Rimuovi DA_EVADERE (filtro virtuale, non stato reale DB)
+        stato_list = [s for s in stato_list if s != 'DA_EVADERE']
+        if stato_list:
+            placeholders = ','.join(['%s'] * len(stato_list))
+            conditions.append(f"t.stato IN ({placeholders})")
+            params.extend(stato_list)
     if clienti:
         cliente_list = [c.strip() for c in clienti.split(',')]
         placeholders = ','.join(['%s'] * len(cliente_list))
@@ -629,7 +659,8 @@ async def get_stati(
         'ANOMALIA',
         'PARZ_EVASO',
         'EVASO',
-        'ARCHIVIATO'
+        'ARCHIVIATO',
+        'DA_EVADERE'
     ]
     return {'stati': tutti_stati}
 
