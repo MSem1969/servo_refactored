@@ -9,6 +9,7 @@ import imaplib
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
 from typing import Dict, Any, List, Optional
 
 from .base import BaseEmailProvider
@@ -113,9 +114,26 @@ class GmailProvider(BaseEmailProvider):
         return server
 
     def send_email(self, to: str, subject: str,
-                   body_html: str, body_text: Optional[str] = None) -> bool:
-        """Invia email via SMTP"""
-        msg = MIMEMultipart('alternative')
+                   body_html: str, body_text: Optional[str] = None,
+                   attachments: Optional[List[Dict]] = None) -> bool:
+        """Invia email via SMTP con supporto allegati opzionale."""
+        if attachments:
+            msg = MIMEMultipart('mixed')
+            body_part = MIMEMultipart('alternative')
+            if body_text:
+                body_part.attach(MIMEText(body_text, 'plain', 'utf-8'))
+            body_part.attach(MIMEText(body_html, 'html', 'utf-8'))
+            msg.attach(body_part)
+            for att in attachments:
+                part = MIMEApplication(att['content'], Name=att['filename'])
+                part['Content-Disposition'] = f'attachment; filename="{att["filename"]}"'
+                msg.attach(part)
+        else:
+            msg = MIMEMultipart('alternative')
+            if body_text:
+                msg.attach(MIMEText(body_text, 'plain', 'utf-8'))
+            msg.attach(MIMEText(body_html, 'html', 'utf-8'))
+
         msg['Subject'] = subject
 
         # Mittente
@@ -125,11 +143,6 @@ class GmailProvider(BaseEmailProvider):
                        self.config.get('imap_user', ''))
         msg['From'] = f"{sender_name} <{sender_email}>"
         msg['To'] = to
-
-        # Corpo
-        if body_text:
-            msg.attach(MIMEText(body_text, 'plain', 'utf-8'))
-        msg.attach(MIMEText(body_html, 'html', 'utf-8'))
 
         server = self.connect_smtp()
         try:

@@ -222,7 +222,9 @@ def crea_ticket_sistema(
     oggetto: str,
     contenuto: str,
     priorita: str = 'normale',
-    contesto: Optional[Dict[str, Any]] = None
+    contesto: Optional[Dict[str, Any]] = None,
+    file_content: Optional[bytes] = None,
+    filename: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Crea un ticket di sistema per notifiche automatiche ad admin/supervisore.
@@ -286,6 +288,32 @@ def crea_ticket_sistema(
 
         if result.get('success'):
             print(f"✅ Ticket sistema #{result['id_ticket']} creato: {oggetto_completo}")
+
+            # Notifica admin via email
+            try:
+                from ..notifications import notify_ticket_created
+
+                ticket_data = {
+                    'id_ticket': result['id_ticket'],
+                    'id_operatore': SYSTEM_USER_ID,
+                    'oggetto': oggetto_completo,
+                    'categoria': 'assistenza',
+                    'priorita': priorita,
+                    'pagina_origine': contesto.get('pagina_origine') if contesto else None,
+                    'contenuto': contenuto_completo,
+                    'username': 'SISTEMA'
+                }
+                email_attachments = None
+                if file_content and filename:
+                    email_attachments = [{'filename': filename, 'content': file_content, 'mime_type': 'application/pdf'}]
+
+                notify_result = notify_ticket_created(db, ticket_data, attachments=email_attachments)
+                if notify_result.get('success'):
+                    print(f"📧 Notifica email inviata per ticket #{result['id_ticket']}")
+                else:
+                    print(f"⚠️ Notifica email non inviata: {notify_result.get('details', {})}")
+            except Exception as e:
+                print(f"⚠️ Errore invio notifica email: {e}")
         else:
             print(f"⚠️ Errore creazione ticket sistema: {result.get('error')}")
 

@@ -50,7 +50,8 @@ class EmailSender:
 
     def send(self, to: str, subject: str, body_html: str,
              ticket_id: Optional[int] = None,
-             email_type: str = 'generic') -> Dict[str, Any]:
+             email_type: str = 'generic',
+             attachments=None) -> Dict[str, Any]:
         """
         Invia email con logging automatico.
 
@@ -60,12 +61,13 @@ class EmailSender:
             body_html: Corpo HTML
             ticket_id: ID ticket correlato (opzionale)
             email_type: Tipo per logging
+            attachments: Lista allegati [{'filename', 'content', 'mime_type'}]
 
         Returns:
             Dict con 'success', 'log_id', ed eventuale 'error'
         """
         try:
-            success = self.provider.send_email(to, subject, body_html)
+            success = self.provider.send_email(to, subject, body_html, attachments=attachments)
 
             if success:
                 log_id = log_email_sent(
@@ -101,7 +103,8 @@ class EmailSender:
     def send_from_template(self, template_name: str,
                           context: Dict[str, Any],
                           to: str,
-                          ticket_id: Optional[int] = None) -> Dict[str, Any]:
+                          ticket_id: Optional[int] = None,
+                          attachments=None) -> Dict[str, Any]:
         """
         Invia email usando template predefinito.
 
@@ -110,13 +113,14 @@ class EmailSender:
             context: Dict con valori per placeholder
             to: Destinatario
             ticket_id: ID ticket correlato
+            attachments: Lista allegati [{'filename', 'content', 'mime_type'}]
 
         Returns:
             Dict con 'success', 'log_id', ed eventuale 'error'
         """
         try:
             subject, body = render_template(template_name, context)
-            return self.send(to, subject, body, ticket_id, template_name)
+            return self.send(to, subject, body, ticket_id, template_name, attachments=attachments)
         except ValueError as e:
             return {'success': False, 'error': str(e)}
 

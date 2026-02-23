@@ -133,7 +133,9 @@ Il documento originale è allegato a questo ticket."""
                     'Confidence detection': f'{confidence:.1%}',
                     'Data/Ora': datetime.now().strftime('%d/%m/%Y %H:%M:%S')
                 }
-            }
+            },
+            file_content=file_content,
+            filename=filename
         )
 
         if not result.get('success'):

@@ -164,22 +164,22 @@ def send_ticket_notification(db, event_type: str,
         return {'success': False, 'error': str(e)}
 
 
-def notify_ticket_created(db, ticket_data: Dict[str, Any]) -> Dict[str, Any]:
+def notify_ticket_created(db, ticket_data: Dict[str, Any], attachments=None) -> Dict[str, Any]:
     """
     Notifica creazione ticket.
 
     Invia due notifiche:
     1. All'utente (se ha email_notifica)
-    2. Agli admin configurati (se admin_notifica_email configurato)
+    2. Agli admin configurati (se admin_notifica_email configurato, con allegati opzionali)
     """
     results = {'user_notification': None, 'admin_notification': None}
 
-    # 1. Notifica all'utente
+    # 1. Notifica all'utente (senza allegati)
     user_result = send_ticket_notification(db, 'ticket_creato', ticket_data)
     results['user_notification'] = user_result
 
-    # 2. Notifica agli admin
-    admin_result = notify_admins_new_ticket(db, ticket_data)
+    # 2. Notifica agli admin (con allegati se presenti)
+    admin_result = notify_admins_new_ticket(db, ticket_data, attachments=attachments)
     results['admin_notification'] = admin_result
 
     # Ritorna successo se almeno una notifica e andata a buon fine
@@ -191,13 +191,14 @@ def notify_ticket_created(db, ticket_data: Dict[str, Any]) -> Dict[str, Any]:
     return {'success': success, 'details': results}
 
 
-def notify_admins_new_ticket(db, ticket_data: Dict[str, Any]) -> Dict[str, Any]:
+def notify_admins_new_ticket(db, ticket_data: Dict[str, Any], attachments=None) -> Dict[str, Any]:
     """
     Invia notifica agli admin per nuovo ticket.
 
     Args:
         db: Connessione database
         ticket_data: Dict con dati ticket
+        attachments: Lista allegati [{'filename', 'content', 'mime_type'}]
 
     Returns:
         Dict con 'success', eventuale 'error'
@@ -233,7 +234,8 @@ def notify_admins_new_ticket(db, ticket_data: Dict[str, Any]) -> Dict[str, Any]:
                     template_name='admin_nuovo_ticket',
                     context=context,
                     to=admin_email,
-                    ticket_id=context['id']
+                    ticket_id=context['id'],
+                    attachments=attachments
                 )
                 results.append({'email': admin_email, **result})
             except Exception as e:
