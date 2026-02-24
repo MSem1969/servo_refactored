@@ -4,11 +4,13 @@
 import React, { useRef, useEffect } from 'react'
 
 export default function MessageThread({ messages = [], currentUserId }) {
-  const bottomRef = useRef(null)
+  const scrollRef = useRef(null)
 
-  // Scroll to bottom when new messages arrive
+  // Scroll to bottom when new messages arrive (only within message container)
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    }
   }, [messages])
 
   const formatTime = (dateStr) => {
@@ -30,7 +32,7 @@ export default function MessageThread({ messages = [], currentUserId }) {
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-4">
+    <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 space-y-4">
       {messages.map((msg) => {
         const isOwn = msg.id_operatore === currentUserId
         const isSystem = msg.tipo === 'sistema'
@@ -70,7 +72,7 @@ export default function MessageThread({ messages = [], currentUserId }) {
           </div>
         )
       })}
-      <div ref={bottomRef} />
+      {/* scroll anchor removed - using scrollTop on container */}
     </div>
   )
 }
