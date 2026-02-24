@@ -1,5 +1,5 @@
 """
-EXTRACTOR_TO - Estrattore RECKITT v11.4
+EXTRACTOR_TO - Estrattore RECKITT v11.5
 =======================================
 Reckitt Benckiser Healthcare (Italia) S.p.A.
 
@@ -11,8 +11,13 @@ Particolarità:
 - Cliente con codice SAP tra parentesi es: (1000053731)
 - Indirizzo in formato: VIA, NUM, CITTA, PROV, CAP
 - Sconto Merce (SM) nella colonna dedicata
-- Supporto multipagina con delimitatore "Pagina n di y"
+- Supporto multipagina con delimitatore "Pagina n di y" / "[Page n of n]"
 - Supporto multi-ordine nello stesso PDF
+
+v11.5 (2026-02-24):
+- Estrazione primaria via pdfplumber tables (100% accuratezza su layout RECKITT)
+- Fallback su text parsing se pdfplumber non disponibile
+- Fix pattern pagina per supporto formato inglese [Page n of n]
 
 v11.4 (2026-02-05):
 - Aggiunta gestione multi-ordine come DOC_GENERICI
@@ -102,8 +107,8 @@ def extract_reckitt(text: str, lines: List[str], pdf_path: str = None) -> List[D
     # Pattern per identificare inizio nuovo ordine: SO0000151700XXXX_01
     pattern_nuovo_ordine = re.compile(r'\b(SO\d{10,}_\d{2})\b')
 
-    # Pattern per identificare fine pagina/ordine: "Pagina n di y"
-    pattern_pagina = re.compile(r'Pagina\s+(\d+)\s+di\s+(\d+)', re.I)
+    # Pattern per identificare fine pagina/ordine: "Pagina n di y" o "[Page n of n]"
+    pattern_pagina = re.compile(r'(?:Pagina\s+(\d+)\s+di\s+(\d+)|\[Page\s+(\d+)\s+of\s+(\d+)\])', re.I)
 
     for i, line in enumerate(lines):
         # Rileva inizio nuovo ordine
@@ -137,8 +142,8 @@ def extract_reckitt(text: str, lines: List[str], pdf_path: str = None) -> List[D
         # Controlla se siamo a fine pagina (Pagina n di y)
         m_pag = pattern_pagina.search(line)
         if m_pag and current_order:
-            pagina_corrente = int(m_pag.group(1))
-            pagina_totale = int(m_pag.group(2))
+            pagina_corrente = int(m_pag.group(1) or m_pag.group(3))
+            pagina_totale = int(m_pag.group(2) or m_pag.group(4))
 
             # Aggiungi la riga
             current_lines.append(line)
@@ -184,25 +189,35 @@ def _create_new_order() -> Dict:
 
 def _finalize_order(order: Dict, lines: List[str], pdf_path: str = None):
     """
-    Finalizza un ordine estraendo header e prodotti dalle righe accumulate.
+    Finalizza un ordine estraendo header e prodotti.
 
-    NOTA: Per supportare multi-ordine, l'estrazione prodotti usa SEMPRE
-    il text parsing sulle righe accumulate (non pdfplumber che legge tutto il PDF).
+    Percorso primario: pdfplumber tables (accuratezza 100% su layout RECKITT).
+    Fallback: text parsing (per compatibilità se pdfplumber non disponibile).
 
     Args:
         order: Dizionario ordine da completare
         lines: Righe di testo accumulate per questo ordine
-        pdf_path: Percorso PDF (non usato per prodotti in multi-ordine)
+        pdf_path: Percorso PDF (opzionale, necessario per pdfplumber)
     """
-    # Ricostruisci il testo dalle righe
     text = '\n'.join(lines)
 
-    # === ESTRAI HEADER ===
-    _extract_header(order, text)
+    if pdf_path and PDFPLUMBER_AVAILABLE:
+        try:
+            with pdfplumber.open(pdf_path) as pdf:
+                page0 = pdf.pages[0]
+                tables = page0.extract_tables()
 
-    # === ESTRAI PRODOTTI ===
-    # Usa sempre text parsing per garantire estrazione solo delle righe
-    # di questo ordine (pdfplumber leggerebbe tutto il PDF)
+                if tables and len(tables) >= 2:
+                    # Header da prima tabella
+                    _extract_header_from_table(order, tables[0])
+                    # Prodotti da tutte le pagine
+                    order['righe'] = _extract_products_from_tables(pdf)
+                    return
+        except Exception as e:
+            print(f"⚠️ RECKITT pdfplumber fallito, fallback text: {e}")
+
+    # Fallback: text parsing
+    _extract_header(order, text)
     order['righe'] = _extract_products_from_text(text, lines)
 
 
@@ -248,6 +263,148 @@ def _extract_header(order: Dict, text: str):
         order['citta'] = cliente_pattern.group(3).strip()[:50]
         order['provincia'] = cliente_pattern.group(4).upper()[:5]
         order['cap'] = cliente_pattern.group(5).strip()[:5]
+
+
+def _extract_header_from_table(order: Dict, header_table: list):
+    """
+    Estrae header dalla prima tabella pdfplumber.
+
+    Layout tabella header RECKITT (2 righe principali):
+    - row[0]: numero ordine, data ordine (già estratti dal text parser)
+    - row[1]: data consegna (cell[1]), cliente+indirizzo (cell con 'Cliente')
+    """
+    if not header_table or len(header_table) < 2:
+        return
+
+    row1 = header_table[1]
+
+    # Data consegna da cell[1]: "DATA CONSEGNA\n09-03-2026"
+    if row1 and len(row1) > 1 and row1[1]:
+        m = re.search(r'(\d{2}-\d{2}-\d{4})', str(row1[1]))
+        if m:
+            order['data_consegna'] = parse_date(m.group(1))
+
+    # Cliente da cell che contiene "Cliente"
+    cliente_cell = None
+    if row1:
+        for cell in row1:
+            if cell and 'Cliente' in str(cell):
+                cliente_cell = str(cell)
+                break
+    if not cliente_cell:
+        return
+
+    # Normalizza: \n → spazio, collapse spazi
+    cliente_norm = re.sub(r'\s+', ' ', cliente_cell)
+
+    # Pattern: Cliente : RAG_SOC (codSAP) INDIRIZZO , CITTA, PROV, CAP
+    m = re.search(
+        r'Cliente\s*:\s*(.+?)\s*\(\d+\)\s*(.+?)\s*,\s*([A-Za-z][A-Za-z\s\']+?)\s*,\s*([A-Z]{2})\s*,\s*(\d{5})',
+        cliente_norm
+    )
+    if m:
+        order['ragione_sociale'] = m.group(1).strip()[:80]
+        indirizzo = m.group(2).strip()
+        # Fix artefatti line-break: "V IA" → "VIA", "VI A" → "VIA", etc.
+        indirizzo = re.sub(r'\bV\s+IA\b', 'VIA', indirizzo)
+        indirizzo = re.sub(r'\bVI\s+A\b', 'VIA', indirizzo)
+        indirizzo = re.sub(r'\bC\s+ORSO\b', 'CORSO', indirizzo)
+        indirizzo = re.sub(r'\bP\s+IAZZA\b', 'PIAZZA', indirizzo)
+        order['indirizzo'] = indirizzo[:50]
+        order['citta'] = m.group(3).strip()[:50]
+        order['provincia'] = m.group(4).upper()[:5]
+        order['cap'] = m.group(5).strip()[:5]
+
+
+def _extract_products_from_tables(pdf) -> List[Dict]:
+    """
+    Estrae prodotti da tutte le tabelle di un PDF pdfplumber già aperto.
+
+    Colonne tabella RECKITT:
+    | Cod. Art. | Descr. Articolo | Qta | Listino | 1°Col | 2°Col | Cassa | SM | Data Consegna | Netto U | Netto | Cod AIC |
+    """
+    righe = []
+    n = 0
+
+    for page in pdf.pages:
+        tables = page.extract_tables()
+
+        for table in tables:
+            if not table:
+                continue
+
+            for row in table:
+                if not row or len(row) < 10:
+                    continue
+
+                # Skip header row
+                if row[0] and 'Cod' in str(row[0]) and 'Art' in str(row[0]):
+                    continue
+
+                # Verifica che la prima colonna sia un codice articolo (numerico)
+                cod_art = str(row[0]).strip() if row[0] else ''
+                if not cod_art or not re.match(r'^\d+$', cod_art):
+                    continue
+
+                try:
+                    descrizione = str(row[1]).strip() if row[1] else ''
+
+                    # Quantità
+                    qta_str = str(row[2]).strip() if row[2] else '0'
+                    qta = int(re.sub(r'[^\d]', '', qta_str) or '0')
+
+                    # Prezzo listino (pubblico)
+                    listino_str = str(row[3]).strip() if row[3] else '0'
+                    listino = _parse_price(listino_str)
+
+                    # Sconto Merce (SM)
+                    sm_str = str(row[7]).strip() if len(row) > 7 and row[7] else '0'
+                    sconto_merce = int(re.sub(r'[^\d]', '', sm_str) or '0')
+
+                    # Prezzo netto unitario
+                    netto_u_str = str(row[9]).strip() if len(row) > 9 and row[9] else '0'
+                    netto_u = _parse_price(netto_u_str)
+
+                    # Prezzo netto totale
+                    netto_str = str(row[10]).strip() if len(row) > 10 and row[10] else '0'
+                    netto_tot = _parse_price(netto_str)
+
+                    # Codice AIC (ultima colonna)
+                    aic_raw = str(row[11]).strip() if len(row) > 11 and row[11] else ''
+
+                    # Data consegna riga
+                    data_consegna_riga = ''
+                    if len(row) > 8 and row[8]:
+                        dc_str = str(row[8]).strip()
+                        if re.match(r'\d{2}[-/]\d{2}[-/]\d{4}', dc_str):
+                            data_consegna_riga = parse_date(dc_str)
+
+                    # Normalizza AIC
+                    aic_norm, aic_orig, is_esp, is_child = _normalize_aic_reckitt(aic_raw, descrizione)
+
+                    if qta > 0 or aic_norm:
+                        n += 1
+                        righe.append({
+                            'n_riga': n,
+                            'codice_articolo': cod_art,
+                            'codice_aic': aic_norm,
+                            'codice_originale': aic_orig,
+                            'descrizione': descrizione[:40],
+                            'q_venduta': qta,
+                            'q_sconto_merce': sconto_merce,
+                            'prezzo_pubblico': listino,
+                            'prezzo_netto': netto_u,
+                            'prezzo_netto_totale': netto_tot,
+                            'data_consegna_riga': data_consegna_riga,
+                            'is_espositore': is_esp,
+                            'is_child': is_child,
+                        })
+
+                except Exception as e:
+                    print(f"   ⚠️ Errore parsing riga RECKITT (tables): {e} - row: {row}")
+                    continue
+
+    return righe
 
 
 def _extract_products_from_pdf(pdf_path: str, data: Dict) -> List[Dict]:

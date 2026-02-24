@@ -294,16 +294,16 @@ def get_stato_righe_ordine(id_testata: int) -> Dict[str, int]:
     stats = db.execute("""
         SELECT
             COUNT(*) AS totale,
-            SUM(CASE WHEN stato_riga = 'ESTRATTO' THEN 1 ELSE 0 END) AS estratto,
-            SUM(CASE WHEN stato_riga = 'IN_SUPERVISIONE' THEN 1 ELSE 0 END) AS in_supervisione,
-            SUM(CASE WHEN stato_riga = 'SUPERVISIONATO' THEN 1 ELSE 0 END) AS supervisionato,
-            SUM(CASE WHEN stato_riga = 'CONFERMATO' THEN 1 ELSE 0 END) AS confermato,
-            SUM(CASE WHEN stato_riga = 'IN_TRACCIATO' THEN 1 ELSE 0 END) AS in_tracciato,
-            SUM(CASE WHEN stato_riga = 'ESPORTATO' THEN 1 ELSE 0 END) AS esportato,
-            SUM(CASE WHEN stato_riga = 'EVASO' THEN 1 ELSE 0 END) AS evaso,
-            SUM(CASE WHEN stato_riga = 'ARCHIVIATO' THEN 1 ELSE 0 END) AS archiviato,
-            SUM(CASE WHEN stato_riga IN ('PARZIALMENTE_ESP', 'PARZIALE') THEN 1 ELSE 0 END) AS parzialmente_esp,
-            SUM(CASE WHEN richiede_supervisione = TRUE THEN 1 ELSE 0 END) AS richiede_supervisione
+            COALESCE(SUM(CASE WHEN stato_riga = 'ESTRATTO' THEN 1 ELSE 0 END), 0) AS estratto,
+            COALESCE(SUM(CASE WHEN stato_riga = 'IN_SUPERVISIONE' THEN 1 ELSE 0 END), 0) AS in_supervisione,
+            COALESCE(SUM(CASE WHEN stato_riga = 'SUPERVISIONATO' THEN 1 ELSE 0 END), 0) AS supervisionato,
+            COALESCE(SUM(CASE WHEN stato_riga = 'CONFERMATO' THEN 1 ELSE 0 END), 0) AS confermato,
+            COALESCE(SUM(CASE WHEN stato_riga = 'IN_TRACCIATO' THEN 1 ELSE 0 END), 0) AS in_tracciato,
+            COALESCE(SUM(CASE WHEN stato_riga = 'ESPORTATO' THEN 1 ELSE 0 END), 0) AS esportato,
+            COALESCE(SUM(CASE WHEN stato_riga = 'EVASO' THEN 1 ELSE 0 END), 0) AS evaso,
+            COALESCE(SUM(CASE WHEN stato_riga = 'ARCHIVIATO' THEN 1 ELSE 0 END), 0) AS archiviato,
+            COALESCE(SUM(CASE WHEN stato_riga IN ('PARZIALMENTE_ESP', 'PARZIALE') THEN 1 ELSE 0 END), 0) AS parzialmente_esp,
+            COALESCE(SUM(CASE WHEN richiede_supervisione = TRUE THEN 1 ELSE 0 END), 0) AS richiede_supervisione
         FROM ORDINI_DETTAGLIO
         WHERE id_testata = ? AND (is_child = FALSE OR is_child IS NULL)
     """, (id_testata,)).fetchone()
