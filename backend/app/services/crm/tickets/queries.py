@@ -68,9 +68,15 @@ def get_tickets(db, filters: Optional[Dict[str, Any]] = None,
             query += " AND t.created_at <= %s"
             params.append(filters['data_a'])
 
-    # Ordinamento: priorita alta prima, poi data
+    # Ordinamento: stato (aperti prima), poi priorita alta, poi data
     query += """
         ORDER BY
+            CASE t.stato
+                WHEN 'aperto' THEN 1
+                WHEN 'in_lavorazione' THEN 2
+                WHEN 'chiuso' THEN 3
+                ELSE 4
+            END,
             CASE t.priorita
                 WHEN 'alta' THEN 3
                 WHEN 'normale' THEN 2

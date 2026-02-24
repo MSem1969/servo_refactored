@@ -101,11 +101,11 @@ export default function TicketDetail({ ticketId, currentUserId }) {
   const allegatiList = attachments?.data || []
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col flex-1 min-h-0">
       {/* Header ticket */}
       <div className="px-4 py-2 border-b border-slate-200 bg-slate-50 shrink-0">
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center gap-2 min-w-0 flex-1 overflow-hidden">
             <span className="text-xs font-mono text-slate-400 shrink-0">#{ticketData.id_ticket}</span>
             <span className={`px-2 py-0.5 text-xs font-medium rounded shrink-0 ${
               ticketData.categoria === 'assistenza'

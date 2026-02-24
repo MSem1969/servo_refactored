@@ -32,7 +32,7 @@ export default function MessageThread({ messages = [], currentUserId }) {
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-4">
       {messages.map((msg) => {
-        const isOwn = msg.autore_id === currentUserId
+        const isOwn = msg.id_operatore === currentUserId
         const isSystem = msg.tipo === 'sistema'
 
         if (isSystem) {

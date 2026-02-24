@@ -16,21 +16,17 @@ def get_admin_emails(db) -> List[str]:
         Lista di email admin (o lista vuota se non configurate)
     """
     try:
-        cursor = db.cursor()
-        cursor.execute("""
-            SELECT admin_notifica_email
-            FROM email_config
-            WHERE id_config = 1
-        """)
-        row = cursor.fetchone()
-        cursor.close()
+        row = db.execute(
+            "SELECT admin_notifica_email FROM email_config WHERE id_config = 1"
+        ).fetchone()
 
-        if row and row[0]:
+        if row and row['admin_notifica_email']:
             # Parse email separate da virgola
-            emails = [e.strip() for e in row[0].split(',') if e.strip()]
+            emails = [e.strip() for e in row['admin_notifica_email'].split(',') if e.strip()]
             return emails
         return []
-    except Exception:
+    except Exception as e:
+        print(f"⚠️ get_admin_emails errore: {e}")
         return []
 
 
@@ -49,19 +45,16 @@ def get_user_email_from_profile(db, id_operatore: int) -> Optional[str]:
         return None
 
     try:
-        cursor = db.cursor()
-        cursor.execute("""
-            SELECT email
-            FROM operatori
-            WHERE id_operatore = %s AND attivo = TRUE
-        """, (id_operatore,))
-        row = cursor.fetchone()
-        cursor.close()
+        row = db.execute(
+            "SELECT email FROM operatori WHERE id_operatore = %s AND attivo = TRUE",
+            [id_operatore]
+        ).fetchone()
 
-        if row and row[0]:
-            return row[0].strip()
+        if row and row['email']:
+            return row['email'].strip()
         return None
-    except Exception:
+    except Exception as e:
+        print(f"⚠️ get_user_email_from_profile errore: {e}")
         return None
 
 
@@ -182,11 +175,10 @@ def notify_ticket_created(db, ticket_data: Dict[str, Any], attachments=None) -> 
     admin_result = notify_admins_new_ticket(db, ticket_data, attachments=attachments)
     results['admin_notification'] = admin_result
 
-    # Ritorna successo se almeno una notifica e andata a buon fine
-    success = (
-        (user_result.get('success') or user_result.get('skipped')) and
-        (admin_result.get('success') or admin_result.get('skipped'))
-    )
+    # Successo se almeno una notifica inviata (skipped non conta come successo)
+    any_sent = user_result.get('success') or admin_result.get('success')
+    all_skipped = user_result.get('skipped') and admin_result.get('skipped')
+    success = any_sent or all_skipped
 
     return {'success': success, 'details': results}
 

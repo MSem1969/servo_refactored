@@ -289,6 +289,22 @@ def crea_ticket_sistema(
         if result.get('success'):
             print(f"✅ Ticket sistema #{result['id_ticket']} creato: {oggetto_completo}")
 
+            # Salva allegato PDF nel ticket CRM (visibile nel frontend)
+            if file_content and filename:
+                try:
+                    from ..attachments import save_attachment
+                    mime_type = 'application/pdf' if filename.lower().endswith('.pdf') else 'application/octet-stream'
+                    attach_result = save_attachment(
+                        db, result['id_ticket'], file_content, filename,
+                        mime_type, SYSTEM_USER_ID
+                    )
+                    if attach_result.get('success'):
+                        print(f"📎 Allegato '{filename}' salvato nel ticket #{result['id_ticket']}")
+                    else:
+                        print(f"⚠️ Errore salvataggio allegato: {attach_result.get('error')}")
+                except Exception as e:
+                    print(f"⚠️ Errore salvataggio allegato nel ticket: {e}")
+
             # Notifica admin via email
             try:
                 from ..notifications import notify_ticket_created
@@ -308,10 +324,21 @@ def crea_ticket_sistema(
                     email_attachments = [{'filename': filename, 'content': file_content, 'mime_type': 'application/pdf'}]
 
                 notify_result = notify_ticket_created(db, ticket_data, attachments=email_attachments)
-                if notify_result.get('success'):
-                    print(f"📧 Notifica email inviata per ticket #{result['id_ticket']}")
-                else:
-                    print(f"⚠️ Notifica email non inviata: {notify_result.get('details', {})}")
+                details = notify_result.get('details', {})
+                user_ok = details.get('user_notification', {}).get('success')
+                admin_ok = details.get('admin_notification', {}).get('success')
+                user_skip = details.get('user_notification', {}).get('skipped')
+                admin_skip = details.get('admin_notification', {}).get('skipped')
+
+                if user_ok or admin_ok:
+                    parts = []
+                    if user_ok: parts.append('utente')
+                    if admin_ok: parts.append('admin')
+                    print(f"📧 Email inviata a {', '.join(parts)} per ticket #{result['id_ticket']}")
+                if user_skip:
+                    print(f"⏭️ Email utente skippata: {details.get('user_notification', {}).get('reason', 'N/D')}")
+                if admin_skip:
+                    print(f"⏭️ Email admin skippata: {details.get('admin_notification', {}).get('reason', 'N/D')}")
             except Exception as e:
                 print(f"⚠️ Errore invio notifica email: {e}")
         else:
