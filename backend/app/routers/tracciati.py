@@ -445,7 +445,23 @@ async def ftp_send_now(
         from ..services.ftp.sender import FTPSender, invia_tracciati_batch, get_ftp_client_from_config
 
         if id_esportazione:
-            # Invio singolo
+            # Invio singolo - verifica stato prima di procedere
+            from ..database_pg import get_db as _get_db
+            _db = _get_db()
+            _exp = _db.execute(
+                "SELECT stato_ftp FROM esportazioni WHERE id_esportazione = %s",
+                (id_esportazione,)
+            ).fetchone()
+
+            if not _exp:
+                raise HTTPException(status_code=404, detail="Esportazione non trovata")
+
+            if _exp['stato_ftp'] in ('SENT', 'SKIPPED', 'ALERT_SENT'):
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Esportazione già completata (stato: {_exp['stato_ftp']}). Reinvio non consentito."
+                )
+
             sender = FTPSender()
             ftp_client = get_ftp_client_from_config()
 
@@ -541,6 +557,21 @@ async def ftp_reset(id_esportazione: int) -> Dict[str, Any]:
     try:
         from ..database_pg import get_db
         db = get_db()
+
+        # Verifica stato attuale - blocca reset su esportazioni già completate
+        exp = db.execute(
+            "SELECT stato_ftp FROM esportazioni WHERE id_esportazione = %s",
+            (id_esportazione,)
+        ).fetchone()
+
+        if not exp:
+            raise HTTPException(status_code=404, detail="Esportazione non trovata")
+
+        if exp['stato_ftp'] in ('SENT', 'SKIPPED', 'ALERT_SENT'):
+            raise HTTPException(
+                status_code=409,
+                detail=f"Impossibile resettare esportazione già completata (stato: {exp['stato_ftp']}). Reset consentito solo per FAILED/RETRY."
+            )
 
         db.execute("""
             UPDATE esportazioni

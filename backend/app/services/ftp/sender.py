@@ -123,6 +123,13 @@ class FTPSender:
         if not export:
             return {'success': False, 'error': 'Esportazione non trovata'}
 
+        # Blocca reinvio di esportazioni già completate
+        if export['stato_ftp'] in ('SENT', 'SKIPPED', 'ALERT_SENT'):
+            return {
+                'success': False,
+                'error': f"Esportazione già completata (stato: {export['stato_ftp']}). Reinvio non consentito."
+            }
+
         vendor = export['vendor']
         file_to_t = export['nome_file_to_t']
         file_to_d = export['nome_file_to_d']
