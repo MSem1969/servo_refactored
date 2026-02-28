@@ -632,19 +632,32 @@ def _aggiorna_contatori_ordine(id_testata: int):
     """, (id_testata,)).fetchone()
     valore_totale_netto = float(valore_totale_row[0]) if valore_totale_row else 0.0
 
-    # Logica stato ordine:
-    # - EVASO: tutte le righe sono completate (EVASO/ESPORTATO/ARCHIVIATO)
-    # - PARZ_EVASO: alcune righe completate, altre no
-    # - CONFERMATO: righe confermate ma non ancora evase
-    # - ESTRATTO: nessuna riga confermata
-    if totale > 0 and righe_completate == totale:
-        nuovo_stato = 'EVASO'
-    elif righe_completate > 0 or parziali > 0:
-        nuovo_stato = 'PARZ_EVASO'
-    elif righe_con_da_evadere > 0 or confermate > 0:
-        nuovo_stato = 'CONFERMATO'
+    # Leggi stato attuale per proteggere stati post-validazione
+    stato_attuale_row = db.execute("""
+        SELECT stato FROM ORDINI_TESTATA WHERE id_testata = ?
+    """, (id_testata,)).fetchone()
+    stato_attuale = stato_attuale_row['stato'] if stato_attuale_row else None
+
+    # Stati protetti: non sovrascrivere se ordine è già in fase post-validazione
+    stati_protetti = ('VALIDATO', 'ESPORTATO', 'PARZ_ESPORTATO', 'ARCHIVIATO')
+
+    if stato_attuale in stati_protetti:
+        # Aggiorna solo i contatori, mantieni lo stato
+        nuovo_stato = stato_attuale
     else:
-        nuovo_stato = 'ESTRATTO'
+        # Logica stato ordine:
+        # - EVASO: tutte le righe sono completate (EVASO/ESPORTATO/ARCHIVIATO)
+        # - PARZ_EVASO: alcune righe completate, altre no
+        # - CONFERMATO: righe confermate ma non ancora evase
+        # - ESTRATTO: nessuna riga confermata
+        if totale > 0 and righe_completate == totale:
+            nuovo_stato = 'EVASO'
+        elif righe_completate > 0 or parziali > 0:
+            nuovo_stato = 'PARZ_EVASO'
+        elif righe_con_da_evadere > 0 or confermate > 0:
+            nuovo_stato = 'CONFERMATO'
+        else:
+            nuovo_stato = 'ESTRATTO'
 
     db.execute("""
         UPDATE ORDINI_TESTATA

@@ -87,6 +87,24 @@ const StatusBadge = ({
       label: 'Evaso',
       icon: '✅'
     },
+    VALIDATO: {
+      bg: 'bg-blue-100',
+      text: 'text-blue-700',
+      label: 'Validato',
+      icon: '📋'
+    },
+    ESPORTATO: {
+      bg: 'bg-indigo-100',
+      text: 'text-indigo-700',
+      label: 'Esportato',
+      icon: '📤'
+    },
+    PARZ_ESPORTATO: {
+      bg: 'bg-violet-100',
+      text: 'text-violet-700',
+      label: 'Parz. Esportato',
+      icon: '📤'
+    },
     ARCHIVIATO: {
       bg: 'bg-slate-200',
       text: 'text-slate-500',
@@ -231,7 +249,7 @@ const StatusBadge = ({
 StatusBadge.hasStatus = (status) => {
   const statusConfig = {
     completed: true, processing: true, pending: true, error: true,
-    ESTRATTO: true, ANOMALIA: true, PARZ_EVASO: true, EVASO: true, ARCHIVIATO: true,
+    ESTRATTO: true, ANOMALIA: true, VALIDATO: true, ESPORTATO: true, PARZ_ESPORTATO: true, PARZ_EVASO: true, EVASO: true, ARCHIVIATO: true,
     CONFERMATO: true, IN_SUPERVISIONE: true, SUPERVISIONATO: true, IN_TRACCIATO: true,
     PARZIALMENTE_ESP: true, PENDING_REVIEW: true, APPROVED: true, REJECTED: true,
     MODIFIED: true, APERTA: true, RISOLTA: true, IGNORATA: true,
@@ -278,6 +296,9 @@ const SEVERITA_COLORS = {
 const ORDINE_STATO_COLORS = {
   'ESTRATTO': 'bg-slate-100 text-slate-700',
   'CONFERMATO': 'bg-green-100 text-green-700',
+  'VALIDATO': 'bg-blue-100 text-blue-700',
+  'ESPORTATO': 'bg-indigo-100 text-indigo-700',
+  'PARZ_ESPORTATO': 'bg-violet-100 text-violet-700',
   'ANOMALIA': 'bg-red-100 text-red-700',
   'PARZ_EVASO': 'bg-amber-100 text-amber-700',
   'EVASO': 'bg-emerald-100 text-emerald-700',

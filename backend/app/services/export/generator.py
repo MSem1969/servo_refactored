@@ -718,29 +718,18 @@ def valida_e_genera_tracciato(
     righe_parziali_tot = stats['parziali'] or 0
     righe_non_evase = stats['non_evase'] or 0
 
-    # 8. Aggiorna stato ordine in base all'evasione
-    # EVASO = tutte le righe completamente evase (dopo generazione tracciato)
-    # PARZ_EVASO = almeno una riga evasa ma non tutte complete
-    if totale_righe > 0 and righe_complete_tot == totale_righe:
-        # Tutte le righe completamente evase
+    # 8. Aggiorna stato ordine: VALIDATO dopo generazione tracciato
+    # Lo stato ESPORTATO/PARZ_ESPORTATO verrà assegnato dopo invio FTP
+    # EVASO/PARZ_EVASO saranno gestiti manualmente (fase futura)
+    if righe_complete_tot > 0 or righe_parziali_tot > 0:
         db.execute("""
             UPDATE ORDINI_TESTATA
-            SET stato = 'EVASO',
-                data_validazione = datetime('now'),
-                validato_da = ?
-            WHERE id_testata = ?
-        """, (operatore, id_testata))
-        stato_ordine = 'EVASO'
-    elif righe_complete_tot > 0 or righe_parziali_tot > 0:
-        # Almeno una riga evasa (parzialmente o totalmente)
-        db.execute("""
-            UPDATE ORDINI_TESTATA
-            SET stato = 'PARZ_EVASO',
+            SET stato = 'VALIDATO',
                 data_validazione = COALESCE(data_validazione, datetime('now')),
                 validato_da = COALESCE(validato_da, ?)
             WHERE id_testata = ?
         """, (operatore, id_testata))
-        stato_ordine = 'PARZ_EVASO'
+        stato_ordine = 'VALIDATO'
     else:
         # Nessuna riga evasa - mantieni stato precedente
         stato_ordine = ordine_dict.get('stato', 'ESTRATTO')

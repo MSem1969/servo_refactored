@@ -290,6 +290,9 @@ const TracciatiPage = () => {
                 <option value="ESTRATTO">Estratto</option>
                 <option value="CONFERMATO">Confermato</option>
                 <option value="ANOMALIA">Anomalia</option>
+                <option value="VALIDATO">Validato</option>
+                <option value="ESPORTATO">Esportato</option>
+                <option value="PARZ_ESPORTATO">Parz. Esportato</option>
                 <option value="PARZ_EVASO">Parzialmente Evaso</option>
                 <option value="EVASO">Evaso</option>
                 <option value="ARCHIVIATO">Archiviato</option>

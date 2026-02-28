@@ -45,11 +45,10 @@ const StatCard = ({ icon, label, value, color = 'slate', active, onClick }) => {
 
 export default function StatsCards({ stats, activeFilter, onStatClick }) {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+    <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
       <StatCard icon="📋" label="Ordini" value={stats.ordini} color="blue" active={activeFilter === ''} onClick={() => onStatClick('')} />
       <StatCard icon="✅" label="Confermati" value={stats.confermati} color="emerald" active={activeFilter === 'CONFERMATO'} onClick={() => onStatClick('CONFERMATO')} />
-      <StatCard icon="🔄" label="Parz. Evaso" value={stats.parzEvaso} color="yellow" active={activeFilter === 'PARZ_EVASO'} onClick={() => onStatClick('PARZ_EVASO')} />
-      <StatCard icon="✓" label="Evaso" value={stats.evaso} color="green" active={activeFilter === 'EVASO'} onClick={() => onStatClick('EVASO')} />
+      <StatCard icon="📦" label="Evasi" value={(stats.evaso || 0) + (stats.parzEvaso || 0)} color="green" active={activeFilter === 'EVASO'} onClick={() => onStatClick('EVASO')} />
       <StatCard icon="🗄️" label="Archiviati" value={stats.archiviati} color="slate" active={activeFilter === 'ARCHIVIATO'} onClick={() => onStatClick('ARCHIVIATO')} />
       <StatCard icon="⚠️" label="Anomalie Aperte" value={stats.anomalie_aperte} color="red" active={activeFilter === 'ANOMALIA'} onClick={() => onStatClick('ANOMALIA')} />
     </div>

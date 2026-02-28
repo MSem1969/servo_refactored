@@ -176,6 +176,8 @@ class FTPSender:
                 ftp_path=ftp_path,
                 files_sent=files_sent
             )
+            # Aggiorna stato ordini collegati: VALIDATO → ESPORTATO/PARZ_ESPORTATO
+            self._update_ordini_stato_esportato(id_esportazione)
             return {'success': True, 'files_sent': files_sent, 'ftp_path': ftp_path}
         else:
             # Fallimento parziale o totale
@@ -217,6 +219,53 @@ class FTPSender:
             SET {', '.join(updates)}
             WHERE id_esportazione = %s
         """, params)
+        self.db.commit()
+
+    def _update_ordini_stato_esportato(self, id_esportazione: int):
+        """
+        Aggiorna stato ordini collegati all'esportazione dopo invio FTP con successo.
+
+        Per ogni ordine in stato VALIDATO:
+        - Se tutte le righe (non child) hanno q_evasa >= q_totale → ESPORTATO
+        - Altrimenti → PARZ_ESPORTATO
+        """
+        # Recupera tutti gli id_testata collegati all'esportazione
+        testate = self.db.execute("""
+            SELECT DISTINCT ed.id_testata
+            FROM esportazioni_dettaglio ed
+            JOIN ordini_testata ot ON ed.id_testata = ot.id_testata
+            WHERE ed.id_esportazione = %s
+              AND ot.stato = 'VALIDATO'
+        """, (id_esportazione,)).fetchall()
+
+        for row in testate:
+            id_testata = row['id_testata']
+
+            stats = self.db.execute("""
+                SELECT
+                    COUNT(*) as totale,
+                    SUM(CASE
+                        WHEN q_evasa >= (COALESCE(q_venduta,0) + COALESCE(q_sconto_merce,0) + COALESCE(q_omaggio,0))
+                             AND (COALESCE(q_venduta,0) + COALESCE(q_sconto_merce,0) + COALESCE(q_omaggio,0)) > 0
+                        THEN 1 ELSE 0 END) as complete
+                FROM ORDINI_DETTAGLIO
+                WHERE id_testata = %s AND (is_child = FALSE OR is_child IS NULL)
+            """, (id_testata,)).fetchone()
+
+            totale = stats['totale'] or 0
+            complete = stats['complete'] or 0
+
+            if totale > 0 and complete == totale:
+                nuovo_stato = 'ESPORTATO'
+            else:
+                nuovo_stato = 'PARZ_ESPORTATO'
+
+            self.db.execute("""
+                UPDATE ORDINI_TESTATA
+                SET stato = %s
+                WHERE id_testata = %s AND stato = 'VALIDATO'
+            """, (nuovo_stato, id_testata))
+
         self.db.commit()
 
     def _increment_retry(self, id_esportazione: int, error: str):

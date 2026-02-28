@@ -37,9 +37,9 @@ def update_ordine_stato(id_testata: int, nuovo_stato: str) -> bool:
     NOTA: Lo stato ordine NON influenza lo stato delle singole righe.
     Le righe mantengono il proprio stato indipendente (EVASO, PARZIALE, ARCHIVIATO, etc.)
 
-    Stati validi: ESTRATTO, CONFERMATO, ANOMALIA, PARZ_EVASO, EVASO, ARCHIVIATO
+    Stati validi: ESTRATTO, CONFERMATO, VALIDATO, ESPORTATO, PARZ_ESPORTATO, ANOMALIA, PARZ_EVASO, EVASO, ARCHIVIATO
     """
-    stati_validi = ['ESTRATTO', 'CONFERMATO', 'ANOMALIA', 'PARZ_EVASO', 'EVASO', 'ARCHIVIATO']
+    stati_validi = ['ESTRATTO', 'CONFERMATO', 'VALIDATO', 'ESPORTATO', 'PARZ_ESPORTATO', 'ANOMALIA', 'PARZ_EVASO', 'EVASO', 'ARCHIVIATO']
     if nuovo_stato not in stati_validi:
         return False
 
