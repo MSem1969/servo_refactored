@@ -137,6 +137,41 @@ def get_ordini(
 
         ordine['deposito'] = deposito
 
+    # Espandi ordini per esportazioni (ogni esportazione diventa una riga nel dashboard)
+    ordini_expanded = []
+    for ordine in ordini:
+        exports = db.execute("""
+            SELECT ed.id as id_esportazione_dettaglio, ed.id_esportazione,
+                   ed.data_evasione, ed.numero_bolla,
+                   e.data_generazione as data_esportazione, e.stato_ftp
+            FROM esportazioni_dettaglio ed
+            JOIN esportazioni e ON ed.id_esportazione = e.id_esportazione
+            WHERE ed.id_testata = %s
+            ORDER BY e.data_generazione
+        """, (ordine['id_testata'],)).fetchall()
+
+        if exports:
+            for i, exp in enumerate(exports, 1):
+                row = {**ordine}
+                row['numero_progressivo'] = i
+                row['numero_ordine_display'] = f"{ordine.get('numero_ordine') or ordine.get('numero_ordine_vendor', '')}.{i}"
+                row['id_esportazione_dettaglio'] = exp['id_esportazione_dettaglio']
+                row['id_esportazione'] = exp['id_esportazione']
+                row['data_evasione'] = str(exp['data_evasione']) if exp['data_evasione'] else None
+                row['numero_bolla'] = exp['numero_bolla']
+                row['data_esportazione'] = str(exp['data_esportazione']) if exp['data_esportazione'] else None
+                row['stato_ftp'] = exp['stato_ftp']
+                ordini_expanded.append(row)
+        else:
+            ordine['numero_progressivo'] = None
+            ordine['numero_ordine_display'] = ordine.get('numero_ordine') or ordine.get('numero_ordine_vendor', '')
+            ordine['id_esportazione_dettaglio'] = None
+            ordine['data_evasione'] = None
+            ordine['numero_bolla'] = None
+            ordini_expanded.append(ordine)
+
+    ordini = ordini_expanded
+
     return {
         'ordini': ordini,
         'totale': totale,

@@ -103,6 +103,11 @@ class RegistraEvasioneRequest(BaseModel):
     q_da_evadere: int  # v6.2.1: Quantità da esportare nel prossimo tracciato
     operatore: str
 
+class AggiornaEvasioneRequest(BaseModel):
+    data_evasione: str  # YYYY-MM-DD
+    numero_bolla: Optional[str] = None
+    operatore: str
+
 class RipristinaRequest(BaseModel):
     operatore: str
 
@@ -133,6 +138,66 @@ class ModificaHeaderRequest(BaseModel):
     # Metadati
     operatore: str
     note: Optional[str] = None
+
+
+# =============================================================================
+# EVASIONE (DATA BOLLA) SU ESPORTAZIONE
+# =============================================================================
+
+@router.patch("/esportazioni-dettaglio/{id_esp_dettaglio}/evasione")
+async def aggiorna_evasione(
+    id_esp_dettaglio: int,
+    request: AggiornaEvasioneRequest
+) -> Dict[str, Any]:
+    """
+    Registra data evasione e numero bolla su una esportazione dettaglio.
+    """
+    from ..database_pg import get_db
+
+    db = get_db()
+
+    try:
+        # Verifica esistenza
+        existing = db.execute(
+            "SELECT id, id_testata FROM esportazioni_dettaglio WHERE id = %s",
+            (id_esp_dettaglio,)
+        ).fetchone()
+
+        if not existing:
+            raise HTTPException(status_code=404, detail="Esportazione dettaglio non trovata")
+
+        db.execute("""
+            UPDATE esportazioni_dettaglio
+            SET data_evasione = %s,
+                numero_bolla = %s,
+                operatore_evasione = %s,
+                data_registrazione_evasione = CURRENT_TIMESTAMP
+            WHERE id = %s
+        """, (
+            request.data_evasione,
+            request.numero_bolla,
+            request.operatore,
+            id_esp_dettaglio
+        ))
+
+        db.commit()
+
+        return {
+            "success": True,
+            "message": "Evasione registrata",
+            "data": {
+                "id": id_esp_dettaglio,
+                "data_evasione": request.data_evasione,
+                "numero_bolla": request.numero_bolla,
+                "operatore_evasione": request.operatore
+            }
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # =============================================================================

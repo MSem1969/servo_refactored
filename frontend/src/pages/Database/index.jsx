@@ -13,6 +13,7 @@ import { AnomaliaDetailModal } from '../../components';
 import StatsCards from './StatsCards';
 import OrdiniTab from './OrdiniTab';
 import AnomalieTab from './AnomalieTab';
+import EvasioneModal from './EvasioneModal';
 
 // Custom hook
 import { useDatabasePage } from './hooks/useDatabasePage';
@@ -43,6 +44,12 @@ export default function DatabasePage({ currentUser, onOpenOrdine }) {
     // v11.3: View tracking
     viewedOrders,
     trackOrderView,
+
+    // Evasione Modal
+    evasioneModal,
+    handleRegistraEvasione,
+    handleSalvaEvasione,
+    closeEvasioneModal,
 
     // PDF Modal
     showPdfModal,
@@ -244,6 +251,7 @@ export default function DatabasePage({ currentUser, onOpenOrdine }) {
             onOpenOrdine={handleOpenOrdine}
             onShowPdf={showPdf}
             onArchiviaOrdine={handleArchiviaOrdine}
+            onRegistraEvasione={handleRegistraEvasione}
             onClearFilters={clearFilters}
             viewedOrders={viewedOrders}
           />
@@ -334,6 +342,14 @@ export default function DatabasePage({ currentUser, onOpenOrdine }) {
           </div>
         </div>
       )}
+
+      {/* Modal Evasione */}
+      <EvasioneModal
+        isOpen={evasioneModal.open}
+        onClose={closeEvasioneModal}
+        onSave={handleSalvaEvasione}
+        ordine={evasioneModal.ordine}
+      />
 
       {/* Modal Dettaglio Anomalia */}
       <AnomaliaDetailModal

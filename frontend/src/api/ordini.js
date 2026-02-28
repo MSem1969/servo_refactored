@@ -93,6 +93,10 @@ export const ordiniApi = {
       note
     }).then(r => r.data),
 
+  // Evasione (data bolla)
+  aggiornaEvasione: (idEsportazioneDettaglio, data) =>
+    api.patch(`/ordini/esportazioni-dettaglio/${idEsportazioneDettaglio}/evasione`, data).then(r => r.data),
+
   // Download PDF come ZIP
   downloadPdfZip: async (ids) => {
     const response = await api.post('/ordini/batch/download-pdf', { ids }, {

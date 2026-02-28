@@ -473,6 +473,31 @@ export function useDatabasePage(currentUser, onOpenOrdine) {
   }, []);
 
   // =============================================================================
+  // EVASIONE MODAL
+  // =============================================================================
+
+  const [evasioneModal, setEvasioneModal] = useState({ open: false, ordine: null });
+
+  const handleRegistraEvasione = useCallback((ordine) => {
+    setEvasioneModal({ open: true, ordine });
+  }, []);
+
+  const handleSalvaEvasione = useCallback(async (idEsportazioneDettaglio, dataEvasione, numeroBolla) => {
+    const operatore = currentUser?.username || 'admin';
+    await ordiniApi.aggiornaEvasione(idEsportazioneDettaglio, {
+      data_evasione: dataEvasione,
+      numero_bolla: numeroBolla || null,
+      operatore
+    });
+    setEvasioneModal({ open: false, ordine: null });
+    loadOrdini();
+  }, [currentUser, loadOrdini]);
+
+  const closeEvasioneModal = useCallback(() => {
+    setEvasioneModal({ open: false, ordine: null });
+  }, []);
+
+  // =============================================================================
   // PDF MODAL
   // =============================================================================
 
@@ -520,6 +545,12 @@ export function useDatabasePage(currentUser, onOpenOrdine) {
     // v11.3: View tracking
     viewedOrders,
     trackOrderView,
+
+    // Evasione Modal
+    evasioneModal,
+    handleRegistraEvasione,
+    handleSalvaEvasione,
+    closeEvasioneModal,
 
     // PDF Modal
     showPdfModal,

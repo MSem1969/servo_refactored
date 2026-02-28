@@ -36,6 +36,7 @@ export default function OrdiniTab({
   onShowPdf,
   onArchiviaOrdine,
   onClearFilters,
+  onRegistraEvasione,
   viewedOrders = new Set()  // v11.3: Set di ID ordini già visualizzati
 }) {
   // Stato ordinamento
@@ -77,9 +78,14 @@ export default function OrdiniTab({
       if (valB == null) valB = '';
 
       // Confronto numerico per campi numerici
-      if (['righe_totali', 'num_righe', 'righe_confermate', 'lookup_score'].includes(sortField)) {
+      if (['righe_totali', 'num_righe', 'righe_confermate'].includes(sortField)) {
         valA = Number(valA) || 0;
         valB = Number(valB) || 0;
+      }
+      // Confronto date YYYY-MM-DD (data_evasione dal backend)
+      else if (sortField === 'data_evasione') {
+        valA = valA ? new Date(valA).getTime() : 0;
+        valB = valB ? new Date(valB).getTime() : 0;
       }
       // Confronto date per campi data (formato DD/MM/YYYY)
       else if (['data_consegna', 'data_ordine', 'data_estrazione'].includes(sortField)) {
@@ -140,7 +146,7 @@ export default function OrdiniTab({
             <SortableHeader label="Righe" field="righe_totali" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
             <SortableHeader label="Confermate" field="righe_confermate" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
             <SortableHeader label="Stato" field="stato" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-            <SortableHeader label="Lookup" field="lookup_score" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+            <SortableHeader label="Evasione" field="data_evasione" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
             <th className="text-center align-middle p-2 text-xs font-medium text-slate-600">Azioni</th>
           </tr>
         </thead>
@@ -152,7 +158,7 @@ export default function OrdiniTab({
 
             return (
               <tr
-                key={ordine.id_testata}
+                key={`${ordine.id_testata}_${ordine.numero_progressivo || 0}`}
                 className={`hover:bg-slate-50 cursor-pointer ${rowHighlight} ${
                   selectedOrdine?.id_testata === ordine.id_testata ? 'bg-blue-50' : ''
                 } ${!isViewed ? 'border-l-4 border-l-blue-500 bg-blue-50/30' : 'border-l-4 border-l-transparent'}`}
@@ -170,7 +176,7 @@ export default function OrdiniTab({
                   <VendorBadge vendor={ordine.vendor} size="xs" />
                 </td>
                 <td className="p-2 text-center align-middle font-mono text-xs font-medium">
-                  {ordine.numero_ordine || ordine.numero_ordine_vendor || '-'}
+                  {ordine.numero_ordine_display || ordine.numero_ordine || ordine.numero_ordine_vendor || '-'}
                 </td>
                 <td className="p-2 text-center align-middle">
                   <DeliveryBadge dataConsegna={ordine.data_consegna} dataOrdine={ordine.data_ordine} />
@@ -205,17 +211,26 @@ export default function OrdiniTab({
                 <td className="p-2 text-center align-middle">
                   <StatusBadge status={ordine.stato} size="xs" />
                 </td>
-                <td className="p-2 text-center align-middle">
-                  <span className={`text-xs ${
-                    ordine.lookup_score >= 90
-                      ? 'text-emerald-600'
-                      : ordine.lookup_score >= 60
-                      ? 'text-amber-600'
-                      : 'text-red-600'
-                  }`}>
-                    {ordine.lookup_method || '-'}
-                    {ordine.lookup_score ? ` (${ordine.lookup_score}%)` : ''}
-                  </span>
+                <td className="p-2 text-center align-middle" onClick={(e) => e.stopPropagation()}>
+                  {ordine.data_evasione ? (
+                    <button
+                      onClick={() => onRegistraEvasione?.(ordine)}
+                      className="text-xs text-emerald-600 font-medium hover:underline"
+                      title={ordine.numero_bolla ? `Bolla: ${ordine.numero_bolla}` : 'Modifica evasione'}
+                    >
+                      {new Date(ordine.data_evasione).toLocaleDateString('it-IT')}
+                      {ordine.numero_bolla && <span className="ml-1 text-slate-400">({ordine.numero_bolla})</span>}
+                    </button>
+                  ) : ordine.id_esportazione_dettaglio ? (
+                    <button
+                      onClick={() => onRegistraEvasione?.(ordine)}
+                      className="px-2 py-0.5 text-xs bg-blue-50 text-blue-600 rounded hover:bg-blue-100 font-medium"
+                    >
+                      Registra
+                    </button>
+                  ) : (
+                    <span className="text-slate-300 text-xs">-</span>
+                  )}
                 </td>
                 <td className="p-2 text-center align-middle" onClick={(e) => e.stopPropagation()}>
                   {ordine.pdf_file && (
