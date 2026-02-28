@@ -32,13 +32,28 @@ class FTPSender:
         self._load_vendor_mapping()
 
     def _load_vendor_mapping(self):
-        """Carica mapping id_vendor -> path FTP dal database."""
+        """Carica mapping id_vendor -> path FTP da ftp_endpoints (con fallback su ftp_vendor_mapping)."""
+        # Primario: ftp_endpoints (gestito dal frontend) + join vendor per id_vendor
         mappings = self.db.execute("""
-            SELECT id_vendor, ftp_path FROM ftp_vendor_mapping
-            WHERE attivo = TRUE AND id_vendor IS NOT NULL
+            SELECT v.id_vendor, fe.ftp_path
+            FROM ftp_endpoints fe
+            JOIN vendor v ON UPPER(fe.vendor_code) = UPPER(v.codice_vendor)
+            WHERE fe.attivo = TRUE
         """).fetchall()
 
         self._vendor_mapping = {m['id_vendor']: m['ftp_path'] for m in mappings}
+
+        # Fallback: ftp_vendor_mapping (vecchia tabella) per vendor non in ftp_endpoints
+        try:
+            old_mappings = self.db.execute("""
+                SELECT id_vendor, ftp_path FROM ftp_vendor_mapping
+                WHERE attivo = TRUE AND id_vendor IS NOT NULL
+            """).fetchall()
+            for m in old_mappings:
+                if m['id_vendor'] not in self._vendor_mapping:
+                    self._vendor_mapping[m['id_vendor']] = m['ftp_path']
+        except Exception:
+            pass  # Tabella potrebbe non esistere più
 
     def get_ftp_path_for_vendor(self, id_vendor: int) -> Optional[str]:
         """
