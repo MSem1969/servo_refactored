@@ -45,6 +45,15 @@ def _applica_workaround_erp_doc(det_dict: dict, vendor: str) -> None:
         det_dict[campo] = valore * q_venduta
 
 
+def _get_export_suffix(db, id_testata: int) -> int:
+    """Conta esportazioni precedenti per questo ordine e restituisce il prossimo numero."""
+    count = db.execute(
+        "SELECT COUNT(*) FROM esportazioni_dettaglio WHERE id_testata = %s",
+        (id_testata,)
+    ).fetchone()[0]
+    return count + 1  # Il corrente INSERT avviene dopo la generazione
+
+
 def generate_tracciati_per_ordine(
     output_dir: str = None,
     ordini_ids: List[int] = None
@@ -94,7 +103,10 @@ def generate_tracciati_per_ordine(
         id_testata = ordine_dict['id_testata']
         # Supporta sia 'numero_ordine' che 'numero_ordine_vendor'
         numero_ordine = ordine_dict.get('numero_ordine') or ordine_dict.get('numero_ordine_vendor') or ''
-        ordine_dict['numero_ordine'] = numero_ordine  # Normalizza per uso successivo
+        # Suffisso incrementale per evitare duplicati nel sistema ricevente
+        suffix = _get_export_suffix(db, id_testata)
+        numero_ordine_tracciato = f"{numero_ordine}.{suffix}"
+        ordine_dict['numero_ordine'] = numero_ordine_tracciato
         vendor = ordine_dict['vendor']
 
         # v11.2: Recupera deposito_riferimento per codice vendor nel tracciato
@@ -154,7 +166,7 @@ def generate_tracciati_per_ordine(
                 continue
 
             # Aggiungi dati testata al dettaglio
-            det_dict['numero_ordine'] = numero_ordine
+            det_dict['numero_ordine'] = numero_ordine_tracciato
             det_dict['min_id'] = ordine_dict.get('min_id') or ''
             det_dict['codice_sito'] = ordine_dict.get('anag_codice_sito')
 
@@ -441,6 +453,11 @@ def valida_e_genera_tracciato(
     numero_ordine = ordine_dict['numero_ordine']
     vendor = ordine_dict['vendor']
 
+    # Suffisso incrementale per evitare duplicati nel sistema ricevente
+    suffix = _get_export_suffix(db, id_testata)
+    numero_ordine_tracciato = f"{numero_ordine}.{suffix}"
+    ordine_dict['numero_ordine'] = numero_ordine_tracciato
+
     # v11.3: Nome file con formato TO_T_AAMMGG_HHMMSS.txt
     # Verifica collisione: se file esiste, aspetta 1 sec e rigenera timestamp
     os.makedirs(config.OUTPUT_DIR, exist_ok=True)
@@ -475,7 +492,7 @@ def valida_e_genera_tracciato(
         det_dict = dict(det)
 
         # Prepara dati per tracciato
-        det_dict['numero_ordine'] = numero_ordine
+        det_dict['numero_ordine'] = numero_ordine_tracciato
         det_dict['min_id'] = ordine_dict.get('min_id') or ''
         det_dict['codice_sito'] = ordine_dict.get('anag_codice_sito')
 
