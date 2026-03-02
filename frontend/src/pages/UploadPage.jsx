@@ -6,7 +6,7 @@
 // =============================================================================
 
 import React, { useState, useEffect } from "react";
-import { uploadApi, mailApi } from "../api";
+import { uploadApi, mailApi, getApiBaseUrl } from "../api";
 import { Button, StatusBadge, VendorBadge, Loading, ErrorBox } from "../common";
 
 /**
@@ -566,7 +566,7 @@ const UploadPage = () => {
                       )}
                       {err.nome_file_storage && (
                         <a
-                          href={`/api/v1/upload/pdf/${err.nome_file_storage}`}
+                          href={`${getApiBaseUrl()}/api/v1/upload/pdf/${err.nome_file_storage}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors"
