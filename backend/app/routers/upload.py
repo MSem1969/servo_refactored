@@ -252,6 +252,58 @@ async def supported_vendors() -> Dict[str, Any]:
     }
 
 
+@router.post("/reprocess/{id_acquisizione}")
+async def reprocess_acquisition(id_acquisizione: int) -> Dict[str, Any]:
+    """
+    Riprocessa un'acquisizione esistente: cancella testata/dettaglio/anomalie,
+    rilegge il PDF da disco e lo rielabora con l'estrattore corrente.
+    """
+    from ..database_pg import get_db
+
+    db = get_db()
+
+    # Verifica che l'acquisizione esista
+    acq = db.execute(
+        "SELECT id_acquisizione, nome_file_storage, percorso_storage FROM acquisizioni WHERE id_acquisizione = ?",
+        (id_acquisizione,)
+    ).fetchone()
+
+    if not acq:
+        raise HTTPException(status_code=404, detail="Acquisizione non trovata")
+
+    pdf_path = os.path.join("/app", acq["percorso_storage"]) if acq["percorso_storage"] else None
+    if not pdf_path or not os.path.exists(pdf_path):
+        # Fallback: cerca in uploads/
+        pdf_path = os.path.join(config.UPLOAD_DIR, acq["nome_file_storage"])
+        if not os.path.exists(pdf_path):
+            raise HTTPException(status_code=404, detail=f"File PDF non trovato su disco: {acq['nome_file_storage']}")
+
+    # Cancella dati vecchi (anomalie → dettaglio → testata → acquisizione)
+    testate = db.execute(
+        "SELECT id_testata FROM ordini_testata WHERE id_acquisizione = ?", (id_acquisizione,)
+    ).fetchall()
+
+    for t in testate:
+        db.execute("DELETE FROM anomalie WHERE id_testata = ?", (t["id_testata"],))
+        db.execute("DELETE FROM ordini_dettaglio WHERE id_testata = ?", (t["id_testata"],))
+
+    db.execute("DELETE FROM ordini_testata WHERE id_acquisizione = ?", (id_acquisizione,))
+    db.execute("DELETE FROM acquisizioni WHERE id_acquisizione = ?", (id_acquisizione,))
+    db.commit()
+
+    # Rileggi PDF e riprocessa
+    with open(pdf_path, "rb") as f:
+        content = f.read()
+
+    result = process_pdf(acq["nome_file_storage"], content, save_to_disk=False)
+
+    return {
+        "success": result["status"] == "OK",
+        "data": result,
+        "message": _get_result_message(result)
+    }
+
+
 @router.get("/pdf/{filename}")
 async def get_pdf(filename: str):
     """
