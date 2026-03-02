@@ -96,12 +96,17 @@ def _parse_product_line(product_line: str) -> Optional[Dict]:
     Returns:
         Dict con campi estratti, o None se parsing fallisce
     """
-    # 1. Estrai data consegna dalla fine
+    # 1. Estrai data consegna dalla fine (data DD/MM/YYYY oppure "Immediata")
     data_match = re.search(r'(\d{2}/\d{2}/\d{4})\s*$', product_line)
-    if not data_match:
+    imm_match = re.search(r'(Immediata|IMMEDIATA|Imm\.?)\s*$', product_line, re.I) if not data_match else None
+    if not data_match and not imm_match:
         return None
-    data_consegna = parse_date(data_match.group(1))
-    line_no_date = product_line[:data_match.start()].strip()
+    if data_match:
+        data_consegna = parse_date(data_match.group(1))
+        line_no_date = product_line[:data_match.start()].strip()
+    else:
+        data_consegna = None  # Immediata → data_consegna vuota, il sistema usa data odierna
+        line_no_date = product_line[:imm_match.start()].strip()
 
     # 2. Trova tutte le posizioni dei prezzi con €
     euro_matches = list(re.finditer(r'([\d.,]+)\s*€', line_no_date))
@@ -309,12 +314,9 @@ def extract_viatris(text: str, lines: List[str], pdf_path: str = None) -> List[D
         product_line = None
         for line in reversed(lines_before):
             line = line.strip()
-            # La riga prodotto contiene almeno un prezzo (€) e una data
-            if '€' in line and re.search(r'\d{2}/\d{2}/\d{4}', line):
-                product_line = line
-                break
-            # Caso trattino: contiene trattini come prezzi + data
-            if re.search(r'\s-\s', line) and '€' in line and re.search(r'\d{2}/\d{2}/\d{4}', line):
+            # La riga prodotto contiene almeno un prezzo (€) e una data o "Immediata"
+            has_date_or_imm = re.search(r'\d{2}/\d{2}/\d{4}', line) or re.search(r'Immediata|IMMEDIATA|Imm\.?', line, re.I)
+            if '€' in line and has_date_or_imm:
                 product_line = line
                 break
 
