@@ -52,6 +52,34 @@ services:
       - "traefik.http.services.servo-backend.loadbalancer.server.port=8000"
 
   # ===========================================================================
+  # MAIL MONITOR - Scheduler IMAP → Backend
+  # ===========================================================================
+  mail_monitor:
+    build:
+      context: ./mail_monitor
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    depends_on:
+      - backend
+      - db
+    environment:
+      # Database (stesse credenziali del backend)
+      - PG_HOST=db
+      - PG_PORT=5432
+      - PG_DATABASE=servo
+      - PG_USER=servo_user
+      - PG_PASSWORD=${DB_PASSWORD:-ServoSecure2024!}
+      # IMAP (ricezione email)
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - IMAP_USER=${IMAP_USER:-}
+      - IMAP_PASSWORD=${IMAP_PASSWORD:-}
+      # Backend URL (interno Docker network)
+      - BACKEND_URL=http://backend:8000
+      # Scheduler
+      - MAIL_CHECK_INTERVAL=${MAIL_CHECK_INTERVAL:-60}
+
+  # ===========================================================================
   # FRONTEND - React + Nginx
   # ===========================================================================
   frontend:
