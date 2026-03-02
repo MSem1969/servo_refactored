@@ -11,9 +11,15 @@ from uploader import PDFUploader
 from dotenv import load_dotenv
 from pathlib import Path
 
-# Cerca .env nella root del progetto
-env_path = Path(__file__).parent.parent / '.env'
-load_dotenv(env_path)
+# Cerca .env (path diversi in locale vs Docker)
+for env_candidate in [
+    Path(__file__).parent.parent / '.env',                # Locale (root progetto)
+    Path(__file__).parent.parent / 'backend' / '.env',    # Locale (backend)
+    Path('/app/.env'),                                     # Docker
+]:
+    if env_candidate.exists():
+        load_dotenv(env_candidate)
+        break
 
 # Assicura che logs directory esista
 Config.LOGS_DIR.mkdir(parents=True, exist_ok=True)
@@ -206,9 +212,11 @@ def main():
                             processate += 1
                             mark_as_examined(uid, has_valid_pdf=True)
                         else:
+                            error_detail = result.get('error', 'Risposta vuota dal backend') if result else 'Nessuna risposta dal backend'
+                            logger.error(f"Upload fallito per {attachment['filename']}: {error_detail}")
                             EmailDB.aggiorna_errore(
                                 email_data['message_id'],
-                                "Errore upload backend"
+                                f"Upload fallito: {error_detail[:500]}"
                             )
                             errori += 1
 

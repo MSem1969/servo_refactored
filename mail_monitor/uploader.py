@@ -65,7 +65,7 @@ class PDFUploader:
         self,
         pdf_path: Path,
         vendor: str = None
-    ) -> Optional[Dict]:
+    ) -> Dict:
         """
         Carica PDF al backend con retry automatico
 
@@ -74,20 +74,15 @@ class PDFUploader:
             vendor: Codice vendor (opzionale, auto-detect se None)
 
         Returns:
-            Dizionario con risposta backend, o None se errore
-            {
-                'success': True,
-                'data': {
-                    'id_acquisizione': 123,
-                    'filename': 'file.pdf',
-                    'vendor': 'ANGELINI',
-                    'stato': 'ESTRATTO'
-                }
-            }
+            Dizionario con risposta backend:
+            - success=True + data se OK
+            - success=False + error se fallito
         """
         if not pdf_path.exists():
             logger.error(f"File PDF non trovato: {pdf_path}")
-            return None
+            return {'success': False, 'error': f'File non trovato: {pdf_path}'}
+
+        last_error = 'Errore sconosciuto'
 
         # Tenta upload con retry
         for attempt in range(1, self.max_retries + 1):
@@ -127,21 +122,23 @@ class PDFUploader:
                         logger.info(f"   Stato: {result['data'].get('stato')}")
                         return result
                     else:
+                        error_msg = result.get('message') or result.get('error', 'Backend rifiuto senza motivo')
                         logger.error(
-                            f"❌ Backend ha rifiutato il file: {result.get('error', 'Unknown')}")
-                        return None
+                            f"❌ Backend ha rifiutato il file: {error_msg}")
+                        return {'success': False, 'error': error_msg}
 
                 elif response.status_code == 413:
                     logger.error(f"❌ File troppo grande: {pdf_path.name}")
-                    return None  # Non ritentare per file troppo grandi
+                    return {'success': False, 'error': f'File troppo grande: {pdf_path.name}'}
 
                 elif response.status_code == 422:
-                    logger.error(f"❌ Errore validazione: {response.text}")
-                    return None  # Non ritentare per errori di validazione
+                    error_detail = response.text[:200]
+                    logger.error(f"❌ Errore validazione: {error_detail}")
+                    return {'success': False, 'error': f'Validazione: {error_detail}'}
 
                 else:
-                    logger.warning(
-                        f"⚠️  Status code {response.status_code}: {response.text}")
+                    last_error = f"HTTP {response.status_code}: {response.text[:200]}"
+                    logger.warning(f"⚠️  {last_error}")
 
                     # Ritenta solo per errori 5xx
                     if response.status_code >= 500 and attempt < self.max_retries:
@@ -150,9 +147,10 @@ class PDFUploader:
                         time.sleep(self.retry_delay)
                         continue
                     else:
-                        return None
+                        return {'success': False, 'error': last_error}
 
             except requests.exceptions.ConnectionError as e:
+                last_error = f"Connessione rifiutata ({self.upload_endpoint})"
                 logger.error(
                     f"❌ Errore connessione backend (tentativo {attempt}): {e}")
 
@@ -162,9 +160,10 @@ class PDFUploader:
                 else:
                     logger.error(
                         "❌ Tutti i tentativi falliti (ConnectionError)")
-                    return None
+                    return {'success': False, 'error': last_error}
 
             except requests.exceptions.Timeout as e:
+                last_error = f"Timeout upload ({self.timeout}s)"
                 logger.error(f"❌ Timeout upload (tentativo {attempt}): {e}")
 
                 if attempt < self.max_retries:
@@ -172,9 +171,10 @@ class PDFUploader:
                     time.sleep(self.retry_delay)
                 else:
                     logger.error("❌ Tutti i tentativi falliti (Timeout)")
-                    return None
+                    return {'success': False, 'error': last_error}
 
             except Exception as e:
+                last_error = f"Errore inatteso: {str(e)[:200]}"
                 logger.error(
                     f"❌ Errore inatteso upload (tentativo {attempt}): {e}")
 
@@ -184,9 +184,9 @@ class PDFUploader:
                 else:
                     logger.error(
                         "❌ Tutti i tentativi falliti (Errore generico)")
-                    return None
+                    return {'success': False, 'error': last_error}
 
-        return None
+        return {'success': False, 'error': last_error}
 
     def get_statistiche_backend(self) -> Optional[Dict]:
         """

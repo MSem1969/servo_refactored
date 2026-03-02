@@ -6,16 +6,22 @@ from pathlib import Path
 from datetime import date, timedelta
 from dotenv import load_dotenv
 
-# Carica variabili dal backend/.env
-backend_env = Path(__file__).parent.parent / 'backend' / '.env'
-load_dotenv(backend_env, override=True)
+# Carica variabili dal backend/.env (path diversi in locale vs Docker)
+for env_candidate in [
+    Path(__file__).parent.parent / 'backend' / '.env',  # Locale
+    Path('/app/.env'),                                    # Docker
+]:
+    if env_candidate.exists():
+        load_dotenv(env_candidate, override=True)
+        break
 
 # Configurazione PostgreSQL (stessa del backend)
+# Default allineati con docker-compose.yaml
 DB_CONFIG = {
-    'host': os.getenv('PG_HOST', 'localhost'),
+    'host': os.getenv('PG_HOST', 'db'),
     'port': int(os.getenv('PG_PORT', '5432')),
-    'database': os.getenv('PG_DATABASE', 'to_extractor'),
-    'user': os.getenv('PG_USER', 'to_extractor_user'),
+    'database': os.getenv('PG_DATABASE', 'servo'),
+    'user': os.getenv('PG_USER', 'servo_user'),
     'password': os.getenv('PG_PASSWORD', '')
 }
 

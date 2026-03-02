@@ -7,12 +7,16 @@ import os
 from pathlib import Path
 from typing import List
 
-# Prova a caricare da .env solo se esiste (non in Docker)
+# Prova a caricare da .env (path diversi in locale vs Docker)
 try:
     from dotenv import load_dotenv
-    backend_env = Path(__file__).parent.parent / 'backend' / '.env'
-    if backend_env.exists():
-        load_dotenv(backend_env, override=True)
+    for env_candidate in [
+        Path(__file__).parent.parent / 'backend' / '.env',  # Locale
+        Path('/app/.env'),                                    # Docker
+    ]:
+        if env_candidate.exists():
+            load_dotenv(env_candidate, override=True)
+            break
 except ImportError:
     pass  # dotenv non disponibile, usa variabili ambiente
 
