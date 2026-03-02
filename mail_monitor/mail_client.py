@@ -135,6 +135,8 @@ class MailClient:
                 filename = part.filename
                 if not filename:
                     continue
+                # Sanitizza: header MIME possono contenere \r\n
+                filename = filename.replace('\r', '').replace('\n', '').strip()
 
                 if filename.lower().endswith('.pdf'):
                     content = part.get_payload()
@@ -199,7 +201,9 @@ class MailClient:
 
     def salva_allegato(self, attachment, temp_dir):
         try:
-            filename = f"{attachment['hash'][:8]}_{attachment['filename']}"
+            # Sanitizza filename: rimuovi \r\n e caratteri problematici da header MIME
+            clean_name = attachment['filename'].replace('\r', '').replace('\n', '').strip()
+            filename = f"{attachment['hash'][:8]}_{clean_name}"
             filepath = temp_dir / filename
             with open(filepath, 'wb') as f:
                 f.write(attachment['content'])

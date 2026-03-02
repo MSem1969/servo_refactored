@@ -310,6 +310,9 @@ async def get_pdf(filename: str):
     Serve un PDF dalla cartella uploads.
     Usato per visualizzare il PDF originale di un ordine.
     """
+    # Sanitizza filename: rimuovi \r\n da header MIME malformati
+    filename = filename.replace('\r', '').replace('\n', '').strip()
+
     # Cerca il file nella cartella uploads
     uploads_dir = config.UPLOAD_DIR
 
