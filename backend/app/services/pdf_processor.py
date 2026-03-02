@@ -485,15 +485,17 @@ def _insert_order(
         id_farm, id_parafarm, lookup_method, lookup_source, lookup_score = lookup_farmacia(order_data)
 
     # Genera chiave univoca - recupera MIN_ID dal match ministeriale
-    # SOLO se score >= 80% (match affidabile), altrimenti i dati potrebbero essere errati
+    # Match affidabile = score >= 80% E (P.IVA estratta O metodo non FUZZY)
+    # FUZZY senza P.IVA non è verificabile → non popolare
+    lookup_affidabile = lookup_score >= 80 and (piva_estratta or lookup_method not in ('FUZZY',))
     cod_min = order_data.get('codice_ministeriale', '')
-    if not cod_min and lookup_score >= 80 and id_farm:
+    if not cod_min and lookup_affidabile and id_farm:
         farm_row = db.execute(
             "SELECT min_id FROM ANAGRAFICA_FARMACIE WHERE id_farmacia = %s",
             (id_farm,)
         ).fetchone()
         cod_min = farm_row['min_id'] if farm_row else ''
-    if not cod_min and lookup_score >= 80 and id_parafarm:
+    if not cod_min and lookup_affidabile and id_parafarm:
         para_row = db.execute(
             "SELECT codice_sito FROM ANAGRAFICA_PARAFARMACIE WHERE id_parafarmacia = %s",
             (id_parafarm,)
@@ -548,9 +550,9 @@ def _insert_order(
     data_ordine_val = _convert_date_to_iso(order_data.get('data_ordine', ''))
     data_consegna_val = _convert_date_to_iso(order_data.get('data_consegna', ''))
 
-    # v11.7: Se score < 80%, non collegare farmacia/parafarmacia inaffidabile all'ordine
-    # I campi id_farmacia_lookup/id_parafarmacia_lookup restano NULL fino a lookup manuale
-    if lookup_score < 80:
+    # v11.7: Non collegare farmacia/parafarmacia se match non affidabile
+    # FUZZY senza P.IVA estratta = non verificabile, anche con score alto
+    if not lookup_affidabile:
         id_farm = None
         id_parafarm = None
 
@@ -591,9 +593,8 @@ def _insert_order(
     id_testata = cursor.fetchone()[0]
     db.commit()
 
-    # v6.2.4: Se lookup ha trovato farmacia con score affidabile, popola header con dati anagrafica
-    # Score < 80% = match inaffidabile, NON popolare per evitare dati errati (es. P.IVA sbagliata)
-    if (id_farm or id_parafarm) and lookup_score >= 80:
+    # v6.2.4: Se lookup ha trovato farmacia con match affidabile, popola header con dati anagrafica
+    if (id_farm or id_parafarm) and lookup_affidabile:
         from .lookup import popola_header_da_anagrafica
         popola_header_da_anagrafica(id_testata)
 

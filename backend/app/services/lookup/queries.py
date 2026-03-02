@@ -155,7 +155,10 @@ def popola_header_da_anagrafica(id_testata: int, operatore: str = None) -> bool:
         nuovi_valori['codice_ministeriale_estratto'] = min_id
 
     # P.IVA dall'anagrafica (popola se vuota nell'ordine)
+    # Sanity check: P.IVA non può mai essere uguale al MIN_ID (placeholder fittizio)
     partita_iva_anagrafica = farm_data.get('partita_iva', '')
+    if partita_iva_anagrafica and min_id and partita_iva_anagrafica.lstrip('0') == min_id.lstrip('0'):
+        partita_iva_anagrafica = ''  # Scarta P.IVA fittizia
     if not ordine['partita_iva_estratta'] and partita_iva_anagrafica:
         nuovi_valori['partita_iva_estratta'] = partita_iva_anagrafica
 
