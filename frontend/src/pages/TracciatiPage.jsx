@@ -287,15 +287,8 @@ const TracciatiPage = () => {
                 className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="">Tutti</option>
-                <option value="ESTRATTO">Estratto</option>
-                <option value="CONFERMATO">Confermato</option>
-                <option value="ANOMALIA">Anomalia</option>
-                <option value="VALIDATO">Validato</option>
                 <option value="ESPORTATO">Esportato</option>
                 <option value="PARZ_ESPORTATO">Parz. Esportato</option>
-                <option value="PARZ_EVASO">Parzialmente Evaso</option>
-                <option value="EVASO">Evaso</option>
-                <option value="ARCHIVIATO">Archiviato</option>
               </select>
             </div>
           </div>

@@ -269,7 +269,7 @@ async def ricerca_tracciati(
             LEFT JOIN anagrafica_parafarmacie p ON t.id_parafarmacia_lookup = p.id_parafarmacia
             LEFT JOIN esportazioni_dettaglio ed ON t.id_testata = ed.id_testata
             LEFT JOIN esportazioni e ON ed.id_esportazione = e.id_esportazione
-            WHERE t.stato IN ('EVASO', 'PARZ_EVASO', 'ESPORTATO', 'ARCHIVIATO')
+            WHERE t.stato IN ('ESPORTATO', 'PARZ_ESPORTATO')
         """
         params = []
 

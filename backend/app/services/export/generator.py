@@ -87,7 +87,7 @@ def generate_tracciati_per_ordine(
     else:
         ordini = db.execute("""
             SELECT * FROM V_ORDINI_COMPLETI
-            WHERE stato NOT IN ('SCARTATO', 'PENDING_REVIEW')
+            WHERE stato NOT IN ('SCARTATO', 'PENDING_REVIEW', 'ARCHIVIATO')
             AND lookup_method != 'NESSUNO'
             AND stato != 'ESPORTATO'
             ORDER BY vendor, numero_ordine_vendor
