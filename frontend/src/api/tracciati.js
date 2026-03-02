@@ -13,4 +13,5 @@ export const tracciatiApi = {
   getFiles: () => api.get('/tracciati/files').then(r => r.data),
   deleteFiles: () => api.delete('/tracciati/files?confirm=true').then(r => r.data),
   getDownloadUrl: (filename) => `${API_URL}/tracciati/download/${filename}`,
+  updateDifarm: (idTestata, difarm) => api.patch(`/tracciati/${idTestata}/difarm`, { difarm }).then(r => r.data),
 };

@@ -142,6 +142,24 @@ const TracciatiPage = () => {
     }
   };
 
+  // Toggle DIFARM
+  const handleToggleDifarm = async (idTestata, currentValue) => {
+    const newValue = !currentValue;
+    // Optimistic update
+    setResults(prev => prev.map(r =>
+      r.id_testata === idTestata ? { ...r, difarm: newValue } : r
+    ));
+    try {
+      await tracciatiApi.updateDifarm(idTestata, newValue);
+    } catch (err) {
+      // Rollback
+      setResults(prev => prev.map(r =>
+        r.id_testata === idTestata ? { ...r, difarm: currentValue } : r
+      ));
+      console.error('Errore aggiornamento DIFARM:', err);
+    }
+  };
+
   // Format data
   const formatDate = (dateStr) => {
     if (!dateStr) return '-';
@@ -339,6 +357,7 @@ const TracciatiPage = () => {
                   <th className="text-left p-3 text-xs font-medium text-slate-600 uppercase">Data Export</th>
                   <th className="text-left p-3 text-xs font-medium text-slate-600 uppercase">Validato Da</th>
                   <th className="text-left p-3 text-xs font-medium text-slate-600 uppercase">Download</th>
+                  <th className="text-center p-3 text-xs font-medium text-slate-600 uppercase">DIFARM</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -416,6 +435,14 @@ const TracciatiPage = () => {
                           <span className="text-xs text-slate-400">-</span>
                         )}
                       </div>
+                    </td>
+                    <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={item.difarm || false}
+                        onChange={() => handleToggleDifarm(item.id_testata, item.difarm)}
+                        className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
+                      />
                     </td>
                   </tr>
                 ))}

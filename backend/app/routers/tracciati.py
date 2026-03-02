@@ -5,7 +5,7 @@
 # =============================================================================
 
 import os
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Body
 from fastapi.responses import FileResponse, JSONResponse
 from typing import Dict, Any, List, Optional
 
@@ -262,7 +262,8 @@ async def ricerca_tracciati(
                 e.num_testate,
                 e.num_dettagli,
                 COALESCE(e.data_generazione, t.data_validazione) AS sort_date,
-                (SELECT COUNT(*) FROM ordini_dettaglio d WHERE d.id_testata = t.id_testata AND (d.is_child = FALSE OR d.is_child IS NULL)) as num_righe
+                (SELECT COUNT(*) FROM ordini_dettaglio d WHERE d.id_testata = t.id_testata AND (d.is_child = FALSE OR d.is_child IS NULL)) as num_righe,
+                t.difarm
             FROM ordini_testata t
             LEFT JOIN vendor v ON t.id_vendor = v.id_vendor
             LEFT JOIN anagrafica_farmacie f ON t.id_farmacia_lookup = f.id_farmacia
@@ -326,7 +327,8 @@ async def ricerca_tracciati(
                     "file_to_d": r["nome_file_to_d"]
                 },
                 "num_righe": r["num_righe"],
-                "validato_da": r["validato_da"]
+                "validato_da": r["validato_da"],
+                "difarm": r["difarm"] or False
             })
 
         return {
@@ -334,6 +336,39 @@ async def ricerca_tracciati(
             "data": results,
             "count": len(results)
         }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/{id_testata}/difarm")
+async def update_difarm(
+    id_testata: int,
+    difarm: bool = Body(..., embed=True)
+) -> Dict[str, Any]:
+    """
+    Aggiorna flag DIFARM per un ordine.
+    """
+    try:
+        from ..database_pg import get_db
+        db = get_db()
+
+        result = db.execute(
+            "UPDATE ordini_testata SET difarm = %s WHERE id_testata = %s RETURNING id_testata",
+            (difarm, id_testata)
+        ).fetchone()
+
+        if not result:
+            raise HTTPException(status_code=404, detail="Ordine non trovato")
+
+        db.commit()
+
+        return {
+            "success": True,
+            "id_testata": id_testata,
+            "difarm": difarm
+        }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
