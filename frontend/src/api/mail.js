@@ -28,4 +28,7 @@ export const mailApi = {
 
   // Statistiche dettagliate
   getStats: () => api.get('/mail/stats').then(r => r.data),
+
+  // Download PDF da email originale su Gmail
+  downloadPdf: (id) => api.get(`/mail/emails/${id}/download-pdf`, { responseType: 'blob' }),
 };

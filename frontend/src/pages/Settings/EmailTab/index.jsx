@@ -9,6 +9,7 @@ import CredentialsAlert from './CredentialsAlert'
 import ImapSection from './ImapSection'
 import SmtpSection from './SmtpSection'
 import EmailLogSection from './EmailLogSection'
+import ErroriMailSection from './ErroriMailSection'
 
 export default function EmailTab() {
   const [activeSection, setActiveSection] = useState('smtp')
@@ -60,6 +61,7 @@ export default function EmailTab() {
     { id: 'smtp', label: 'SMTP (Invio)', icon: '📤' },
     { id: 'imap', label: 'IMAP (Ricezione)', icon: '📥' },
     { id: 'log', label: 'Log Invii', icon: '📋' },
+    { id: 'errori', label: 'Errori Mail', icon: '⚠️' },
   ]
 
   return (
@@ -108,10 +110,14 @@ export default function EmailTab() {
         {activeSection === 'log' && (
           <EmailLogSection />
         )}
+
+        {activeSection === 'errori' && (
+          <ErroriMailSection />
+        )}
       </div>
 
       {/* Save button (solo per config, non per log) */}
-      {activeSection !== 'log' && (
+      {activeSection !== 'log' && activeSection !== 'errori' && (
         <div className="flex justify-end pt-4 border-t border-slate-200">
           <Button
             variant="primary"

@@ -7,11 +7,15 @@
 import os
 import sys
 import subprocess
+import imaplib
+import email as email_lib
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 from datetime import datetime
+from io import BytesIO
 
 from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from ..database_pg import get_db, log_operation
@@ -270,6 +274,121 @@ async def mail_email_detail(id_email: int) -> Dict[str, Any]:
         "success": True,
         "email": dict(email)
     }
+
+
+@router.get("/emails/{id_email}/download-pdf")
+async def mail_download_pdf(id_email: int):
+    """
+    Scarica il PDF allegato dall'email originale su Gmail via IMAP.
+    Utile per recuperare PDF di email in stato ERRORE.
+    """
+    db = get_db()
+
+    row = db.execute("""
+        SELECT message_id, attachment_filename
+        FROM EMAIL_ACQUISIZIONI
+        WHERE id_email = ?
+    """, (id_email,)).fetchone()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Email non trovata")
+
+    message_id = row["message_id"]
+    attachment_filename = row["attachment_filename"]
+
+    if not message_id:
+        raise HTTPException(status_code=400, detail="Message-ID non disponibile per questa email")
+
+    # Credenziali IMAP
+    mail_user = os.getenv('SMTP_USER', '') or os.getenv('IMAP_USER', '')
+    mail_password = os.getenv('SMTP_PASSWORD', '') or os.getenv('IMAP_PASSWORD', '')
+
+    if not mail_user or not mail_password:
+        raise HTTPException(status_code=500, detail="Credenziali IMAP non configurate")
+
+    imap_host = os.getenv('IMAP_HOST', 'imap.gmail.com')
+    imap_port = int(os.getenv('IMAP_PORT', '993'))
+
+    try:
+        # Connessione IMAP
+        imap = imaplib.IMAP4_SSL(imap_host, imap_port)
+        imap.login(mail_user, mail_password)
+        imap.select(os.getenv('MAIL_FOLDER', 'INBOX'), readonly=True)
+
+        # Cerca per Message-ID header
+        search_id = message_id if message_id.startswith('<') else f'<{message_id}>'
+        status, data = imap.search(None, f'HEADER Message-ID "{search_id}"')
+
+        if status != 'OK' or not data[0]:
+            imap.logout()
+            raise HTTPException(status_code=404, detail="Email non trovata sul server IMAP")
+
+        # Prendi il primo risultato
+        uid = data[0].split()[0]
+        status, msg_data = imap.fetch(uid, '(RFC822)')
+        imap.logout()
+
+        if status != 'OK':
+            raise HTTPException(status_code=404, detail="Impossibile scaricare l'email dal server")
+
+        raw_email = msg_data[0][1]
+        msg = email_lib.message_from_bytes(raw_email)
+
+        # Cerca l'allegato PDF (ricorsivo per email annidate)
+        pdf_content = _find_pdf_attachment(msg, attachment_filename)
+
+        if not pdf_content:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Allegato PDF '{attachment_filename}' non trovato nell'email"
+            )
+
+        safe_filename = attachment_filename or f"email_{id_email}.pdf"
+
+        return StreamingResponse(
+            BytesIO(pdf_content),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="{safe_filename}"'
+            }
+        )
+
+    except HTTPException:
+        raise
+    except imaplib.IMAP4.error as e:
+        raise HTTPException(status_code=502, detail=f"Errore connessione IMAP: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Errore download PDF: {str(e)}")
+
+
+def _find_pdf_attachment(msg, target_filename: str = None, depth: int = 0) -> bytes | None:
+    """Cerca ricorsivamente un allegato PDF nell'email (supporta email annidate)."""
+    if depth > 3:
+        return None
+
+    for part in msg.walk():
+        content_type = part.get_content_type()
+        filename = part.get_filename()
+
+        # PDF diretto
+        if filename and filename.lower().endswith('.pdf'):
+            if target_filename is None or filename == target_filename:
+                return part.get_payload(decode=True)
+
+        # Email annidata (.eml)
+        if content_type == 'message/rfc822':
+            payload = part.get_payload()
+            if isinstance(payload, list):
+                for inner_msg in payload:
+                    result = _find_pdf_attachment(inner_msg, target_filename, depth + 1)
+                    if result:
+                        return result
+
+    # Se non trovato per nome esatto, prendi il primo PDF
+    if target_filename:
+        return _find_pdf_attachment(msg, None, depth)
+
+    return None
 
 
 @router.post("/emails/{id_email}/retry")
