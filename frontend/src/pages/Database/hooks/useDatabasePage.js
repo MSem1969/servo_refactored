@@ -31,9 +31,10 @@ export function useDatabasePage(currentUser, onOpenOrdine) {
   // Stats
   const [stats, setStats] = useState({
     ordini: 0,
-    confermati: 0,
     parzEvaso: 0,
     evaso: 0,
+    esportato: 0,
+    parzEsportato: 0,
     archiviati: 0,
     anomalie_aperte: 0
   });
@@ -72,9 +73,10 @@ export function useDatabasePage(currentUser, onOpenOrdine) {
         const totali = res.data.totali || {};
         setStats({
           ordini: totali.ordini || 0,
-          confermati: totali.confermato || 0,
           parzEvaso: totali.parz_evaso || 0,
           evaso: totali.evaso || 0,
+          esportato: totali.esportato || 0,
+          parzEsportato: totali.parz_esportato || 0,
           archiviati: totali.archiviato || 0,
           anomalie_aperte: totali.anomalie_aperte || 0
         });
