@@ -53,13 +53,15 @@ def extract_chiesi(text: str, lines: List[str], pdf_path: str = None) -> List[Di
         if m:
             data['ragione_sociale'] = m.group(1).strip()[:50]
 
-    # Indirizzo
-    m = re.search(r'Indirizzo\s+consegna\s+([^\n]+)', text)
+    # Indirizzo consegna: "Indirizzo consegna VIA XXX Cap e Località IT-XXXXX CITTA PROV"
+    # L'indirizzo è tra "Indirizzo consegna" e "Cap e Località"
+    m = re.search(r'Indirizzo\s+consegna\s+(.+?)\s+Cap\s+e\s+Localit[àa]', text)
     if m:
         data['indirizzo'] = m.group(1).strip()[:50]
 
-    # CAP, Città, Provincia
-    m = re.search(r'Cap\s+e\s+Localit[àa]\s+(?:IT-)?(\d{5})\s+([A-Z][A-Z\s\']+?)\s+([A-Z]{2})', text)
+    # CAP, Città, Provincia dalla riga consegna
+    # Formato: "Cap e Località IT-94100 ENNA EN" — provincia sono gli ultimi 2 char
+    m = re.search(r'Indirizzo\s+consegna\s+.+?Cap\s+e\s+Localit[àa]\s+(?:IT-)?(\d{5})\s+(.+?)\s+([A-Z]{2})\s*$', text, re.M)
     if m:
         data['cap'] = m.group(1)
         data['citta'] = m.group(2).strip()
