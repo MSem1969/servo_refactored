@@ -113,12 +113,16 @@ class MailClient:
         """
         Estrae PDF ricorsivamente da email annidate.
         depth: livello corrente di nesting
-        max_depth: massima profondita per evitare loop infiniti (ridotto da 10 a 3)
+        max_depth: massima profondita per evitare loop infiniti
 
         Gestisce:
         - Allegati PDF diretti (con filename .pdf)
-        - Email annidate come allegati .eml (con filename)
-        - Email annidate inline message/rfc822 (senza filename, es. doppio inoltro)
+        - Email annidate (.eml con filename)
+        - Email annidate inline message/rfc822 (doppio inoltro, senza filename)
+
+        Usa la struttura MIME raw (email.message.Message) per navigare
+        correttamente le parti message/rfc822, poiche pyzmail.get_payload()
+        non restituisce bytes validi per queste parti.
         """
         if depth > max_depth:
             logger.warning(
@@ -126,38 +130,16 @@ class MailClient:
             return
 
         try:
-            # Fase 1: Scansiona mailparts (allegati con filename)
+            # Fase 1: PDF diretti da pyzmail mailparts
             for part in msg.mailparts:
                 filename = part.filename
-                content_type = part.type or ''
-
-                # Parti message/rfc822 senza filename (doppio inoltro)
-                if not filename and content_type == 'message/rfc822':
-                    content = part.get_payload()
-                    if content:
-                        logger.info(
-                            f"Email annidata inline senza filename (depth {depth}), parsing...")
-                        try:
-                            inner_msg = pyzmail.PyzMessage.factory(content)
-                            self._extract_pdfs_recursive(
-                                inner_msg, attachments_list, depth + 1, max_depth)
-                        except Exception as e:
-                            logger.warning(
-                                f"Errore parsing email inline depth {depth}: {e}")
-                    continue
-
                 if not filename:
                     continue
 
-                filename_lower = filename.lower()
-
-                # Caso 1: PDF diretto
-                if filename_lower.endswith('.pdf'):
+                if filename.lower().endswith('.pdf'):
                     content = part.get_payload()
                     if content and len(content) > 0:
                         pdf_hash = hashlib.sha256(content).hexdigest()
-
-                        # Evita duplicati
                         if not any(att['hash'] == pdf_hash for att in attachments_list):
                             attachments_list.append({
                                 'filename': filename,
@@ -168,27 +150,17 @@ class MailClient:
                             logger.info(
                                 f"PDF trovato (depth {depth}): {filename}")
 
-                # Caso 2: Email annidata (.eml) - PARSING RICORSIVO
-                elif filename_lower.endswith('.eml') or content_type == 'message/rfc822':
-                    content = part.get_payload()
-                    if content:
-                        logger.info(
-                            f"Email annidata (depth {depth}): {filename}, parsing...")
-                        try:
-                            inner_msg = pyzmail.PyzMessage.factory(content)
-                            self._extract_pdfs_recursive(
-                                inner_msg, attachments_list, depth + 1, max_depth)
-                        except Exception as e:
-                            logger.warning(
-                                f"Errore parsing email depth {depth}: {e}")
+            # Fase 2: Email annidate via struttura MIME raw
+            # pyzmail non gestisce correttamente get_payload() per message/rfc822,
+            # quindi usiamo email.message.Message direttamente
+            # (PyzMessage e' subclass di email.message.Message)
+            if msg.is_multipart():
+                for raw_part in msg.get_payload():
+                    if not hasattr(raw_part, 'get_content_type'):
+                        continue
+                    ct = raw_part.get_content_type()
 
-            # Fase 2: Scansiona struttura MIME raw per message/rfc822 non in mailparts
-            # (alcuni client annidano email come sub-message non esposti da pyzmail)
-            raw_msg = msg.get_msg() if hasattr(msg, 'get_msg') else None
-            if raw_msg and raw_msg.is_multipart():
-                for raw_part in raw_msg.get_payload():
-                    if hasattr(raw_part, 'get_content_type') and raw_part.get_content_type() == 'message/rfc822':
-                        # Verifica che non sia gia stato processato in mailparts
+                    if ct == 'message/rfc822':
                         sub_payload = raw_part.get_payload()
                         if isinstance(sub_payload, list) and len(sub_payload) > 0:
                             inner_raw = sub_payload[0]
@@ -199,16 +171,29 @@ class MailClient:
                         try:
                             inner_bytes = inner_raw.as_bytes()
                             inner_msg = pyzmail.PyzMessage.factory(inner_bytes)
-                            # Controlla se ha PDF non ancora trovati
-                            before_count = len(attachments_list)
+                            logger.info(
+                                f"Email annidata message/rfc822 (depth {depth}), parsing ricorsivo...")
                             self._extract_pdfs_recursive(
                                 inner_msg, attachments_list, depth + 1, max_depth)
-                            if len(attachments_list) > before_count:
-                                logger.info(
-                                    f"PDF trovati in sub-message MIME raw (depth {depth}): {len(attachments_list) - before_count} nuovi")
                         except Exception as e:
                             logger.warning(
-                                f"Errore parsing sub-message MIME depth {depth}: {e}")
+                                f"Errore parsing message/rfc822 depth {depth}: {e}")
+
+                    elif ct == 'application/octet-stream':
+                        # Alcuni client inviano .eml come octet-stream
+                        fn = raw_part.get_filename() or ''
+                        if fn.lower().endswith('.eml'):
+                            try:
+                                eml_bytes = raw_part.get_payload(decode=True)
+                                if eml_bytes:
+                                    inner_msg = pyzmail.PyzMessage.factory(eml_bytes)
+                                    logger.info(
+                                        f"Email annidata .eml octet-stream (depth {depth}): {fn}")
+                                    self._extract_pdfs_recursive(
+                                        inner_msg, attachments_list, depth + 1, max_depth)
+                            except Exception as e:
+                                logger.warning(
+                                    f"Errore parsing .eml octet-stream depth {depth}: {e}")
         except Exception as e:
             logger.error(f"Errore estrazione PDF depth {depth}: {e}")
 
