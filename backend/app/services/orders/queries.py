@@ -18,7 +18,7 @@ from ...database_pg import get_db
 
 def get_ordini(
     vendor: str = None,
-    stato: str = None,
+    stato: List[str] = None,
     lookup_method: str = None,
     data_da: str = None,
     data_a: str = None,
@@ -31,7 +31,7 @@ def get_ordini(
 
     Args:
         vendor: Filtra per vendor
-        stato: Filtra per stato (ESTRATTO, VALIDATO, ANOMALIA, ESPORTATO)
+        stato: Lista stati da filtrare (es. ['ESTRATTO', 'PARZ_ESPORTATO'])
         lookup_method: Filtra per metodo lookup
         data_da: Data ordine da (DD/MM/YYYY)
         data_a: Data ordine a (DD/MM/YYYY)
@@ -48,10 +48,9 @@ def get_ordini(
     params = []
 
     if stato:
-        conditions.append("stato = ?")
-        params.append(stato)
-    else:
-        conditions.append("stato NOT IN ('EVASO', 'ARCHIVIATO')")
+        placeholders = ", ".join(["?"] * len(stato))
+        conditions.append(f"stato IN ({placeholders})")
+        params.extend(stato)
 
     if vendor:
         conditions.append("vendor = ?")

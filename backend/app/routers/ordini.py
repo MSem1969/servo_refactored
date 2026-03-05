@@ -207,7 +207,7 @@ async def aggiorna_evasione(
 @router.get("")
 async def lista_ordini(
     vendor: Optional[str] = Query(None, description="Filtra per vendor"),
-    stato: Optional[str] = Query(None, description="Filtra per stato"),
+    stato: Optional[List[str]] = Query(None, description="Filtra per stato (multi-select)"),
     lookup_method: Optional[str] = Query(None, description="Filtra per metodo lookup"),
     data_da: Optional[str] = Query(None, description="Data ordine da (DD/MM/YYYY)"),
     data_a: Optional[str] = Query(None, description="Data ordine a (DD/MM/YYYY)"),

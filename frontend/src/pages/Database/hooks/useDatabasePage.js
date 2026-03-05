@@ -19,7 +19,7 @@ export function useDatabasePage(currentUser, onOpenOrdine) {
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
     vendor: '',
-    stato: '',
+    stato: ['ESTRATTO', 'PARZ_ESPORTATO'],
     q: '',
     data_da: '',
     data_a: ''
@@ -539,7 +539,7 @@ export function useDatabasePage(currentUser, onOpenOrdine) {
   // =============================================================================
 
   const clearFilters = useCallback(() => {
-    setFilters({ vendor: '', stato: '', q: '', data_da: '', data_a: '' });
+    setFilters({ vendor: '', stato: ['ESTRATTO', 'PARZ_ESPORTATO'], q: '', data_da: '', data_a: '' });
   }, []);
 
   // =============================================================================

@@ -4,7 +4,7 @@
 // Pagina database ordini - versione decomposta e modulare
 // =============================================================================
 
-import React from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { ordiniApi, getApiBaseUrl } from '../../api';
 import { Button } from '../../common';
 import { AnomaliaDetailModal } from '../../components';
@@ -17,6 +17,82 @@ import EvasioneModal from './EvasioneModal';
 
 // Custom hook
 import { useDatabasePage } from './hooks/useDatabasePage';
+
+// =============================================================================
+// STATO MULTI-SELECT DROPDOWN
+// =============================================================================
+
+const STATI_OPTIONS = ['ESTRATTO', 'CONFERMATO', 'VALIDATO', 'ESPORTATO', 'PARZ_ESPORTATO', 'ANOMALIA', 'PARZ_EVASO', 'EVASO', 'ARCHIVIATO'];
+
+function StatoMultiSelect({ selected = [], onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const toggle = (stato) => {
+    const next = selected.includes(stato)
+      ? selected.filter(s => s !== stato)
+      : [...selected, stato];
+    onChange(next);
+  };
+
+  const allSelected = selected.length === STATI_OPTIONS.length;
+  const toggleAll = () => onChange(allSelected ? [] : [...STATI_OPTIONS]);
+
+  const label = selected.length === 0
+    ? 'Tutti gli Stati'
+    : selected.length <= 2
+      ? selected.join(', ')
+      : `${selected.length} stati`;
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className={`w-full px-3 py-2 border rounded-lg text-sm text-left focus:outline-none focus:ring-2 focus:ring-blue-500 flex items-center justify-between ${
+          selected.length > 0 ? 'border-blue-400 bg-blue-50' : 'border-slate-200'
+        }`}
+      >
+        <span className="truncate">{label}</span>
+        <svg className={`w-4 h-4 ml-1 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {open && (
+        <div className="absolute z-50 mt-1 w-full bg-white border border-slate-200 rounded-lg shadow-lg py-1 max-h-64 overflow-auto">
+          <label className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 cursor-pointer text-sm font-medium border-b border-slate-100">
+            <input
+              type="checkbox"
+              checked={allSelected}
+              onChange={toggleAll}
+              className="rounded border-slate-300"
+            />
+            Tutti
+          </label>
+          {STATI_OPTIONS.map(s => (
+            <label key={s} className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 cursor-pointer text-sm">
+              <input
+                type="checkbox"
+                checked={selected.includes(s)}
+                onChange={() => toggle(s)}
+                className="rounded border-slate-300"
+              />
+              {s}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // =============================================================================
 // MAIN COMPONENT
@@ -131,7 +207,21 @@ export default function DatabasePage({ currentUser, onOpenOrdine }) {
         stats={stats}
         activeFilter={filters.stato}
         onStatClick={(stato) => {
-          setFilters(prev => ({ ...prev, stato: prev.stato === stato ? '' : stato }));
+          if (stato === '') {
+            // "Ordini" card: toggle between all (empty) and default
+            setFilters(prev => ({
+              ...prev,
+              stato: prev.stato.length === 0 ? ['ESTRATTO', 'PARZ_ESPORTATO'] : []
+            }));
+          } else {
+            setFilters(prev => {
+              const arr = Array.isArray(prev.stato) ? prev.stato : [];
+              const next = arr.includes(stato)
+                ? arr.filter(s => s !== stato)
+                : [...arr, stato];
+              return { ...prev, stato: next };
+            });
+          }
           setActiveTab('ordini');
         }}
       />
@@ -193,16 +283,10 @@ export default function DatabasePage({ currentUser, onOpenOrdine }) {
               ))}
             </select>
 
-            <select
-              value={filters.stato}
-              onChange={(e) => setFilters({ ...filters, stato: e.target.value })}
-              className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">Tutti gli Stati</option>
-              {['ESTRATTO', 'CONFERMATO', 'VALIDATO', 'ESPORTATO', 'PARZ_ESPORTATO', 'ANOMALIA', 'PARZ_EVASO', 'EVASO', 'ARCHIVIATO'].map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
+            <StatoMultiSelect
+              selected={filters.stato}
+              onChange={(stato) => setFilters(prev => ({ ...prev, stato }))}
+            />
 
             <Button variant="secondary" size="sm" onClick={loadOrdini} disabled={loading}>
               🔄
