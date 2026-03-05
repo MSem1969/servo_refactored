@@ -37,7 +37,8 @@ export default function OrdiniTab({
   onArchiviaOrdine,
   onClearFilters,
   onRegistraEvasione,
-  viewedOrders = new Set()  // v11.3: Set di ID ordini già visualizzati
+  viewedOrders = new Set(),  // v11.3: Set di ID ordini già visualizzati
+  onToggleDifarm
 }) {
   // Stato ordinamento
   const [sortField, setSortField] = useState(null);
@@ -147,6 +148,7 @@ export default function OrdiniTab({
             <SortableHeader label="Confermate" field="righe_confermate" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
             <SortableHeader label="Stato" field="stato" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
             <SortableHeader label="Evasione" field="data_evasione" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+            <th className="text-center align-middle p-2 text-xs font-medium text-slate-600 uppercase">DIFARM</th>
             <th className="text-center align-middle p-2 text-xs font-medium text-slate-600">Azioni</th>
           </tr>
         </thead>
@@ -231,6 +233,14 @@ export default function OrdiniTab({
                   ) : (
                     <span className="text-slate-300 text-xs">-</span>
                   )}
+                </td>
+                <td className="p-2 text-center align-middle" onClick={(e) => e.stopPropagation()}>
+                  <input
+                    type="checkbox"
+                    checked={ordine.difarm || false}
+                    onChange={() => onToggleDifarm(ordine.id_testata, ordine.difarm)}
+                    className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
+                  />
                 </td>
                 <td className="p-2 text-center align-middle" onClick={(e) => e.stopPropagation()}>
                   {ordine.pdf_file && (

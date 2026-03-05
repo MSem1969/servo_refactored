@@ -5,7 +5,7 @@
 // =============================================================================
 
 import { useState, useEffect, useCallback } from 'react';
-import { ordiniApi, anomalieApi, lookupApi } from '../../../api';
+import { ordiniApi, anomalieApi, lookupApi, tracciatiApi } from '../../../api';
 import { richiestaConferma } from '../../../utils/confirmazione';
 
 export function useDatabasePage(currentUser, onOpenOrdine) {
@@ -500,6 +500,27 @@ export function useDatabasePage(currentUser, onOpenOrdine) {
   }, []);
 
   // =============================================================================
+  // DIFARM TOGGLE
+  // =============================================================================
+
+  const handleToggleDifarm = useCallback(async (idTestata, currentValue) => {
+    const newValue = !currentValue;
+    // Optimistic update
+    setOrdini(prev => prev.map(o =>
+      o.id_testata === idTestata ? { ...o, difarm: newValue } : o
+    ));
+    try {
+      await tracciatiApi.updateDifarm(idTestata, newValue);
+    } catch (err) {
+      // Rollback
+      setOrdini(prev => prev.map(o =>
+        o.id_testata === idTestata ? { ...o, difarm: currentValue } : o
+      ));
+      console.error('Errore aggiornamento DIFARM:', err);
+    }
+  }, []);
+
+  // =============================================================================
   // PDF MODAL
   // =============================================================================
 
@@ -589,7 +610,8 @@ export function useDatabasePage(currentUser, onOpenOrdine) {
     closeAnomaliaModal,
     showPdf,
     closePdfModal,
-    clearFilters
+    clearFilters,
+    handleToggleDifarm
   };
 }
 

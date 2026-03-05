@@ -86,7 +86,8 @@ export default function DatabasePage({ currentUser, onOpenOrdine }) {
     closeAnomaliaModal,
     showPdf,
     closePdfModal,
-    clearFilters
+    clearFilters,
+    handleToggleDifarm
   } = useDatabasePage(currentUser, onOpenOrdine);
 
   // Tabs config
@@ -254,6 +255,7 @@ export default function DatabasePage({ currentUser, onOpenOrdine }) {
             onRegistraEvasione={handleRegistraEvasione}
             onClearFilters={clearFilters}
             viewedOrders={viewedOrders}
+            onToggleDifarm={handleToggleDifarm}
           />
         )}
 
