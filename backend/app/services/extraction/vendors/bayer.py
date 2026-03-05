@@ -62,36 +62,29 @@ def _parse_date_header(text: str, lines: List[str] = None) -> List[Tuple[str, Op
         return dates
 
     # Seconda prova: date splittate su più righe (formato tabella BAYER)
-    # Cerca la sezione CONSEGNE e ricostruisci le date
+    # Cerca la sezione CONSEGNE e ricostruisci le date (supporta fino a 6 colonne)
     if lines:
         lines_text = '\n'.join(lines)
 
         # Pattern per trovare le righe header con giorni, mesi, anni separati
-        # Cerca righe tipo "... 20 20 ..." (giorni), "... ott dic ..." (mesi), "... 2025 2026 ..." (anni)
-        days_pattern = r'(?:Merce|CONDIZIONI)[^\d]*(\d{1,2})\s+(\d{1,2})'
-        months_pattern = r'(gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic)\s+(gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic)'
-        years_pattern = r'(202[4-9]|203\d)\s+(202[4-9]|203\d)'
+        # Cerca righe tipo "... 20 20 15 ..." (giorni), "... ott dic set ..." (mesi), "... 2025 2026 2026 ..." (anni)
+        # Usa findall per catturare N valori (fino a 6 colonne date)
+        days_line_match = re.search(r'(?:Merce|CONDIZIONI)[^\d]*((?:\d{1,2}\s*)+)', lines_text, re.IGNORECASE)
+        months_line_match = re.search(r'((?:(?:gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic)\s*){2,})', lines_text, re.IGNORECASE)
+        years_line_match = re.search(r'((?:(?:202[4-9]|203\d)\s*){2,})', lines_text)
 
-        days_match = re.search(days_pattern, lines_text, re.IGNORECASE)
-        months_match = re.search(months_pattern, lines_text, re.IGNORECASE)
-        years_match = re.search(years_pattern, lines_text)
+        if days_line_match and months_line_match and years_line_match:
+            days = re.findall(r'\d{1,2}', days_line_match.group(1))
+            months = re.findall(r'gen|feb|mar|apr|mag|giu|lug|ago|set|ott|nov|dic', months_line_match.group(1), re.IGNORECASE)
+            years = re.findall(r'202[4-9]|203\d', years_line_match.group(1))
 
-        if days_match and months_match and years_match:
-            day1, day2 = days_match.group(1), days_match.group(2)
-            month1, month2 = months_match.group(1), months_match.group(2)
-            year1, year2 = years_match.group(1), years_match.group(2)
-
-            # Ricostruisci le date
-            date1_raw = f"{day1} {month1} {year1}"
-            date2_raw = f"{day2} {month2} {year2}"
-
-            date1_parsed = parse_date(date1_raw)
-            date2_parsed = parse_date(date2_raw)
-
-            if date1_parsed and date1_parsed not in [d[1] for d in dates]:
-                dates.append((date1_raw, date1_parsed))
-            if date2_parsed and date2_parsed not in [d[1] for d in dates]:
-                dates.append((date2_raw, date2_parsed))
+            # Ricostruisci le date allineando giorni, mesi, anni
+            n_dates = min(len(days), len(months), len(years))
+            for i in range(n_dates):
+                date_raw = f"{days[i]} {months[i]} {years[i]}"
+                date_parsed = parse_date(date_raw)
+                if date_parsed and date_parsed not in [d[1] for d in dates]:
+                    dates.append((date_raw, date_parsed))
 
     return dates
 
@@ -251,8 +244,9 @@ def _extract_products_from_table(pdf_path: str, date_columns: List[Tuple[str, Op
                     if dil_match:
                         dilazione = parse_int(dil_match.group(1))
 
-                # Colonne date: tipicamente indici 5 e 6 (o solo 5 se una sola data)
-                date_col_indices = [5, 6] if len(date_columns) >= 2 else [5]
+                # Colonne date: partono dall'indice 5, una per ogni data rilevata (fino a 6)
+                num_dc = max(1, len(date_columns))
+                date_col_indices = list(range(5, 5 + num_dc))
 
                 date_quantities = []
                 for col_idx in date_col_indices:
@@ -261,10 +255,6 @@ def _extract_products_from_table(pdf_path: str, date_columns: List[Tuple[str, Op
                     else:
                         qty = 0
                     date_quantities.append(qty)
-
-                # Padding se necessario
-                while len(date_quantities) < len(date_columns):
-                    date_quantities.append(0)
 
                 products.append({
                     'codice_raw': codice_raw,
