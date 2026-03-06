@@ -594,6 +594,9 @@ export default function App() {
   // Salva: activeTab, viewMode, scrollPosition, selectedPattern
   const [supervisioneContext, setSupervisioneContext] = useState(null);
 
+  // Scroll position memoria per ritorno da dettaglio ordine
+  const [databaseScrollY, setDatabaseScrollY] = useState(0);
+
   // v10.0: Helper per verificare permesso visualizzazione
   const canViewSection = (sezione) => {
     // Admin ha sempre accesso completo
@@ -610,6 +613,17 @@ export default function App() {
       console.warn(`Access denied to section: ${pageName}`);
       return; // Non navigare se non autorizzato
     }
+
+    // Salva scroll position quando si esce dal database verso dettaglio ordine
+    if (page === 'database' && pageName === 'ordine-detail') {
+      setDatabaseScrollY(window.scrollY);
+    }
+
+    // Ripristina scroll al ritorno dal dettaglio, reset per le altre navigazioni
+    if (!(page === 'ordine-detail' && pageName === 'database')) {
+      window.scrollTo(0, 0);
+    }
+
     setPage(pageName);
     setPageParams(params);
   };
@@ -734,6 +748,7 @@ export default function App() {
           <DatabasePage
             currentUser={currentUser}
             onOpenOrdine={(id) => navigateTo("ordine-detail", { ordineId: id })}
+            restoreScrollY={databaseScrollY}
           />
         );
       case "ordine-detail":

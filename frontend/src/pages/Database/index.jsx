@@ -98,7 +98,7 @@ function StatoMultiSelect({ selected = [], onChange }) {
 // MAIN COMPONENT
 // =============================================================================
 
-export default function DatabasePage({ currentUser, onOpenOrdine }) {
+export default function DatabasePage({ currentUser, onOpenOrdine, restoreScrollY = 0 }) {
   const {
     // Tab
     activeTab,
@@ -165,6 +165,15 @@ export default function DatabasePage({ currentUser, onOpenOrdine }) {
     clearFilters,
     handleToggleDifarm
   } = useDatabasePage(currentUser, onOpenOrdine);
+
+  // Ripristina scroll position dopo caricamento ordini (ritorno da dettaglio)
+  const scrollRestored = useRef(false);
+  useEffect(() => {
+    if (restoreScrollY > 0 && !loading && ordini.length > 0 && !scrollRestored.current) {
+      scrollRestored.current = true;
+      requestAnimationFrame(() => window.scrollTo(0, restoreScrollY));
+    }
+  }, [restoreScrollY, loading, ordini]);
 
   // Tabs config
   const tabs = [
