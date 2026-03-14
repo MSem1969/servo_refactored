@@ -220,7 +220,7 @@ export default function DatabasePage({ currentUser, onOpenOrdine, restoreScrollY
             // "Ordini" card: toggle between all (empty) and default
             setFilters(prev => ({
               ...prev,
-              stato: prev.stato.length === 0 ? ['ESTRATTO', 'PARZ_ESPORTATO'] : []
+              stato: prev.stato.length === 0 ? ['ESTRATTO', 'PARZ_ESPORTATO', 'ANOMALIA'] : []
             }));
           } else {
             setFilters(prev => {
@@ -287,7 +287,7 @@ export default function DatabasePage({ currentUser, onOpenOrdine, restoreScrollY
             >
               <option value="">Tutti i Vendor</option>
               {/* v11.2: Lista vendor aggiornata + COOPER + RECKITT */}
-              {['DOC_GENERICI', 'CODIFI', 'COOPER', 'MENARINI', 'OPELLA', 'CHIESI', 'ANGELINI', 'BAYER', 'RECKITT', 'VIATRIS'].map((v) => (
+              {['DOC_GENERICI', 'CODIFI', 'COOPER', 'MENARINI', 'OPELLA', 'CHIESI', 'ANGELINI', 'BAYER', 'RECKITT', 'VIATRIS', 'PERRIGO'].map((v) => (
                 <option key={v} value={v}>{v}</option>
               ))}
             </select>
