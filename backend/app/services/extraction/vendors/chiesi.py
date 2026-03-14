@@ -11,9 +11,15 @@ from typing import Dict, List
 from ....utils import parse_date, normalize_aic, format_piva
 
 
-# Pattern compilato per righe prodotto CHIESI
+# Pattern compilato per righe prodotto CHIESI (con AIC 9 cifre)
 CHIESI_ROW_PATTERN = re.compile(
     r'^(\d{9})\s+(\S+)\s+(.+?)\s+(\d{2}/\d{2}/\d{4})\s+(\d+)\s+(\d+)\s+([\d,]+)%?\s+([\d,]+)\s+([\d,]+)\s*$'
+)
+
+# Pattern per righe espositore CHIESI (senza AIC, solo codice interno)
+# Es: "0500015913 BREXIADVANCE ESPO BANCO 2025  12/03/2026  1  0  0,00%  0,00  0,00"
+CHIESI_EXPO_PATTERN = re.compile(
+    r'^(\d{10})\s+(.+?)\s+(\d{2}/\d{2}/\d{4})\s+(\d+)\s+(\d+)\s+([\d,]+)%?\s+([\d,]+)\s+([\d,]+)\s*$'
 )
 
 
@@ -81,6 +87,8 @@ def extract_chiesi(text: str, lines: List[str], pdf_path: str = None) -> List[Di
     n_riga = 0
     for line in lines:
         line_stripped = line.strip()
+
+        # 1) Riga standard con AIC 9 cifre
         m = CHIESI_ROW_PATTERN.match(line_stripped)
         if m:
             n_riga += 1
@@ -107,6 +115,34 @@ def extract_chiesi(text: str, lines: List[str], pdf_path: str = None) -> List[Di
                 'prezzo_netto': prezzo_netto,
                 'is_espositore': is_esp,
                 'is_child': is_child,
+            })
+            continue
+
+        # 2) Riga espositore senza AIC (solo codice interno, prezzo 0)
+        m = CHIESI_EXPO_PATTERN.match(line_stripped)
+        if m:
+            n_riga += 1
+            codice_interno = m.group(1)
+            descrizione = m.group(2).strip()[:40]
+            data_consegna = parse_date(m.group(3))
+            q_venduta = int(m.group(4))
+            q_omaggio = int(m.group(5))
+            sconto1 = float(m.group(6).replace(',', '.'))
+            prezzo_netto = float(m.group(7).replace(',', '.'))
+
+            data['righe'].append({
+                'n_riga': n_riga,
+                'codice_aic': '',
+                'codice_originale': codice_interno,
+                'descrizione': descrizione,
+                'data_consegna': data_consegna,
+                'q_venduta': q_venduta,
+                'q_omaggio': q_omaggio,
+                'sconto1': sconto1,
+                'prezzo_netto': prezzo_netto,
+                'is_espositore': True,
+                'is_child': False,
+                'is_no_aic': True,
             })
 
     return [data]
