@@ -145,4 +145,8 @@ def extract_chiesi(text: str, lines: List[str], pdf_path: str = None) -> List[Di
                 'is_no_aic': True,
             })
 
+    # Data consegna testata: dalla prima riga
+    if data['righe'] and data['righe'][0].get('data_consegna'):
+        data['data_consegna'] = data['righe'][0]['data_consegna']
+
     return [data]
