@@ -14,6 +14,7 @@ from .menarini import extract_menarini
 from .reckitt import extract_reckitt
 from .doc_generici import extract_doc_generici
 from .viatris import extract_viatris
+from .perrigo import extract_perrigo
 from .generic import extract_generic
 
 __all__ = [
@@ -24,6 +25,7 @@ __all__ = [
     'extract_cooper',
     'extract_opella',
     'extract_menarini',
+    'extract_perrigo',
     'extract_reckitt',
     'extract_doc_generici',
     'extract_viatris',

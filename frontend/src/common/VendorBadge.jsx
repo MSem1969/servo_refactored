@@ -114,6 +114,14 @@ const VendorBadge = ({
       name: 'Viatris',
       acronym: 'VIA',
       icon: '💠'
+    },
+    PERRIGO: {
+      bg: 'bg-lime-100',
+      text: 'text-lime-700',
+      border: 'border-lime-200',
+      name: 'Perrigo',
+      acronym: 'PER',
+      icon: '🌊'
     }
   };
   
@@ -172,12 +180,12 @@ const VendorBadge = ({
 // Utility per ottenere lista vendor supportati
 // v11.2: Lista aggiornata vendor abilitati + COOPER + RECKITT
 VendorBadge.getSupportedVendors = () => {
-  return ['DOC_GENERICI', 'CODIFI', 'COOPER', 'MENARINI', 'OPELLA', 'CHIESI', 'ANGELINI', 'BAYER', 'RECKITT', 'VIATRIS'];
+  return ['DOC_GENERICI', 'CODIFI', 'COOPER', 'MENARINI', 'OPELLA', 'CHIESI', 'ANGELINI', 'BAYER', 'RECKITT', 'VIATRIS', 'PERRIGO'];
 };
 
 // Utility per verificare se vendor è supportato
 VendorBadge.isSupported = (vendor) => {
-  const supported = ['DOC_GENERICI', 'CODIFI', 'COOPER', 'MENARINI', 'OPELLA', 'CHIESI', 'ANGELINI', 'BAYER', 'RECKITT', 'VIATRIS'];
+  const supported = ['DOC_GENERICI', 'CODIFI', 'COOPER', 'MENARINI', 'OPELLA', 'CHIESI', 'ANGELINI', 'BAYER', 'RECKITT', 'VIATRIS', 'PERRIGO'];
   return supported.includes(vendor?.toUpperCase());
 };
 

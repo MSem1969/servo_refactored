@@ -69,6 +69,12 @@ def detect_vendor(text: str, filename: str = "") -> Tuple[str, float]:
     if re.search(r'\bOR\d{7,}', t) and "TRACC.F" in t:
         return "VIATRIS", 0.90
 
+    # PERRIGO
+    if "PERRIGO" in t:
+        return "PERRIGO", 0.95
+    if "PERRIGO ITALIA" in t:
+        return "PERRIGO", 0.95
+
     # OPELLA
     if "INFORMAZIONI SULL'ORDINE" in t or "OPELLA" in t:
         return "OPELLA", 0.95
@@ -185,6 +191,7 @@ SUPPORTED_VENDORS = [
     'DOC_GENERICI',
     'MENARINI',
     'OPELLA',
+    'PERRIGO',
     'RECKITT',
     'VIATRIS',
 ]

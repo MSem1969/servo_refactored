@@ -35,8 +35,13 @@ def arricchisci_riga_con_listino(
         riga['fonte_prezzi'] = 'OMAGGIO'
         return riga, None
 
-    if tipo_riga in ('SCONTO_MERCE', 'MATERIALE_POP'):
+    if tipo_riga in ('SCONTO_MERCE', 'MATERIALE_POP', 'CHILD_ESPOSITORE'):
         riga['fonte_prezzi'] = 'OMAGGIO'
+        return riga, None
+
+    # Escludi righe child espositore (prezzo incluso nel parent)
+    if riga.get('is_child'):
+        riga['fonte_prezzi'] = 'CHILD'
         return riga, None
 
     # Escludi se q_venduta = 0 e (q_sconto_merce > 0 o q_omaggio > 0)
