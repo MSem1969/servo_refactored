@@ -157,6 +157,11 @@ def extract_cooper(text: str, lines: List[str], pdf_path: str = None) -> List[Di
     m = re.search(r'Data\s*di\s*consegna\s*prevista:\s*(\d{2}/\d{2}/\d{4})', text, re.I)
     if m:
         data['data_consegna'] = _parse_date(m.group(1))
+    else:
+        # Formato testuale italiano: "domenica 15 marzo 2026"
+        m = re.search(r'Data\s*di\s*consegna\s*prevista:\s*([a-zìùéèàò]+\s+\d{1,2}\s+[a-zìùéèàò]+\s+\d{4})', text, re.I)
+        if m:
+            data['data_consegna'] = _parse_date_italian(m.group(1))
 
     m = re.search(r'Agente:\s*([A-Z]+?)(?:\s*Telefono:|\s*Tel)', text, re.I)
     if m:
@@ -497,6 +502,13 @@ def _extract_products_from_text(lines: List[str]) -> List[Dict]:
     return righe
 
 
+_MESI_IT = {
+    'gennaio': '01', 'febbraio': '02', 'marzo': '03', 'aprile': '04',
+    'maggio': '05', 'giugno': '06', 'luglio': '07', 'agosto': '08',
+    'settembre': '09', 'ottobre': '10', 'novembre': '11', 'dicembre': '12',
+}
+
+
 def _parse_date(date_str: str) -> str:
     """Converte data da DD/MM/YYYY a YYYY-MM-DD."""
     if not date_str:
@@ -505,6 +517,23 @@ def _parse_date(date_str: str) -> str:
         parts = date_str.split('/')
         if len(parts) == 3:
             return f"{parts[2]}-{parts[1]}-{parts[0]}"
+    except:
+        pass
+    return None
+
+
+def _parse_date_italian(date_str: str) -> str:
+    """Converte data testuale italiana (es. 'domenica 15 marzo 2026') a YYYY-MM-DD."""
+    if not date_str:
+        return None
+    try:
+        m = re.match(r'(?:\w+\s+)?(\d{1,2})\s+(\w+)\s+(\d{4})', date_str.strip())
+        if m:
+            giorno = m.group(1).zfill(2)
+            mese = _MESI_IT.get(m.group(2).lower())
+            anno = m.group(3)
+            if mese:
+                return f"{anno}-{mese}-{giorno}"
     except:
         pass
     return None
