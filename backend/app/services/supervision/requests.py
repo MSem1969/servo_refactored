@@ -81,6 +81,16 @@ def crea_richiesta_supervisione(
         from .aic import crea_supervisione_aic
         return crea_supervisione_aic(id_testata, id_anomalia, anomalia)
 
+    # v12.0: Rileva se anomalia ERP (ERP-A01, ERP-A02)
+    if tipo_anomalia == 'ERP' or codice_anomalia.startswith('ERP-'):
+        from .erp import crea_supervisione_erp
+        return crea_supervisione_erp(
+            id_testata, id_anomalia,
+            min_id=anomalia.get('min_id', ''),
+            partita_iva_tracciato=anomalia.get('partita_iva', ''),
+            partita_iva_erp=anomalia.get('partita_iva_erp'),
+        )
+
     # v8.0: Rileva se anomalia lookup (LKP-A01, LKP-A02, LKP-A04)
     if tipo_anomalia == 'LOOKUP' or codice_anomalia.startswith('LKP-'):
         from .lookup import crea_supervisione_lookup
@@ -304,7 +314,17 @@ def sblocca_ordine_se_completo(id_testata: int):
         WHERE id_testata = %s AND stato = 'PENDING'
     """, (id_testata,)).fetchone()[0]
 
-    total_pending = pending_esp + pending_listino + pending_lookup + pending_prezzo + pending_aic
+    # v12.0: Verifica supervisioni ERP pending
+    pending_erp = 0
+    try:
+        pending_erp = db.execute("""
+            SELECT COUNT(*) FROM supervisione_erp
+            WHERE id_testata = %s AND stato = 'PENDING'
+        """, (id_testata,)).fetchone()[0]
+    except Exception:
+        pass  # Tabella potrebbe non esistere ancora
+
+    total_pending = pending_esp + pending_listino + pending_lookup + pending_prezzo + pending_aic + pending_erp
 
     if total_pending == 0 and anomalie_aperte == 0:
         # v8.1: Determina stato ordine in base allo stato delle righe

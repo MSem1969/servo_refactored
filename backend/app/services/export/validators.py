@@ -59,6 +59,12 @@ def valida_campi_tracciato(ordine: Dict[str, Any], dettagli: List[Dict]) -> Dict
     if not min_id.strip():
         errors.append("TO_T: Campo 'Codice Ministeriale (MIN_ID)' obbligatorio mancante")
 
+    # v12.0: Validazione coerenza ERP - MIN_ID + P.IVA vs anagrafica_clienti
+    if min_id.strip() and partita_iva.strip():
+        erp_validation = _valida_coerenza_erp_export(min_id.strip(), partita_iva.strip())
+        if erp_validation:
+            errors.append(erp_validation)
+
     # Giorni di pagamento (dilazione)
     gg_dilazione = ordine.get('gg_dilazione_1') or ordine.get('condizioni_pagamento') or ordine.get('gg_dilazione')
     if not gg_dilazione:
@@ -118,3 +124,40 @@ def valida_campi_tracciato(ordine: Dict[str, Any], dettagli: List[Dict]) -> Dict
         'errors': errors,
         'warnings': warnings
     }
+
+
+def _valida_coerenza_erp_export(min_id: str, partita_iva: str) -> str:
+    """
+    v12.0: Validazione pre-export - verifica che MIN_ID + P.IVA corrispondano
+    in anagrafica_clienti.
+
+    Returns:
+        Messaggio errore (stringa) se mismatch, None se OK
+    """
+    try:
+        from ..supervision.erp import valida_coerenza_erp
+
+        result = valida_coerenza_erp(min_id, partita_iva)
+
+        if not result['valido']:
+            codice = result['codice_anomalia']
+            if codice == 'ERP-A01':
+                piva_erp = result.get('piva_erp', '?')
+                return (
+                    f"TO_T: BLOCCO ERP - P.IVA nel tracciato ({partita_iva}) non corrisponde "
+                    f"a P.IVA in anagrafica clienti ({piva_erp}) per MIN_ID {min_id}. "
+                    "Il tracciato verrebbe scartato dal gestionale. "
+                    "Correggere la P.IVA dall'anomalia ERP-A01."
+                )
+            elif codice == 'ERP-A02':
+                return (
+                    f"TO_T: BLOCCO ERP - MIN_ID {min_id} non trovato in anagrafica clienti. "
+                    "Il tracciato verrebbe scartato dal gestionale. "
+                    "Verificare che il cliente sia censito nel gestionale."
+                )
+        return None
+
+    except Exception as e:
+        # Non bloccare l'export se la validazione ERP fallisce per errori tecnici
+        print(f"Warning: Validazione ERP fallita: {e}")
+        return None

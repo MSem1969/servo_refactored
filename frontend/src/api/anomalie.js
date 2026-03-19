@@ -64,4 +64,13 @@ export const anomalieApi = {
       operatore,
       note
     }).then(r => r.data),
+
+  // v12.0: Correzione anomalia ERP (P.IVA/MIN_ID mismatch con anagrafica clienti)
+  correggiErp: (id, { partita_iva_corretta, min_id_corretto, operatore, note }) =>
+    api.post(`/anomalie/dettaglio/${id}/correggi-erp`, {
+      partita_iva_corretta,
+      min_id_corretto,
+      operatore,
+      note
+    }).then(r => r.data),
 };

@@ -52,6 +52,10 @@ ANOMALY_CODES = {
     'VAL-A01': 'Campo obbligatorio mancante',
     'VAL-A02': 'Formato dati non valido',
     'VAL-A03': 'Valore fuori range',
+
+    # ERP validation anomalies (v12.0)
+    'ERP-A01': 'P.IVA mismatch tra tracciato e anagrafica clienti ERP - verifica obbligatoria',
+    'ERP-A02': 'MIN_ID non trovato in anagrafica clienti ERP - impossibile validare',
 }
 
 ANOMALY_LEVELS = {
@@ -59,7 +63,8 @@ ANOMALY_LEVELS = {
     # v11.4: Rimosso LKP-A05 (convertito in DEP-A01 - problema deposito, non lookup)
     'CRITICO': ['ESP-A01', 'ESP-A02', 'LKP-A01', 'LKP-A02', 'LKP-A04', 'EXT-A01'],
     # v11.4: Aggiunto DEP-A01 (deposito mancante - bloccante)
-    'ERRORE': ['ESP-A03', 'ESP-A06', 'AIC-A01', 'LST-A01', 'LST-A02', 'DOCGEN-A04', 'DOCGEN-A09', 'DOCGEN-A10', 'DEP-A01'],
+    # v12.0: Aggiunti ERP-A01, ERP-A02 (validazione coerenza ERP - bloccanti)
+    'ERRORE': ['ESP-A03', 'ESP-A06', 'AIC-A01', 'LST-A01', 'LST-A02', 'DOCGEN-A04', 'DOCGEN-A09', 'DOCGEN-A10', 'DEP-A01', 'ERP-A01', 'ERP-A02'],
     # Non bloccanti
     'ATTENZIONE': ['LKP-A03', 'DOCGEN-A08'],
     'INFO': ['DOCGEN-A01', 'DOCGEN-A03'],

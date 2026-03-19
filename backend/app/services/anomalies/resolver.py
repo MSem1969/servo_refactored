@@ -32,6 +32,7 @@ class TipoRisoluzione(str, Enum):
     LOOKUP = 'LOOKUP'
     ESPOSITORE = 'ESPOSITORE'
     LISTINO = 'LISTINO'
+    ERP = 'ERP'
     GENERICO = 'GENERICO'
 
 
@@ -66,6 +67,10 @@ class ResolutionParams:
     sconto_2: Optional[float] = None
     sconto_3: Optional[float] = None
     sconto_4: Optional[float] = None
+
+    # ERP specifici (v12.0)
+    partita_iva_corretta: Optional[str] = None
+    min_id_corretto: Optional[str] = None
 
     # Dati aggiuntivi (generico)
     dati_extra: Dict = field(default_factory=dict)
@@ -149,6 +154,9 @@ class AnomaliaResolver:
 
         if codice.startswith('AIC-'):
             return self._risolvi_aic(anomalia, params)
+
+        elif codice.startswith('ERP-'):
+            return self._risolvi_erp(anomalia, params)
 
         elif codice == 'LKP-A05' or codice == 'DEP-A01' or codice.startswith('DEP-'):
             return self._risolvi_deposito(anomalia, params)
@@ -703,6 +711,109 @@ class AnomaliaResolver:
                 message=f"Errore correzione listino: {str(e)}"
             )
 
+    def _risolvi_erp(self, anomalia: Dict, params: ResolutionParams) -> ResolutionResult:
+        """
+        v12.0: Risolvi anomalia ERP (mismatch MIN_ID/P.IVA con anagrafica_clienti).
+        Delega a supervision ERP service per gestione pattern ML e rettifica.
+        """
+        if not params.partita_iva_corretta:
+            return ResolutionResult(
+                success=False,
+                id_anomalia=anomalia['id_anomalia'],
+                tipo_risoluzione=TipoRisoluzione.ERP.value,
+                message="P.IVA corretta richiesta per risoluzione anomalia ERP"
+            )
+
+        id_testata = anomalia.get('id_testata')
+        if not id_testata:
+            return ResolutionResult(
+                success=False,
+                id_anomalia=anomalia['id_anomalia'],
+                tipo_risoluzione=TipoRisoluzione.ERP.value,
+                message="Anomalia non collegata a un ordine"
+            )
+
+        try:
+            # Trova supervisione_erp collegata
+            sup = self.db.execute("""
+                SELECT id_supervisione FROM supervisione_erp
+                WHERE id_anomalia = %s AND stato = 'PENDING'
+                LIMIT 1
+            """, (anomalia['id_anomalia'],)).fetchone()
+
+            if sup:
+                from ..supervision.erp import approva_supervisione_erp
+                result = approva_supervisione_erp(
+                    id_supervisione=sup['id_supervisione'],
+                    operatore=params.operatore,
+                    partita_iva_corretta=params.partita_iva_corretta,
+                    min_id_corretto=params.min_id_corretto,
+                    note=params.note,
+                )
+
+                if not result.get('success'):
+                    return ResolutionResult(
+                        success=False,
+                        id_anomalia=anomalia['id_anomalia'],
+                        tipo_risoluzione=TipoRisoluzione.ERP.value,
+                        message=result.get('error', 'Errore approvazione supervisione ERP')
+                    )
+
+                msg = f"P.IVA corretta a {params.partita_iva_corretta}"
+                if result.get('rettifica_eseguita'):
+                    msg += " - RETTIFICA ANAGRAFICA ESEGUITA"
+                elif result.get('count_approvazioni'):
+                    msg += f" ({result['count_approvazioni']}/{result['soglia']} verso rettifica anagrafica)"
+
+                return ResolutionResult(
+                    success=True,
+                    id_anomalia=anomalia['id_anomalia'],
+                    tipo_risoluzione=TipoRisoluzione.ERP.value,
+                    message=msg,
+                    ordini_coinvolti=[id_testata],
+                    data={
+                        'partita_iva_corretta': params.partita_iva_corretta,
+                        'rettifica_eseguita': result.get('rettifica_eseguita', False),
+                        'count_approvazioni': result.get('count_approvazioni', 0),
+                        'soglia': result.get('soglia', 5),
+                    }
+                )
+            else:
+                # Nessuna supervisione collegata - risolvi direttamente
+                self.db.execute("""
+                    UPDATE ordini_testata
+                    SET partita_iva_estratta = %s
+                    WHERE id_testata = %s
+                """, (params.partita_iva_corretta, id_testata))
+
+                self._marca_risolta(
+                    anomalia['id_anomalia'],
+                    params.operatore,
+                    f"P.IVA corretta: {params.partita_iva_corretta}. {params.note or ''}"
+                )
+
+                if anomalia.get('id_testata'):
+                    self._sblocca_ordine(anomalia['id_testata'])
+
+                self.db.commit()
+
+                return ResolutionResult(
+                    success=True,
+                    id_anomalia=anomalia['id_anomalia'],
+                    tipo_risoluzione=TipoRisoluzione.ERP.value,
+                    message=f"P.IVA corretta a {params.partita_iva_corretta}",
+                    ordini_coinvolti=[id_testata],
+                )
+
+        except Exception as e:
+            self.db.rollback()
+            return ResolutionResult(
+                success=False,
+                id_anomalia=anomalia['id_anomalia'],
+                tipo_risoluzione=TipoRisoluzione.ERP.value,
+                message=f"Errore risoluzione ERP: {str(e)}"
+            )
+
     def _risolvi_generico(self, anomalia: Dict, params: ResolutionParams) -> ResolutionResult:
         """
         Risoluzione generica SINGOLA - marca come risolto senza azioni specifiche.
@@ -754,8 +865,10 @@ class AnomaliaResolver:
         """, (f"Operatore: {operatore} - {note or ''}", id_anomalia))
 
         # v11.4: Approva supervisioni collegate (inclusa prezzo)
+        # v12.0: Aggiunta supervisione_erp
         for table in ['supervisione_espositore', 'supervisione_listino',
-                      'supervisione_lookup', 'supervisione_aic', 'supervisione_prezzo']:
+                      'supervisione_lookup', 'supervisione_aic', 'supervisione_prezzo',
+                      'supervisione_erp']:
             self.db.execute(f"""
                 UPDATE {table}
                 SET stato = 'APPROVED',
@@ -776,9 +889,11 @@ class AnomaliaResolver:
         """, (id_testata,)).fetchone()
 
         # v11.4: Conta supervisioni pending (inclusa prezzo)
+        # v12.0: Aggiunta supervisione_erp
         sup_count = 0
         for table in ['supervisione_espositore', 'supervisione_listino',
-                      'supervisione_lookup', 'supervisione_aic', 'supervisione_prezzo']:
+                      'supervisione_lookup', 'supervisione_aic', 'supervisione_prezzo',
+                      'supervisione_erp']:
             row = self.db.execute(f"""
                 SELECT COUNT(*) as cnt FROM {table}
                 WHERE id_testata = %s AND stato = 'PENDING'

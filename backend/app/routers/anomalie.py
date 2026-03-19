@@ -133,6 +133,7 @@ async def lista_tipi() -> Dict[str, Any]:
             {"code": "VALIDAZIONE", "label": "Errore validazione dati", "severity": "warning"},
             {"code": "DUPLICATO_PDF", "label": "PDF duplicato", "severity": "warning"},
             {"code": "DUPLICATO_ORDINE", "label": "Ordine duplicato", "severity": "warning"},
+            {"code": "ERP", "label": "Validazione ERP (P.IVA/MIN_ID)", "severity": "error"},
             {"code": "ALTRO", "label": "Altro", "severity": "info"},
         ]
     }
@@ -410,6 +411,14 @@ class CorrezioneDepositoRequest(BaseModel):
     note: Optional[str] = None
 
 
+class CorrezioneERPRequest(BaseModel):
+    """v12.0: Richiesta correzione P.IVA per anomalia ERP."""
+    partita_iva_corretta: str  # P.IVA corretta da usare nel tracciato
+    min_id_corretto: Optional[str] = None  # MIN_ID corretto (se diverso)
+    operatore: str  # Username operatore
+    note: Optional[str] = None
+
+
 @router.get("/dettaglio/{id_anomalia}")
 async def dettaglio_anomalia(id_anomalia: int) -> Dict[str, Any]:
     """
@@ -531,7 +540,7 @@ async def dettaglio_anomalia(id_anomalia: int) -> Dict[str, Any]:
         tipo_anomalia = anomalia_dict.get('tipo_anomalia') or ''
         codice_anomalia = anomalia_dict.get('codice_anomalia') or ''
 
-        if tipo_anomalia in ('LOOKUP', 'DEPOSITO') or (codice_anomalia and (codice_anomalia.startswith('LKP-') or codice_anomalia.startswith('DEP-'))):
+        if tipo_anomalia in ('LOOKUP', 'DEPOSITO', 'ERP') or (codice_anomalia and (codice_anomalia.startswith('LKP-') or codice_anomalia.startswith('DEP-') or codice_anomalia.startswith('ERP-'))):
             if anomalia_dict.get('id_testata'):
                 ordine = db.execute("""
                     SELECT
@@ -552,6 +561,44 @@ async def dettaglio_anomalia(id_anomalia: int) -> Dict[str, Any]:
                 if ordine:
                     ordine_data = dict(ordine)
 
+        # v12.0: Per anomalie ERP, includi dati supervisione_erp e anagrafica_clienti
+        erp_data = None
+        if codice_anomalia and codice_anomalia.startswith('ERP-') and anomalia_dict.get('id_testata'):
+            try:
+                # Dati supervisione ERP
+                sup_erp = db.execute("""
+                    SELECT id_supervisione, min_id, partita_iva_tracciato, partita_iva_erp,
+                           partita_iva_corretta, stato, pattern_signature
+                    FROM supervisione_erp
+                    WHERE id_anomalia = %s
+                    ORDER BY id_supervisione DESC LIMIT 1
+                """, (id_anomalia,)).fetchone()
+
+                erp_data = dict(sup_erp) if sup_erp else {}
+
+                # Dati anagrafica_clienti per contesto
+                if ordine_data and ordine_data.get('codice_ministeriale'):
+                    min_id_norm = ordine_data['codice_ministeriale'].strip().lstrip('0') or '0'
+                    cliente = db.execute("""
+                        SELECT partita_iva, ragione_sociale_1, codice_cliente, deposito_riferimento
+                        FROM anagrafica_clienti
+                        WHERE LTRIM(min_id, '0') = %s LIMIT 1
+                    """, (min_id_norm,)).fetchone()
+                    if cliente:
+                        erp_data['cliente_erp'] = dict(cliente)
+
+                # Contatore pattern per mostrare progresso verso rettifica
+                if sup_erp and sup_erp['pattern_signature']:
+                    criterio = db.execute("""
+                        SELECT count_approvazioni, is_ordinario, data_rettifica_anagrafica
+                        FROM criteri_ordinari_erp
+                        WHERE pattern_signature = %s
+                    """, (sup_erp['pattern_signature'],)).fetchone()
+                    if criterio:
+                        erp_data['pattern_info'] = dict(criterio)
+            except Exception:
+                pass  # Tabelle potrebbero non esistere ancora
+
         return {
             "success": True,
             "data": {
@@ -559,7 +606,8 @@ async def dettaglio_anomalia(id_anomalia: int) -> Dict[str, Any]:
                 "riga_parent": riga_parent,
                 "righe_child": righe_child,
                 "totale_child": len(righe_child),
-                "ordine_data": ordine_data
+                "ordine_data": ordine_data,
+                "erp_data": erp_data,
             }
         }
     except HTTPException:
@@ -934,6 +982,171 @@ async def get_contatori_aic() -> Dict[str, Any]:
             "supervisioni_pending": conta_supervisioni_aic_pending()
         }
     }
+
+
+# =============================================================================
+# RISOLUZIONE ERP: CORREZIONE P.IVA/MIN_ID (v12.0)
+# =============================================================================
+
+@router.post("/dettaglio/{id_anomalia}/correggi-erp", summary="Correggi anomalia ERP (P.IVA/MIN_ID)")
+async def correggi_erp_anomalia(
+    id_anomalia: int,
+    request: CorrezioneERPRequest,
+    current_user: UtenteResponse = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """
+    Corregge la P.IVA (e opzionalmente il MIN_ID) per un'anomalia ERP.
+
+    v12.0: Le anomalie ERP-A01/ERP-A02 indicano che la coppia MIN_ID + P.IVA
+    nel tracciato non corrisponde a quanto presente in anagrafica_clienti (ERP).
+    Senza correzione, il tracciato verrebbe scartato dal gestionale.
+
+    ## Flusso
+
+    1. L'operatore inserisce la P.IVA corretta
+    2. Il sistema aggiorna l'ordine e chiude l'anomalia
+    3. Se la stessa correzione viene fatta 5 volte (stesso MIN_ID),
+       anagrafica_clienti viene rettificata automaticamente
+
+    ## Campi
+
+    - **partita_iva_corretta**: P.IVA corretta (obbligatoria, 11 cifre)
+    - **min_id_corretto**: MIN_ID corretto (opzionale, solo se diverso)
+    - **operatore**: Username operatore
+    - **note**: Note (opzionale)
+    """
+    from ..database_pg import get_db
+
+    piva = request.partita_iva_corretta.strip()
+    if not piva or len(piva) < 11:
+        raise HTTPException(
+            status_code=400,
+            detail=f"P.IVA non valida: '{piva}' (deve essere almeno 11 caratteri)"
+        )
+
+    db = get_db()
+
+    try:
+        # Recupera anomalia
+        anomalia = db.execute("""
+            SELECT a.*, a.id_testata as id_testata_anomalia
+            FROM anomalie a
+            WHERE a.id_anomalia = %s
+        """, (id_anomalia,)).fetchone()
+
+        if not anomalia:
+            raise HTTPException(status_code=404, detail=f"Anomalia {id_anomalia} non trovata")
+
+        codice = anomalia.get('codice_anomalia', '') or ''
+        if not codice.startswith('ERP-'):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Questo endpoint gestisce solo anomalie ERP-*. Trovata: {codice}"
+            )
+
+        id_testata = anomalia.get('id_testata') or anomalia.get('id_testata_anomalia')
+        if not id_testata:
+            raise HTTPException(status_code=400, detail="Anomalia non collegata a un ordine")
+
+        # Cerca supervisione_erp collegata
+        sup = db.execute("""
+            SELECT id_supervisione FROM supervisione_erp
+            WHERE id_anomalia = %s AND stato = 'PENDING'
+            LIMIT 1
+        """, (id_anomalia,)).fetchone()
+
+        if sup:
+            from ..services.supervision.erp import approva_supervisione_erp
+            result = approva_supervisione_erp(
+                id_supervisione=sup['id_supervisione'],
+                operatore=request.operatore,
+                partita_iva_corretta=piva,
+                min_id_corretto=request.min_id_corretto,
+                note=request.note,
+            )
+
+            if not result.get('success'):
+                raise HTTPException(status_code=400, detail=result.get('error', 'Errore'))
+
+            msg = f"P.IVA corretta a {piva}"
+            if result.get('rettifica_eseguita'):
+                msg += " - RETTIFICA ANAGRAFICA CLIENTI ESEGUITA AUTOMATICAMENTE"
+
+            return {
+                "success": True,
+                "message": msg,
+                "data": {
+                    "id_anomalia": id_anomalia,
+                    "id_testata": id_testata,
+                    "partita_iva_corretta": piva,
+                    "rettifica_eseguita": result.get('rettifica_eseguita', False),
+                    "count_approvazioni": result.get('count_approvazioni', 0),
+                    "soglia_rettifica": result.get('soglia', 5),
+                }
+            }
+        else:
+            # Nessuna supervisione - risolvi direttamente
+            db.execute("""
+                UPDATE ordini_testata
+                SET partita_iva_estratta = %s
+                WHERE id_testata = %s
+            """, (piva, id_testata))
+
+            if request.min_id_corretto:
+                db.execute("""
+                    UPDATE ordini_testata
+                    SET codice_ministeriale_estratto = %s
+                    WHERE id_testata = %s
+                """, (request.min_id_corretto, id_testata))
+
+            db.execute("""
+                UPDATE anomalie
+                SET stato = 'RISOLTA',
+                    data_risoluzione = CURRENT_TIMESTAMP,
+                    note_risoluzione = %s
+                WHERE id_anomalia = %s
+            """, (
+                f"P.IVA corretta: {piva} da {request.operatore}. {request.note or ''}",
+                id_anomalia
+            ))
+
+            # Sblocca ordine
+            anomalie_aperte = db.execute("""
+                SELECT COUNT(*) FROM anomalie
+                WHERE id_testata = %s AND stato IN ('APERTA', 'IN_GESTIONE')
+                AND livello IN ('ERRORE', 'CRITICO')
+            """, (id_testata,)).fetchone()[0]
+
+            if anomalie_aperte == 0:
+                db.execute("""
+                    UPDATE ordini_testata
+                    SET stato = 'ESTRATTO'
+                    WHERE id_testata = %s AND stato IN ('ANOMALIA', 'PENDING_REVIEW')
+                """, (id_testata,))
+
+            db.commit()
+
+            return {
+                "success": True,
+                "message": f"P.IVA corretta a {piva}",
+                "data": {
+                    "id_anomalia": id_anomalia,
+                    "id_testata": id_testata,
+                    "partita_iva_corretta": piva,
+                    "rettifica_eseguita": False,
+                    "count_approvazioni": 0,
+                    "soglia_rettifica": 5,
+                }
+            }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        print(f"ERRORE correggi-erp: {e}")
+        print(traceback.format_exc())
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {str(e)}")
 
 
 # =============================================================================

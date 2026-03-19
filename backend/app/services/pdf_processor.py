@@ -236,12 +236,20 @@ def process_pdf(
         # 1. CALCOLA HASH E VERIFICA DUPLICATO
         # =====================================================================
         hash_file = compute_file_hash(file_content)
-        
-        existing = db.execute(
-            "SELECT id_acquisizione FROM ACQUISIZIONI WHERE hash_file = ?",
-            (hash_file,)
-        ).fetchone()
-        
+
+        # v12.0: Duplicato solo se esiste acquisizione ELABORATA con ordini estratti.
+        # Se l'originale è in stato SCARTATO, ERRORE o CARICATO (non ancora processato),
+        # il nuovo upload deve procedere normalmente.
+        existing = db.execute("""
+            SELECT a.id_acquisizione, a.stato
+            FROM ACQUISIZIONI a
+            WHERE a.hash_file = %s
+              AND a.stato = 'ELABORATO'
+              AND EXISTS (SELECT 1 FROM ordini_testata ot WHERE ot.id_acquisizione = a.id_acquisizione)
+            ORDER BY a.id_acquisizione DESC
+            LIMIT 1
+        """, (hash_file,)).fetchone()
+
         is_duplicato = True if existing else False
         id_acq_originale = existing['id_acquisizione'] if existing else None
         

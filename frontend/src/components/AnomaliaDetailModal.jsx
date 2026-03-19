@@ -81,6 +81,10 @@ export function AnomaliaDetailModal({
   const isEspositoreAnomalia = anomaliaDetail?.anomalia?.tipo_anomalia === 'ESPOSITORE' ||
     anomaliaDetail?.anomalia?.codice_anomalia?.startsWith('ESP-');
 
+  // v12.0: Anomalia ERP (mismatch P.IVA/MIN_ID con anagrafica clienti)
+  const isErpAnomalia = anomaliaDetail?.anomalia?.tipo_anomalia === 'ERP' ||
+    anomaliaDetail?.anomalia?.codice_anomalia?.startsWith('ERP-');
+
   // v8.2: Anomalie ERRORE/CRITICO richiedono azione correttiva
   const isErroreAnomalia = ['ERRORE', 'CRITICO'].includes(
     anomaliaDetail?.anomalia?.livello?.toUpperCase() ||
@@ -330,6 +334,20 @@ export function AnomaliaDetailModal({
                 }}
               />
 
+              {/* v12.0: ERP ANOMALIA - Mostra UI correzione P.IVA/MIN_ID */}
+              {isErpAnomalia && anomaliaDetail.anomalia?.stato !== 'RISOLTA' && (
+                <ErpSection
+                  anomalia={anomaliaDetail.anomalia}
+                  ordineData={anomaliaDetail.ordine_data}
+                  erpData={anomaliaDetail.erp_data}
+                  operatore={operatore}
+                  onSuccess={() => {
+                    onRisolvi?.();
+                    onClose();
+                  }}
+                />
+              )}
+
               {/* ESPOSITORE ANOMALIA - Mostra UI parent/child */}
               {isEspositoreAnomalia && (
                 <>
@@ -394,8 +412,8 @@ export function AnomaliaDetailModal({
               )}
 
               {/* v10.6: Sezione Propagazione per anomalie che possono essere propagate */}
-              {/* ESCLUSE: LOOKUP (richiede selezione), AIC (ha sua sezione), ESPOSITORE (uniche per ordine) */}
-              {!isLookupAnomalia && !isAicAnomalia && !isEspositoreAnomalia && anomaliaDetail.anomalia?.stato !== 'RISOLTA' && (
+              {/* ESCLUSE: LOOKUP (richiede selezione), AIC (ha sua sezione), ESPOSITORE (uniche per ordine), ERP (ha sua sezione) */}
+              {!isLookupAnomalia && !isAicAnomalia && !isEspositoreAnomalia && !isErpAnomalia && anomaliaDetail.anomalia?.stato !== 'RISOLTA' && (
                 <PropagazioneSection
                   anomalia={anomaliaDetail.anomalia}
                   onSuccess={() => {
@@ -1642,6 +1660,191 @@ function LookupSection({
     </div>
   );
 }
+
+// =============================================================================
+// v12.0: Sub-componente ERP - Correzione P.IVA/MIN_ID
+// =============================================================================
+
+function ErpSection({ anomalia, ordineData, erpData, operatore, onSuccess }) {
+  const [pivaCorretta, setPivaCorretta] = useState('');
+  const [minIdCorretto, setMinIdCorretto] = useState('');
+  const [note, setNote] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [result, setResult] = useState(null);
+
+  // Pre-fill con P.IVA ERP (suggerimento)
+  useEffect(() => {
+    if (erpData?.partita_iva_erp) {
+      setPivaCorretta(erpData.partita_iva_erp);
+    } else if (erpData?.cliente_erp?.partita_iva) {
+      setPivaCorretta(erpData.cliente_erp.partita_iva);
+    }
+  }, [erpData]);
+
+  const handleCorreggi = async () => {
+    if (!pivaCorretta || pivaCorretta.length < 11) {
+      setError('P.IVA deve essere di almeno 11 caratteri');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const res = await anomalieApi.correggiErp(anomalia.id_anomalia, {
+        partita_iva_corretta: pivaCorretta,
+        min_id_corretto: minIdCorretto || null,
+        operatore,
+        note: note || null,
+      });
+      if (res.success) {
+        setResult(res.data);
+        setTimeout(() => onSuccess?.(), 1500);
+      } else {
+        setError(res.message || 'Errore');
+      }
+    } catch (err) {
+      setError(err.response?.data?.detail || err.message || 'Errore');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const codice = anomalia?.codice_anomalia || '';
+  const pivaTracciato = erpData?.partita_iva_tracciato || ordineData?.partita_iva || '';
+  const pivaErp = erpData?.partita_iva_erp || erpData?.cliente_erp?.partita_iva || '';
+  const clienteErp = erpData?.cliente_erp;
+  const patternInfo = erpData?.pattern_info;
+
+  return (
+    <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+      <h4 className="font-semibold text-red-800 mb-3 flex items-center gap-2">
+        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+        </svg>
+        Errore Validazione ERP - {codice}
+      </h4>
+
+      <p className="text-sm text-red-700 mb-4">
+        La coppia MIN_ID + P.IVA nel tracciato non corrisponde ai dati presenti nel gestionale ERP.
+        Il tracciato verrebbe scartato senza correzione.
+      </p>
+
+      {/* Confronto dati */}
+      <div className="bg-white rounded-lg p-3 mb-4 space-y-2 text-sm">
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <span className="text-slate-500">MIN_ID:</span>
+            <span className="ml-2 font-mono font-semibold">{ordineData?.codice_ministeriale || 'N/D'}</span>
+          </div>
+          <div>
+            <span className="text-slate-500">P.IVA tracciato:</span>
+            <span className="ml-2 font-mono font-semibold text-red-700">{pivaTracciato || 'N/D'}</span>
+          </div>
+        </div>
+        {codice === 'ERP-A01' && (
+          <div className="border-t pt-2">
+            <span className="text-slate-500">P.IVA anagrafica ERP:</span>
+            <span className="ml-2 font-mono font-semibold text-green-700">{pivaErp}</span>
+            {clienteErp && (
+              <span className="ml-2 text-xs text-slate-500">
+                ({clienteErp.ragione_sociale_1})
+              </span>
+            )}
+          </div>
+        )}
+        {codice === 'ERP-A02' && (
+          <div className="border-t pt-2 text-amber-700">
+            MIN_ID non trovato in anagrafica clienti ERP. Verificare censimento nel gestionale.
+          </div>
+        )}
+      </div>
+
+      {/* Progresso verso rettifica automatica */}
+      {patternInfo && (
+        <div className="bg-blue-50 rounded-lg p-2 mb-4 text-xs text-blue-700">
+          Correzioni per questo MIN_ID: <strong>{patternInfo.count_approvazioni || 0}/5</strong>
+          {patternInfo.is_ordinario && ' - Pattern promosso (auto-correzione attiva)'}
+          {patternInfo.data_rettifica_anagrafica && ' - Anagrafica gia rettificata'}
+        </div>
+      )}
+
+      {/* Form correzione */}
+      {!result && (
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              P.IVA corretta *
+            </label>
+            <input
+              type="text"
+              value={pivaCorretta}
+              onChange={(e) => setPivaCorretta(e.target.value.trim())}
+              maxLength={16}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-red-500 focus:border-red-500"
+              placeholder="Es: 00407890672"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              MIN_ID corretto (opzionale, solo se diverso)
+            </label>
+            <input
+              type="text"
+              value={minIdCorretto}
+              onChange={(e) => setMinIdCorretto(e.target.value.trim())}
+              maxLength={20}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-red-500 focus:border-red-500"
+              placeholder="Solo se MIN_ID da correggere"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">
+              Note (opzionale)
+            </label>
+            <input
+              type="text"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-red-500 focus:border-red-500"
+              placeholder="Note sulla correzione"
+            />
+          </div>
+
+          {error && (
+            <div className="text-sm text-red-600 bg-red-100 rounded p-2">{error}</div>
+          )}
+
+          <button
+            onClick={handleCorreggi}
+            disabled={loading || !pivaCorretta}
+            className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-slate-400 text-white rounded-lg font-medium flex items-center justify-center gap-2"
+          >
+            {loading ? 'Correzione in corso...' : 'Conferma Correzione P.IVA'}
+          </button>
+
+          <p className="text-xs text-slate-500">
+            Dopo 5 correzioni identiche per questo MIN_ID, l'anagrafica clienti verra rettificata automaticamente.
+          </p>
+        </div>
+      )}
+
+      {/* Risultato */}
+      {result && (
+        <div className="bg-green-100 rounded-lg p-3 text-sm text-green-800">
+          <p className="font-semibold">Correzione applicata</p>
+          <p>P.IVA corretta: {result.partita_iva_corretta}</p>
+          <p>Correzioni per questo MIN_ID: {result.count_approvazioni}/{result.soglia_rettifica}</p>
+          {result.rettifica_eseguita && (
+            <p className="font-bold mt-1 text-green-900">
+              RETTIFICA ANAGRAFICA CLIENTI ESEGUITA AUTOMATICAMENTE
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 // =============================================================================
 // v10.5: Sub-componente Propagazione Generica

@@ -50,17 +50,14 @@ def create_anomalia(
             # Anomalia già esistente, ritorna ID senza creare duplicato
             return existing
 
-    import json
-    dati_json = json.dumps(dati_originali) if dati_originali else None
-
     cursor = db.execute("""
         INSERT INTO ANOMALIE
         (id_testata, id_dettaglio, id_acquisizione, tipo_anomalia,
-         codice, livello, descrizione, dati_originali, valore_anomalo, stato)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'APERTA')
+         codice_anomalia, livello, descrizione, valore_anomalo, stato)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'APERTA')
         RETURNING id_anomalia
     """, (id_testata, id_dettaglio, id_acquisizione, tipo,
-          codice, livello, descrizione, dati_json, valore_anomalo))
+          codice, livello, descrizione, valore_anomalo))
 
     result = cursor.fetchone()
     db.commit()
@@ -92,7 +89,7 @@ def _find_existing_anomaly(
         ID anomalia esistente o None
     """
     # Costruisci query dinamica per gestire NULL correttamente
-    conditions = ["codice = %s", "stato IN ('APERTA', 'IN_GESTIONE')"]
+    conditions = ["codice_anomalia = %s", "stato IN ('APERTA', 'IN_GESTIONE')"]
     params = [codice]
 
     if id_testata is not None:

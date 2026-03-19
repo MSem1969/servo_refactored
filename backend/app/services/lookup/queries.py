@@ -83,7 +83,7 @@ def popola_header_da_anagrafica(id_testata: int, operatore: str = None) -> bool:
         SELECT id_farmacia_lookup, id_parafarmacia_lookup,
                codice_ministeriale_estratto, cap, citta, provincia, indirizzo,
                ragione_sociale_1, ragione_sociale_1_estratta, deposito_riferimento,
-               fonte_anagrafica, partita_iva_estratta
+               fonte_anagrafica, partita_iva_estratta, lookup_method
         FROM ordini_testata WHERE id_testata = %s
     """, (id_testata,)).fetchone()
 
@@ -150,17 +150,24 @@ def popola_header_da_anagrafica(id_testata: int, operatore: str = None) -> bool:
         'deposito_riferimento': deposito_riferimento or '',  # Da anagrafica_clienti
     }
 
-    # MIN_ID: popola dall'anagrafica solo se vuoto nell'ordine
-    if not ordine['codice_ministeriale_estratto'] and min_id:
-        nuovi_valori['codice_ministeriale_estratto'] = min_id
+    # MIN_ID: se lookup MANUALE sovrascrive, altrimenti popola solo se vuoto
+    if min_id:
+        if is_manuale or not ordine['codice_ministeriale_estratto']:
+            nuovi_valori['codice_ministeriale_estratto'] = min_id
 
-    # P.IVA dall'anagrafica (popola se vuota nell'ordine)
+    # P.IVA dall'anagrafica
     # Sanity check: P.IVA non può mai essere uguale al MIN_ID (placeholder fittizio)
     partita_iva_anagrafica = farm_data.get('partita_iva', '')
     if partita_iva_anagrafica and min_id and partita_iva_anagrafica.lstrip('0') == min_id.lstrip('0'):
         partita_iva_anagrafica = ''  # Scarta P.IVA fittizia
-    if not ordine['partita_iva_estratta'] and partita_iva_anagrafica:
-        nuovi_valori['partita_iva_estratta'] = partita_iva_anagrafica
+
+    # v12.0: Se lookup MANUALE, l'operatore ha scelto esplicitamente la farmacia
+    # → la P.IVA dell'anagrafica SOVRASCRIVE quella estratta (potrebbe essere errata/obsoleta)
+    # Se lookup automatico, popola solo se vuota (mantiene dato estratto)
+    is_manuale = ordine.get('lookup_method') == 'MANUALE'
+    if partita_iva_anagrafica:
+        if is_manuale or not ordine['partita_iva_estratta']:
+            nuovi_valori['partita_iva_estratta'] = partita_iva_anagrafica
 
     # Popola campi SOLO se vuoti nell'ordine (non sovrascrivere dati estratti)
     if not ordine['cap'] and farm_data.get('cap') and not _has_corrupted_chars(farm_data.get('cap') or ''):
@@ -187,29 +194,47 @@ def popola_header_da_anagrafica(id_testata: int, operatore: str = None) -> bool:
 
     # Aggiorna header ordine con dati anagrafica
     # v11.3: Usa COALESCE per non sovrascrivere valori esistenti
-    db.execute("""
+    # v12.0: Se lookup MANUALE, MIN_ID e P.IVA vengono sovrascritti direttamente
+    #        (l'operatore ha scelto esplicitamente la farmacia)
+    min_id_val = nuovi_valori.get('codice_ministeriale_estratto', '')
+    piva_val = nuovi_valori.get('partita_iva_estratta', '')
+
+    if is_manuale:
+        # MANUALE: sovrascrittura diretta per MIN_ID e P.IVA
+        min_id_expr = "CASE WHEN %s != '' THEN %s ELSE codice_ministeriale_estratto END"
+        piva_expr = "CASE WHEN %s != '' THEN %s ELSE partita_iva_estratta END"
+        min_id_params = (min_id_val, min_id_val)
+        piva_params = (piva_val, piva_val)
+    else:
+        # Automatico: COALESCE (non sovrascrivere se già valorizzato)
+        min_id_expr = "COALESCE(NULLIF(%s, ''), codice_ministeriale_estratto)"
+        piva_expr = "COALESCE(NULLIF(%s, ''), partita_iva_estratta)"
+        min_id_params = (min_id_val,)
+        piva_params = (piva_val,)
+
+    db.execute(f"""
         UPDATE ordini_testata
-        SET codice_ministeriale_estratto = COALESCE(NULLIF(%s, ''), codice_ministeriale_estratto),
+        SET codice_ministeriale_estratto = {min_id_expr},
             cap = COALESCE(NULLIF(%s, ''), cap),
             citta = COALESCE(NULLIF(%s, ''), citta),
             provincia = COALESCE(NULLIF(%s, ''), provincia),
             indirizzo = COALESCE(NULLIF(%s, ''), indirizzo),
             ragione_sociale_1 = COALESCE(NULLIF(%s, ''), ragione_sociale_1),
             deposito_riferimento = COALESCE(NULLIF(%s, ''), deposito_riferimento),
-            partita_iva_estratta = COALESCE(NULLIF(%s, ''), partita_iva_estratta),
+            partita_iva_estratta = {piva_expr},
             fonte_anagrafica = %s,
             data_modifica_anagrafica = CURRENT_TIMESTAMP,
             operatore_modifica_anagrafica = %s
         WHERE id_testata = %s
     """, (
-        nuovi_valori.get('codice_ministeriale_estratto', ''),
+        *min_id_params,
         nuovi_valori.get('cap', ''),
         nuovi_valori.get('citta', ''),
         nuovi_valori.get('provincia', ''),
         nuovi_valori.get('indirizzo', ''),
         ragione_sociale_da_usare or '',
         deposito_riferimento or '',
-        nuovi_valori.get('partita_iva_estratta', ''),
+        *piva_params,
         fonte_anagrafica,
         operatore,
         id_testata
@@ -235,7 +260,93 @@ def popola_header_da_anagrafica(id_testata: int, operatore: str = None) -> bool:
         except Exception as e:
             print(f"Warning: Audit log fallito: {e}")
 
+    # v12.0: Validazione coerenza ERP - confronta MIN_ID + P.IVA con anagrafica_clienti
+    _valida_coerenza_erp_post_lookup(id_testata, operatore)
+
     return True
+
+
+def _valida_coerenza_erp_post_lookup(id_testata: int, operatore: str = None):
+    """
+    v12.0: Dopo il lookup, valida che la coppia MIN_ID + P.IVA sia coerente
+    con anagrafica_clienti. Se mismatch, crea anomalia bloccante ERP-A01/A02.
+
+    Verifica anche se esiste un pattern ML ordinario per auto-correzione.
+    """
+    db = get_db()
+
+    # Recupera dati finali dell'ordine (post-lookup)
+    ordine = db.execute("""
+        SELECT codice_ministeriale_estratto, partita_iva_estratta
+        FROM ordini_testata WHERE id_testata = %s
+    """, (id_testata,)).fetchone()
+
+    if not ordine:
+        return
+
+    min_id = (ordine['codice_ministeriale_estratto'] or '').strip()
+    partita_iva = (ordine['partita_iva_estratta'] or '').strip()
+
+    if not min_id:
+        return  # Senza MIN_ID non possiamo validare
+
+    # Importa qui per evitare circular imports
+    from ..supervision.erp import valida_coerenza_erp, valuta_anomalia_erp
+
+    validazione = valida_coerenza_erp(min_id, partita_iva)
+
+    if validazione['valido']:
+        return  # Tutto OK
+
+    # Verifica se esiste pattern ordinario per auto-correzione
+    ml_result = valuta_anomalia_erp(id_testata, min_id, partita_iva)
+    if ml_result['auto_risolto']:
+        return  # Auto-corretto da ML
+
+    # Verifica che non esista già un'anomalia ERP aperta per questo ordine
+    existing = db.execute("""
+        SELECT id_anomalia FROM anomalie
+        WHERE id_testata = %s
+        AND codice_anomalia IN ('ERP-A01', 'ERP-A02')
+        AND stato IN ('APERTA', 'IN_GESTIONE')
+        LIMIT 1
+    """, (id_testata,)).fetchone()
+
+    if existing:
+        return  # Anomalia già presente
+
+    # Crea anomalia bloccante
+    from ..anomalies.commands import create_anomalia
+    from ..supervision.erp import crea_supervisione_erp
+
+    codice = validazione['codice_anomalia']
+
+    id_anomalia = create_anomalia(
+        id_testata=id_testata,
+        tipo='ERP',
+        codice=codice,
+        livello='ERRORE',
+        descrizione=validazione['messaggio'],
+        valore_anomalo=f"MIN_ID={min_id} PIVA_TRACCIATO={partita_iva} PIVA_ERP={validazione.get('piva_erp', '')}"
+    )
+
+    if id_anomalia:
+        # Crea supervisione ERP collegata
+        crea_supervisione_erp(
+            id_testata=id_testata,
+            id_anomalia=id_anomalia,
+            min_id=min_id,
+            partita_iva_tracciato=partita_iva,
+            partita_iva_erp=validazione.get('piva_erp'),
+        )
+
+        # Blocca ordine
+        db.execute("""
+            UPDATE ordini_testata
+            SET stato = 'ANOMALIA'
+            WHERE id_testata = %s AND stato NOT IN ('EVASO', 'ARCHIVIATO')
+        """, (id_testata,))
+        db.commit()
 
 
 # =============================================================================

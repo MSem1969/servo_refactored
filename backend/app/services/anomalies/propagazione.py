@@ -80,6 +80,12 @@ def calcola_chiave_anomalia(anomalia: Dict) -> str:
         desc = _normalizza_descrizione(anomalia.get('descrizione', ''))
         return f"AIC:{codice}:{desc}"
 
+    elif codice.startswith('ERP-'):
+        # v12.0: Per ERP: MIN_ID normalizzato
+        min_id = anomalia.get('codice_ministeriale') or anomalia.get('min_id', '')
+        min_id_norm = min_id.strip().lstrip('0') or '0' if min_id else ''
+        return f"ERP:{codice}:{min_id_norm}"
+
     elif tipo == 'ESTRAZIONE' or codice.startswith('EXT-'):
         # Per ESTRAZIONE: vendor
         vendor = anomalia.get('vendor', 'UNKNOWN')
@@ -421,6 +427,20 @@ def _approva_supervisioni_collegate(db, id_anomalia: int, operatore: str) -> int
     """, (operatore, id_anomalia))
     count += result.rowcount if hasattr(result, 'rowcount') else 0
 
+    # v12.0: Supervisione ERP
+    try:
+        result = db.execute("""
+            UPDATE supervisione_erp
+            SET stato = 'APPROVED',
+                operatore = %s,
+                timestamp_decisione = CURRENT_TIMESTAMP,
+                note = COALESCE(note || ' - ', '') || '[AUTO] Risolto da anomalia'
+            WHERE id_anomalia = %s AND stato = 'PENDING'
+        """, (operatore, id_anomalia))
+        count += result.rowcount if hasattr(result, 'rowcount') else 0
+    except Exception:
+        pass  # Tabella potrebbe non esistere ancora
+
     return count
 
 
@@ -473,6 +493,18 @@ def _incrementa_pattern_ml(db, anomalia: Dict, operatore: str, count: int) -> in
             if sup and sup['pattern_signature']:
                 pattern_sig = sup['pattern_signature']
 
+        # v12.0: Prova supervisione_erp
+        elif codice.startswith('ERP-'):
+            try:
+                sup = db.execute("""
+                    SELECT pattern_signature FROM supervisione_erp
+                    WHERE id_anomalia = %s LIMIT 1
+                """, (id_anomalia,)).fetchone()
+                if sup and sup['pattern_signature']:
+                    pattern_sig = sup['pattern_signature']
+            except Exception:
+                pass
+
     if not pattern_sig:
         # Calcola pattern signature se non trovato
         pattern_sig = _calcola_pattern_signature(anomalia)
@@ -489,6 +521,8 @@ def _incrementa_pattern_ml(db, anomalia: Dict, operatore: str, count: int) -> in
         table = 'criteri_ordinari_lookup'
     elif codice.startswith('AIC-'):
         table = 'criteri_ordinari_aic'
+    elif codice.startswith('ERP-'):
+        table = 'criteri_ordinari_erp'
     else:
         return 0
 
@@ -562,9 +596,11 @@ def _sblocca_ordine_se_possibile(db, id_testata: int):
     """, (id_testata,)).fetchone()
 
     # v11.4: Conta supervisioni pending su tutte le tabelle (inclusa prezzo)
+    # v12.0: Aggiunta supervisione_erp
     sup_count = 0
     for table in ['supervisione_espositore', 'supervisione_listino',
-                  'supervisione_lookup', 'supervisione_aic', 'supervisione_prezzo']:
+                  'supervisione_lookup', 'supervisione_aic', 'supervisione_prezzo',
+                  'supervisione_erp']:
         try:
             row = db.execute(f"""
                 SELECT COUNT(*) as cnt FROM {table}

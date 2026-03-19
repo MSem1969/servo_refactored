@@ -321,14 +321,16 @@ def valida_e_genera_tracciato(
 
     # v11.4: Verifica supervisioni pending - blocco anche se stato non è PENDING_REVIEW
     # Inclusa supervisione_prezzo
+    # v12.0: Aggiunta supervisione_erp al conteggio pending
     supervisioni_pending = db.execute("""
         SELECT
             (SELECT COUNT(*) FROM supervisione_espositore WHERE id_testata = %s AND stato = 'PENDING') +
             (SELECT COUNT(*) FROM supervisione_listino WHERE id_testata = %s AND stato = 'PENDING') +
             (SELECT COUNT(*) FROM supervisione_lookup WHERE id_testata = %s AND stato = 'PENDING') +
             (SELECT COUNT(*) FROM supervisione_aic WHERE id_testata = %s AND stato = 'PENDING') +
-            (SELECT COUNT(*) FROM supervisione_prezzo WHERE id_testata = %s AND stato = 'PENDING') as total
-    """, (id_testata, id_testata, id_testata, id_testata, id_testata)).fetchone()
+            (SELECT COUNT(*) FROM supervisione_prezzo WHERE id_testata = %s AND stato = 'PENDING') +
+            COALESCE((SELECT COUNT(*) FROM supervisione_erp WHERE id_testata = %s AND stato = 'PENDING'), 0) as total
+    """, (id_testata, id_testata, id_testata, id_testata, id_testata, id_testata)).fetchone()
 
     if supervisioni_pending and supervisioni_pending['total'] > 0:
         return {
