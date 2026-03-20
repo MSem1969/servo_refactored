@@ -428,7 +428,14 @@ SELECT
     v.codice_vendor AS vendor,
     ot.numero_ordine_vendor AS numero_ordine,
     ot.data_ordine,
-    ot.data_consegna,
+    -- v12.1: Data consegna = più vecchia tra righe non evase, fallback a testata
+    COALESCE(
+        MIN(od.data_consegna_riga) FILTER (
+            WHERE od.stato_riga NOT IN ('EVASO', 'ARCHIVIATO')
+              AND od.data_consegna_riga IS NOT NULL
+        ),
+        ot.data_consegna
+    ) AS data_consegna,
     ot.ragione_sociale_1 AS ragione_sociale,
     ot.indirizzo,
     ot.cap,
