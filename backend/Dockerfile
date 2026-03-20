@@ -9,7 +9,11 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     curl \
+    postgresql-client \
     && rm -rf /var/lib/apt/lists/*
+
+# Create backup directory
+RUN mkdir -p /app/backup
 
 # Copy requirements first for caching
 COPY backend/requirements.txt .
