@@ -8,7 +8,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { ordiniApi, anomalieApi, lookupApi, tracciatiApi } from '../../../api';
 import { richiestaConferma } from '../../../utils/confirmazione';
 
-export function useDatabasePage(currentUser, onOpenOrdine) {
+export function useDatabasePage(currentUser, onOpenOrdine, { savedFilters = null, onSaveFilters } = {}) {
   // Tab state
   const [activeTab, setActiveTab] = useState('ordini');
 
@@ -17,7 +17,7 @@ export function useDatabasePage(currentUser, onOpenOrdine) {
   const [selectedOrdine, setSelectedOrdine] = useState(null);
   const [righe, setRighe] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState({
+  const [filters, setFilters] = useState(savedFilters || {
     vendor: '',
     stato: ['ESTRATTO', 'PARZ_ESPORTATO', 'ANOMALIA'],
     q: '',

@@ -597,6 +597,9 @@ export default function App() {
   // Scroll position memoria per ritorno da dettaglio ordine
   const [databaseScrollY, setDatabaseScrollY] = useState(0);
 
+  // Filtri database memoria per ritorno da dettaglio ordine
+  const [databaseFilters, setDatabaseFilters] = useState(null);
+
   // v10.0: Helper per verificare permesso visualizzazione
   const canViewSection = (sezione) => {
     // Admin ha sempre accesso completo
@@ -614,9 +617,10 @@ export default function App() {
       return; // Non navigare se non autorizzato
     }
 
-    // Salva scroll position quando si esce dal database verso dettaglio ordine
+    // Salva scroll position e filtri quando si esce dal database verso dettaglio ordine
     if (page === 'database' && pageName === 'ordine-detail') {
       setDatabaseScrollY(window.scrollY);
+      // I filtri vengono salvati dal DatabasePage via onSaveFilters
     }
 
     // Ripristina scroll al ritorno dal dettaglio, reset per le altre navigazioni
@@ -749,6 +753,8 @@ export default function App() {
             currentUser={currentUser}
             onOpenOrdine={(id) => navigateTo("ordine-detail", { ordineId: id })}
             restoreScrollY={databaseScrollY}
+            savedFilters={databaseFilters}
+            onSaveFilters={setDatabaseFilters}
           />
         );
       case "ordine-detail":

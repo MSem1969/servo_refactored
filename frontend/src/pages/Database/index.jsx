@@ -98,7 +98,7 @@ function StatoMultiSelect({ selected = [], onChange }) {
 // MAIN COMPONENT
 // =============================================================================
 
-export default function DatabasePage({ currentUser, onOpenOrdine, restoreScrollY = 0 }) {
+export default function DatabasePage({ currentUser, onOpenOrdine, restoreScrollY = 0, savedFilters = null, onSaveFilters }) {
   const {
     // Tab
     activeTab,
@@ -164,7 +164,7 @@ export default function DatabasePage({ currentUser, onOpenOrdine, restoreScrollY
     closePdfModal,
     clearFilters,
     handleToggleDifarm
-  } = useDatabasePage(currentUser, onOpenOrdine);
+  } = useDatabasePage(currentUser, onOpenOrdine, { savedFilters, onSaveFilters });
 
   // Ripristina scroll position dopo caricamento ordini (ritorno da dettaglio)
   const scrollRestored = useRef(false);
@@ -183,8 +183,10 @@ export default function DatabasePage({ currentUser, onOpenOrdine, restoreScrollY
   ];
 
   // v11.3: Wrapper per onOpenOrdine che traccia la visualizzazione
+  // v12.1: Salva filtri correnti prima di navigare al dettaglio
   const handleOpenOrdine = (idTestata) => {
     trackOrderView(idTestata);
+    onSaveFilters?.(filters);
     onOpenOrdine?.(idTestata);
   };
 
