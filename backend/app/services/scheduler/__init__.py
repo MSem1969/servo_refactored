@@ -24,6 +24,11 @@ from .ftp_scheduler import (
     trigger_ftp_batch_now
 )
 
+from ..backup.backup_scheduler import (
+    start_backup_scheduler as init_backup_scheduler,
+    stop_backup_scheduler as shutdown_backup_scheduler,
+)
+
 
 # Funzione aggregata per shutdown di tutti gli scheduler
 def shutdown_all_schedulers():
@@ -31,6 +36,7 @@ def shutdown_all_schedulers():
     shutdown_mail_scheduler()
     shutdown_anagrafica_scheduler()
     shutdown_ftp_scheduler()
+    shutdown_backup_scheduler()
 
 
 # Alias per retrocompatibilità
@@ -52,6 +58,9 @@ __all__ = [
     'shutdown_ftp_scheduler',
     'get_ftp_scheduler_status',
     'trigger_ftp_batch_now',
+    # Backup Scheduler (v12.1)
+    'init_backup_scheduler',
+    'shutdown_backup_scheduler',
     # Aggregati
     'shutdown_all_schedulers',
     'shutdown_scheduler',

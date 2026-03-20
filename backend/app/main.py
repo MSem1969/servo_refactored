@@ -35,6 +35,7 @@ from .services.scheduler import (
     init_mail_scheduler,
     init_anagrafica_scheduler,
     init_ftp_scheduler,
+    init_backup_scheduler,
     shutdown_all_schedulers
 )
 
@@ -70,6 +71,7 @@ async def lifespan(app: FastAPI):
     init_mail_scheduler()
     init_anagrafica_scheduler()  # v11.2: Sync anagrafica Lun-Ven 06:30
     init_ftp_scheduler()  # v11.5: Export FTP ogni 10 minuti
+    init_backup_scheduler(hour=2, minute=0)  # v12.1: Backup giornaliero alle 02:00
 
     yield
 

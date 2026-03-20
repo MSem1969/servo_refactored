@@ -369,3 +369,29 @@ async def add_storage_location(
         )
 
     return result
+
+
+# =============================================================================
+# ENDPOINTS - BACKUP GIORNALIERO (v12.1)
+# =============================================================================
+
+@router.post("/daily/execute")
+async def execute_daily_backup(
+    user: UtenteResponse = Depends(require_admin)
+) -> Dict[str, Any]:
+    """
+    Esegue backup manuale: pg_dump locale + upload FTP su TRANSFER.
+    Richiede ruolo admin.
+    """
+    from ..services.backup.backup_scheduler import execute_backup
+    result = execute_backup(triggered_by='manual')
+    return result
+
+
+@router.get("/daily/status")
+async def get_daily_backup_status(
+    user: UtenteResponse = Depends(get_current_user)
+) -> Dict[str, Any]:
+    """Stato backup giornaliero: ultimo backup, file locali, spazio."""
+    from ..services.backup.backup_scheduler import get_backup_status
+    return get_backup_status()
