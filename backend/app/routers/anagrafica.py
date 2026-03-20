@@ -130,7 +130,7 @@ async def import_clienti(
         return {
             "success": True,
             "data": result,
-            "message": f"Importati {result['importate']:,} clienti, aggiornati {result.get('aggiornati', 0):,}"
+            "message": f"Importati {result['importate']:,} clienti (eliminati {result.get('eliminati_precedenti', 0):,} precedenti)"
         }
     except HTTPException:
         raise

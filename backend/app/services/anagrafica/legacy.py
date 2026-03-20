@@ -571,7 +571,7 @@ def import_anagrafica_clienti(
 
     result = {
         'importate': 0,
-        'aggiornati': 0,
+        'eliminati_precedenti': 0,
         'errori': 0,
         'totale_db': 0,
         'fonte': fonte or 'upload'
@@ -646,6 +646,13 @@ def import_anagrafica_clienti(
         # Contatori debug
         result['skip_empty_codice'] = 0
 
+        # v12: REPLACE completo - il CSV contiene solo clienti validi,
+        # quindi elimina tutti i record esistenti e reinserisce
+        result['eliminati_precedenti'] = db.execute(
+            "SELECT COUNT(*) FROM anagrafica_clienti"
+        ).fetchone()[0]
+        db.execute("DELETE FROM anagrafica_clienti")
+
         # Import righe
         for _, row in df.iterrows():
             try:
@@ -654,78 +661,31 @@ def import_anagrafica_clienti(
                     result['skip_empty_codice'] += 1
                     continue
 
-                # Verifica se esiste già
-                existing = db.execute(
-                    "SELECT id_cliente FROM anagrafica_clienti WHERE codice_cliente = ?",
-                    (codice,)
-                ).fetchone()
-
-                if existing:
-                    # Update (v11.2: nomi colonne corretti, aggiorna anche data_import)
-                    db.execute("""
-                        UPDATE anagrafica_clienti SET
-                            ragione_sociale_1 = ?,
-                            ragione_sociale_2 = ?,
-                            indirizzo = ?,
-                            cap = ?,
-                            localita = ?,
-                            provincia = ?,
-                            partita_iva = ?,
-                            email = ?,
-                            farmacia_categoria = ?,
-                            codice_farmacia = ?,
-                            farma_status = ?,
-                            codice_pagamento = ?,
-                            min_id = ?,
-                            deposito_riferimento = ?,
-                            data_import = CURRENT_TIMESTAMP,
-                            data_aggiornamento = CURRENT_TIMESTAMP
-                        WHERE codice_cliente = ?
-                    """, (
-                        get_col(row, 'ragione_sociale_1')[:100] or None,
-                        get_col(row, 'ragione_sociale_2')[:100] or None,
-                        get_col(row, 'indirizzo')[:200] or None,
-                        get_col(row, 'cap')[:10] or None,
-                        get_col(row, 'localita')[:100] or None,
-                        get_col(row, 'provincia')[:3] or None,
-                        get_col(row, 'partita_iva')[:16] or None,
-                        get_col(row, 'email')[:200] or None,
-                        get_col(row, 'farmacia_categoria')[:10] or None,
-                        get_col(row, 'codice_farmacia')[:20] or None,
-                        get_col(row, 'farma_status')[:10] or None,
-                        get_col(row, 'codice_pagamento')[:10] or None,
-                        get_col(row, 'min_id')[:20] or None,
-                        get_col(row, 'deposito_riferimento')[:10] or None,
-                        codice
-                    ))
-                    result['aggiornati'] += 1
-                else:
-                    # Insert (v11.2: nomi colonne corretti, imposta data_import)
-                    db.execute("""
-                        INSERT INTO anagrafica_clienti
-                        (codice_cliente, ragione_sociale_1, ragione_sociale_2, indirizzo, cap,
-                         localita, provincia, partita_iva, email, farmacia_categoria,
-                         codice_farmacia, farma_status, codice_pagamento, min_id, deposito_riferimento,
-                         data_import)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                    """, (
-                        codice,
-                        get_col(row, 'ragione_sociale_1')[:100] or None,
-                        get_col(row, 'ragione_sociale_2')[:100] or None,
-                        get_col(row, 'indirizzo')[:200] or None,
-                        get_col(row, 'cap')[:10] or None,
-                        get_col(row, 'localita')[:100] or None,
-                        get_col(row, 'provincia')[:3] or None,
-                        get_col(row, 'partita_iva')[:16] or None,
-                        get_col(row, 'email')[:200] or None,
-                        get_col(row, 'farmacia_categoria')[:10] or None,
-                        get_col(row, 'codice_farmacia')[:20] or None,
-                        get_col(row, 'farma_status')[:10] or None,
-                        get_col(row, 'codice_pagamento')[:10] or None,
-                        get_col(row, 'min_id')[:20] or None,
-                        get_col(row, 'deposito_riferimento')[:10] or None,
-                    ))
-                    result['importate'] += 1
+                db.execute("""
+                    INSERT INTO anagrafica_clienti
+                    (codice_cliente, ragione_sociale_1, ragione_sociale_2, indirizzo, cap,
+                     localita, provincia, partita_iva, email, farmacia_categoria,
+                     codice_farmacia, farma_status, codice_pagamento, min_id, deposito_riferimento,
+                     data_import)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """, (
+                    codice,
+                    get_col(row, 'ragione_sociale_1')[:100] or None,
+                    get_col(row, 'ragione_sociale_2')[:100] or None,
+                    get_col(row, 'indirizzo')[:200] or None,
+                    get_col(row, 'cap')[:10] or None,
+                    get_col(row, 'localita')[:100] or None,
+                    get_col(row, 'provincia')[:3] or None,
+                    get_col(row, 'partita_iva')[:16] or None,
+                    get_col(row, 'email')[:200] or None,
+                    get_col(row, 'farmacia_categoria')[:10] or None,
+                    get_col(row, 'codice_farmacia')[:20] or None,
+                    get_col(row, 'farma_status')[:10] or None,
+                    get_col(row, 'codice_pagamento')[:10] or None,
+                    get_col(row, 'min_id')[:20] or None,
+                    get_col(row, 'deposito_riferimento')[:10] or None,
+                ))
+                result['importate'] += 1
 
             except Exception as e:
                 result['errori'] += 1
@@ -739,7 +699,7 @@ def import_anagrafica_clienti(
         ).fetchone()[0]
 
         log_operation('IMPORT_CLIENTI', 'ANAGRAFICA_CLIENTI', None,
-                     f"Importati {result['importate']} clienti, aggiornati {result['aggiornati']} da {result['fonte']}")
+                     f"Replace completo: importati {result['importate']} clienti da {result['fonte']} (eliminati {result['eliminati_precedenti']} precedenti)")
 
         # v11.4: Revisione automatica ordini con deposito mancante
         # Dopo l'import, cerca ordini con DEP-A01 e prova a risolverli
