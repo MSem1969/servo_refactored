@@ -150,6 +150,9 @@ def popola_header_da_anagrafica(id_testata: int, operatore: str = None) -> bool:
         'deposito_riferimento': deposito_riferimento or '',  # Da anagrafica_clienti
     }
 
+    # v12.0 fix: determinare is_manuale PRIMA di usarlo per MIN_ID e P.IVA
+    is_manuale = ordine.get('lookup_method') == 'MANUALE'
+
     # MIN_ID: se lookup MANUALE sovrascrive, altrimenti popola solo se vuoto
     if min_id:
         if is_manuale or not ordine['codice_ministeriale_estratto']:
@@ -164,7 +167,6 @@ def popola_header_da_anagrafica(id_testata: int, operatore: str = None) -> bool:
     # v12.0: Se lookup MANUALE, l'operatore ha scelto esplicitamente la farmacia
     # → la P.IVA dell'anagrafica SOVRASCRIVE quella estratta (potrebbe essere errata/obsoleta)
     # Se lookup automatico, popola solo se vuota (mantiene dato estratto)
-    is_manuale = ordine.get('lookup_method') == 'MANUALE'
     if partita_iva_anagrafica:
         if is_manuale or not ordine['partita_iva_estratta']:
             nuovi_valori['partita_iva_estratta'] = partita_iva_anagrafica
