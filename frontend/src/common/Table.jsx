@@ -216,10 +216,16 @@ export const TableCell = {
     </span>
   ),
 
-  // Cella data
+  // Cella data (parsing locale per date ISO YYYY-MM-DD, evita shift timezone)
   Date: ({ value, format = 'short' }) => {
     if (!value) return '-';
-    const date = new Date(value);
+    let date;
+    if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      const [y, m, d] = value.split('-');
+      date = new Date(y, m - 1, d);
+    } else {
+      date = new Date(value);
+    }
     const options = format === 'short'
       ? { day: '2-digit', month: '2-digit', year: 'numeric' }
       : { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' };

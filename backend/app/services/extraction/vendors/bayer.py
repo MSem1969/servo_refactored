@@ -347,6 +347,14 @@ def extract_bayer(text: str, lines: List[str], pdf_path: str = None) -> List[Dic
     # ESTRAZIONE DATE CONSEGNA DA HEADER
     # ========================================
     date_columns = _parse_date_header(text, lines)
+
+    # FIX: Escludi la data ordine dalle date consegna.
+    # _parse_date_header cerca TUTTE le date nel testo, inclusa la data ordine,
+    # che causa uno sfasamento di 1 posizione nel mapping colonne → date.
+    data_ordine = data.get('data_ordine')
+    if data_ordine and date_columns:
+        date_columns = [d for d in date_columns if d[1] != data_ordine]
+
     num_date_columns = max(1, len(date_columns))
 
     # Data consegna default (prima data trovata)

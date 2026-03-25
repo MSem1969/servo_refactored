@@ -15,7 +15,13 @@ function formatDataItaliana(dataStr) {
     return dataStr.replace(/-/g, '/');
   }
 
-  // Prova a parsare come data
+  // Formato ISO YYYY-MM-DD: parsing diretto senza timezone
+  if (/^\d{4}-\d{2}-\d{2}$/.test(dataStr)) {
+    const [year, month, day] = dataStr.split('-');
+    return `${day}/${month}/${year}`;
+  }
+
+  // Prova a parsare come data (per altri formati)
   try {
     const date = new Date(dataStr);
     if (!isNaN(date.getTime())) {

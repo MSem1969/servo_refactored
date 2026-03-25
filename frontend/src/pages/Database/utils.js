@@ -23,7 +23,14 @@ export const addBusinessDays = (date, days) => {
 export const parseDataConsegna = (dataStr, dataOrdineStr) => {
   if (!dataStr) {
     if (dataOrdineStr) {
-      const dataOrdine = new Date(dataOrdineStr);
+      // Parsing locale per date ISO YYYY-MM-DD (evita shift timezone)
+      let dataOrdine;
+      if (typeof dataOrdineStr === 'string' && dataOrdineStr.includes('-')) {
+        const [y, m, d] = dataOrdineStr.split('-');
+        dataOrdine = new Date(y, m - 1, d);
+      } else {
+        dataOrdine = new Date(dataOrdineStr);
+      }
       return addBusinessDays(dataOrdine, 10);
     }
     return new Date();
@@ -35,7 +42,8 @@ export const parseDataConsegna = (dataStr, dataOrdineStr) => {
       return new Date(year, month - 1, day);
     }
     if (dataStr.includes('-')) {
-      return new Date(dataStr);
+      const [year, month, day] = dataStr.split('-');
+      return new Date(year, month - 1, day);
     }
   }
 

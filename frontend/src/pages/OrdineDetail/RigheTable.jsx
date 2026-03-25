@@ -262,6 +262,11 @@ export default function RigheTable({
                         const dataConsegna = riga.data_consegna || ordine?.data_consegna;
                         if (!dataConsegna) return '-';
                         try {
+                          // Parsing diretto per formato ISO YYYY-MM-DD (evita shift timezone)
+                          if (/^\d{4}-\d{2}-\d{2}$/.test(dataConsegna)) {
+                            const [y, m, d] = dataConsegna.split('-');
+                            return `${d}/${m}/${y.slice(2)}`;
+                          }
                           const date = new Date(dataConsegna);
                           return date.toLocaleDateString('it-IT', { day: '2-digit', month: '2-digit', year: '2-digit' });
                         } catch {
