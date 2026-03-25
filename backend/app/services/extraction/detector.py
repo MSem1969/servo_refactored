@@ -38,6 +38,14 @@ def detect_vendor(text: str, filename: str = "") -> Tuple[str, float]:
     if "ZT01" in t and "TRANSFERORDER" in t.replace(" ", ""):
         return "ANGELINI", 0.90
 
+    # DOMPE - Proposta d'Ordine Dompé
+    if "DOMPE" in t or "DOMPÉ" in t:
+        return "DOMPE", 0.95
+    if "SERVIZIOCLIENTI@DOMPE.IT" in t:
+        return "DOMPE", 0.95
+    if "PROPOSTA D'ORDINE" in t and "800191088" in t:
+        return "DOMPE", 0.90
+
     # CHIESI - Pattern specifici
     if "CHIESI ITALIA" in t or "@CHIESI.COM" in t:
         return "CHIESI", 0.95
@@ -189,6 +197,7 @@ SUPPORTED_VENDORS = [
     'CODIFI',
     'COOPER',
     'DOC_GENERICI',
+    'DOMPE',
     'MENARINI',
     'OPELLA',
     'PERRIGO',

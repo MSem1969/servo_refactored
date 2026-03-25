@@ -7,6 +7,7 @@
 from .angelini import extract_angelini
 from .bayer import extract_bayer
 from .chiesi import extract_chiesi
+from .dompe import extract_dompe
 from .codifi import extract_codifi
 from .cooper import extract_cooper
 from .opella import extract_opella
@@ -21,6 +22,7 @@ __all__ = [
     'extract_angelini',
     'extract_bayer',
     'extract_chiesi',
+    'extract_dompe',
     'extract_codifi',
     'extract_cooper',
     'extract_opella',
