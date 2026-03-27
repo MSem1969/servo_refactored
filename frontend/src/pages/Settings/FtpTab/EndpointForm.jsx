@@ -141,18 +141,9 @@ export default function EndpointForm({ endpoint, vendors, depositi, onSave, onCa
                 </div>
                 <div>
                   <label className="block text-sm text-slate-600 mb-1">Deposito</label>
-                  <select
-                    value={form.deposito}
-                    onChange={(e) => handleChange('deposito', e.target.value)}
-                    disabled={isEdit}
-                    className={`w-full px-3 py-2 border border-slate-300 rounded-lg text-sm ${isEdit ? 'bg-slate-100' : ''}`}
-                  >
-                    <option value="">Tutti i depositi</option>
-                    {depositi.map(d => (
-                      <option key={d} value={d}>{d}</option>
-                    ))}
-                  </select>
-                  {isEdit && <p className="text-xs text-slate-500 mt-1">Non modificabile</p>}
+                  <div className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-slate-50 text-slate-600">
+                    Tutti i depositi
+                  </div>
                 </div>
               </div>
             </div>
