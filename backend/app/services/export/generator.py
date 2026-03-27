@@ -116,7 +116,7 @@ def generate_tracciati_per_ordine(
         ordine_dict['deposito_riferimento'] = deposito_row['deposito_riferimento'] if deposito_row else None
 
         # v11.3: Verifica deposito_riferimento - solo CT e CL sono abilitati per tracciati
-        DEPOSITI_ABILITATI = ('CT', 'CL')
+        DEPOSITI_ABILITATI = ('CT', 'CL', 'BA', 'NO', 'SB', 'RO', 'CS', 'FR')
         deposito = ordine_dict.get('deposito_riferimento')
         if not deposito or deposito.upper() not in DEPOSITI_ABILITATI:
             continue  # Skip ordini senza deposito valido
@@ -293,7 +293,7 @@ def valida_e_genera_tracciato(
     ordine_dict['deposito_riferimento'] = deposito_row['deposito_riferimento'] if deposito_row else None
 
     # v11.3: Verifica deposito_riferimento - solo CT e CL sono abilitati per tracciati
-    DEPOSITI_ABILITATI = ('CT', 'CL')
+    DEPOSITI_ABILITATI = ('CT', 'CL', 'BA', 'NO', 'SB', 'RO', 'CS', 'FR')
     deposito = ordine_dict.get('deposito_riferimento')
     if not deposito:
         return {
