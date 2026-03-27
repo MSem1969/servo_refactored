@@ -24,9 +24,12 @@ VENDOR_PREFIX_MAP = {
     'CODIFI': 'COD',
     'COOPER': 'COP',
     'DOC_GENERICI': 'DOC',
+    'DOMPE': 'DOM',
     'MENARINI': 'MEN',
     'OPELLA': 'OPE',
+    'PERRIGO': 'PER',
     'RECKITT': 'REC',
+    'VIATRIS': 'VIA',
 }
 
 # =============================================================================
