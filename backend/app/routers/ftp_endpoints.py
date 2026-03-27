@@ -149,17 +149,18 @@ async def list_available_vendors(
 
     db = get_db()
     try:
-        # Vendor predefiniti
-        predefined = ['ANGELINI', 'BAYER', 'CODIFI', 'MENARINI', 'DOC_GENERICI', 'OPELLA', 'VIATRIS', 'CHIESI']
-
-        # Vendor dagli ordini (converti a stringa per sicurezza)
+        # Vendor dal DB (codice_vendor dalla tabella vendor)
         cursor = db.execute("""
-            SELECT DISTINCT id_vendor FROM ordini_testata WHERE id_vendor IS NOT NULL
+            SELECT DISTINCT v.codice_vendor
+            FROM vendor v
+            WHERE v.attivo = TRUE AND v.codice_vendor != 'GENERIC'
+            ORDER BY v.codice_vendor
         """)
-        from_orders = [str(row['id_vendor']) for row in cursor.fetchall() if row['id_vendor']]
+        all_vendors = [row['codice_vendor'] for row in cursor.fetchall()]
 
-        # Unisci e ordina (solo stringhe)
-        all_vendors = sorted(set(predefined + [v for v in from_orders if isinstance(v, str)]))
+        # Fallback se tabella vuota
+        if not all_vendors:
+            all_vendors = ['ANGELINI', 'BAYER', 'CHIESI', 'CODIFI', 'COOPER', 'DOC_GENERICI', 'DOMPE', 'MENARINI', 'OPELLA', 'PERRIGO', 'RECKITT', 'VIATRIS']
 
         # Depositi disponibili (da ftp_endpoints o default)
         try:
@@ -170,7 +171,7 @@ async def list_available_vendors(
         except Exception:
             depositi = []
         if not depositi:
-            depositi = ['CT', 'CL']  # Default
+            depositi = ['CT', 'CL', 'BA', 'NO', 'SB', 'RO', 'CS', 'FR', 'PE', 'CB']
 
         return {
             'success': True,
@@ -830,7 +831,7 @@ async def get_ftp_stats(
                 (SELECT esito FROM ftp_log WHERE id_endpoint = e.id ORDER BY created_at DESC LIMIT 1) as ultimo_esito
             FROM ftp_endpoints e
             LEFT JOIN ftp_log l ON l.id_endpoint = e.id
-            GROUP BY e.id, e.nome, e.vendor_code
+            GROUP BY e.id, e.nome, e.vendor_code, e.ordine
             ORDER BY e.ordine, e.vendor_code
         """)
         per_endpoint = []

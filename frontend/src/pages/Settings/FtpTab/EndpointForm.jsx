@@ -131,9 +131,10 @@ export default function EndpointForm({ endpoint, vendors, depositi, onSave, onCa
                     className={`w-full px-3 py-2 border rounded-lg text-sm ${errors.vendor_code ? 'border-red-300 bg-red-50' : 'border-slate-300'} ${isEdit ? 'bg-slate-100' : ''}`}
                   >
                     <option value="">Seleziona vendor...</option>
-                    {vendors.map(v => (
-                      <option key={v} value={v}>{v}</option>
-                    ))}
+                    {vendors.map(v => {
+                      const labels = { ANGELINI: 'Angelini', BAYER: 'Bayer', CHIESI: 'Chiesi', CODIFI: 'Codifi', COOPER: 'Cooper', DOC_GENERICI: 'DOC Generici', DOMPE: 'Dompé', MENARINI: 'Menarini', OPELLA: 'Opella', PERRIGO: 'Perrigo', RECKITT: 'Reckitt', VIATRIS: 'Viatris' };
+                      return <option key={v} value={v}>{labels[v] || v}</option>;
+                    })}
                   </select>
                   {errors.vendor_code && <p className="text-xs text-red-600 mt-1">{errors.vendor_code}</p>}
                   {isEdit && <p className="text-xs text-slate-500 mt-1">Non modificabile</p>}
