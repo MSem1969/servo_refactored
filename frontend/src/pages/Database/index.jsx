@@ -288,9 +288,21 @@ export default function DatabasePage({ currentUser, onOpenOrdine, restoreScrollY
               className="px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value="">Tutti i Vendor</option>
-              {/* v11.2: Lista vendor aggiornata + COOPER + RECKITT */}
-              {['DOC_GENERICI', 'CODIFI', 'COOPER', 'MENARINI', 'OPELLA', 'CHIESI', 'ANGELINI', 'BAYER', 'RECKITT', 'VIATRIS', 'PERRIGO', 'DOMPE'].map((v) => (
-                <option key={v} value={v}>{v}</option>
+              {[
+                { value: 'ANGELINI', label: 'Angelini' },
+                { value: 'BAYER', label: 'Bayer' },
+                { value: 'CHIESI', label: 'Chiesi' },
+                { value: 'CODIFI', label: 'Codifi' },
+                { value: 'COOPER', label: 'Cooper' },
+                { value: 'DOC_GENERICI', label: 'DOC Generici' },
+                { value: 'DOMPE', label: 'Dompé' },
+                { value: 'MENARINI', label: 'Menarini' },
+                { value: 'OPELLA', label: 'Opella' },
+                { value: 'PERRIGO', label: 'Perrigo' },
+                { value: 'RECKITT', label: 'Reckitt' },
+                { value: 'VIATRIS', label: 'Viatris' },
+              ].map((v) => (
+                <option key={v.value} value={v.value}>{v.label}</option>
               ))}
             </select>
 

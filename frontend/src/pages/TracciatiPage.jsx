@@ -38,8 +38,21 @@ const TracciatiPage = () => {
     vendors: []
   });
 
-  // Lista vendor disponibili - v11.2 + COOPER
-  const vendorOptions = ['DOC_GENERICI', 'CODIFI', 'COOPER', 'MENARINI', 'OPELLA', 'CHIESI', 'ANGELINI', 'BAYER', 'RECKITT', 'VIATRIS', 'PERRIGO', 'DOMPE'];
+  // Lista vendor disponibili con nomi leggibili
+  const vendorOptions = [
+    { value: 'ANGELINI', label: 'Angelini' },
+    { value: 'BAYER', label: 'Bayer' },
+    { value: 'CHIESI', label: 'Chiesi' },
+    { value: 'CODIFI', label: 'Codifi' },
+    { value: 'COOPER', label: 'Cooper' },
+    { value: 'DOC_GENERICI', label: 'DOC Generici' },
+    { value: 'DOMPE', label: 'Dompé' },
+    { value: 'MENARINI', label: 'Menarini' },
+    { value: 'OPELLA', label: 'Opella' },
+    { value: 'PERRIGO', label: 'Perrigo' },
+    { value: 'RECKITT', label: 'Reckitt' },
+    { value: 'VIATRIS', label: 'Viatris' },
+  ];
 
   // Carica dati iniziali
   const loadInitialData = useCallback(async () => {
@@ -263,7 +276,7 @@ const TracciatiPage = () => {
               >
                 <option value="">Tutti</option>
                 {vendorOptions.map(v => (
-                  <option key={v} value={v}>{v}</option>
+                  <option key={v.value} value={v.value}>{v.label}</option>
                 ))}
               </select>
             </div>
