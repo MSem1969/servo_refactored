@@ -39,11 +39,13 @@ def detect_vendor(text: str, filename: str = "") -> Tuple[str, float]:
         return "ANGELINI", 0.90
 
     # DOMPE - Proposta d'Ordine Dompé
-    if "DOMPE" in t or "DOMPÉ" in t:
-        return "DOMPE", 0.95
+    # NB: "DOMPE" appare anche nei Transfer Order DOC_GENERICI come nome produttore,
+    # quindi detection basata su identificativi univoci (P.IVA, email, telefono)
     if "SERVIZIOCLIENTI@DOMPE.IT" in t:
         return "DOMPE", 0.95
-    if "PROPOSTA D'ORDINE" in t and "800191088" in t:
+    if "800191088" in t:  # Servizio Clienti Dompé
+        return "DOMPE", 0.95
+    if "VIA SAN MARTINO" in t and "PROPOSTA D'ORDINE" in t:
         return "DOMPE", 0.90
 
     # CHIESI - Pattern specifici
