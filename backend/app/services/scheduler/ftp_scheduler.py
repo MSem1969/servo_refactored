@@ -10,6 +10,7 @@ from typing import Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.triggers.cron import CronTrigger
 from apscheduler.events import EVENT_JOB_ERROR, EVENT_JOB_EXECUTED
 
 from ...database_pg import get_db, log_operation
@@ -21,6 +22,38 @@ logger.setLevel(logging.INFO)
 # Scheduler singleton
 _scheduler: Optional[BackgroundScheduler] = None
 _is_running = False
+
+
+def _ftp_health_check_job():
+    """
+    Job eseguito ogni giorno alle 06:00.
+
+    Scansiona il server FTP remoto per rilevare:
+    - File .log (errori di trasmissione lato ricevente)
+    - File dati.lok stale (>36h = crash sistema ricevente)
+    """
+    from ..ftp.health_check import scan_ftp_directories
+
+    try:
+        logger.info(f"[{datetime.now()}] Avvio FTP Health Check...")
+
+        result = scan_ftp_directories()
+
+        if result.get('problems_count', 0) > 0:
+            logger.warning(
+                f"FTP Health Check: {result['problems_count']} problema/i - "
+                f"{result.get('log_files_count', 0)} file .log, "
+                f"{result.get('stale_locks_count', 0)} lock stale"
+            )
+        else:
+            logger.info(f"FTP Health Check: nessun problema rilevato")
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Errore FTP Health Check: {e}")
+        log_operation('FTP_HEALTH_CHECK_ERROR', 'scheduler', 0, str(e), operatore='SCHEDULER')
+        raise
 
 
 def _ftp_batch_job():
@@ -108,11 +141,20 @@ def start_ftp_scheduler():
             replace_existing=True
         )
 
+        # Aggiungi job Health Check FTP (ogni giorno alle 06:00)
+        _scheduler.add_job(
+            _ftp_health_check_job,
+            trigger=CronTrigger(hour=6, minute=0, timezone='Europe/Rome'),
+            id='ftp_health_check',
+            name='FTP Health Check',
+            replace_existing=True
+        )
+
         # Avvia scheduler
         _scheduler.start()
         _is_running = True
 
-        logger.info(f"FTP Scheduler avviato (intervallo: {intervallo} minuti)")
+        logger.info(f"FTP Scheduler avviato (batch: {intervallo} min, health check: 06:00)")
         log_operation('FTP_SCHEDULER_START', 'scheduler', 0,
                      f'Scheduler avviato, intervallo {intervallo} min', operatore='SYSTEM')
 
@@ -163,3 +205,14 @@ def trigger_ftp_batch_now() -> dict:
     """
     logger.info("Trigger manuale batch FTP")
     return _ftp_batch_job()
+
+
+def trigger_ftp_health_check_now() -> dict:
+    """
+    Esegue l'health check FTP immediatamente (manualmente).
+
+    Returns:
+        Risultato dell'health check
+    """
+    logger.info("Trigger manuale FTP Health Check")
+    return _ftp_health_check_job()

@@ -626,6 +626,31 @@ async def ftp_reset(id_esportazione: int) -> Dict[str, Any]:
 
 
 # =============================================================================
+# FTP HEALTH CHECK
+# =============================================================================
+
+@router.get("/ftp/health-check")
+async def ftp_health_check() -> Dict[str, Any]:
+    """
+    Esegue scansione del server FTP remoto per rilevare anomalie.
+
+    Rileva:
+    - File .log (errori di trasmissione lato ricevente)
+    - File dati.lok stale (>36h = crash sistema ricevente)
+
+    Schedulato automaticamente alle 06:00, eseguibile anche manualmente.
+    """
+    try:
+        from ..services.ftp.health_check import scan_ftp_directories
+
+        result = scan_ftp_directories()
+        return result
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
 # PULIZIA
 # =============================================================================
 

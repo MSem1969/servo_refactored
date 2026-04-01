@@ -21,7 +21,8 @@ from .ftp_scheduler import (
     start_ftp_scheduler as init_ftp_scheduler,
     stop_ftp_scheduler as shutdown_ftp_scheduler,
     get_ftp_scheduler_status,
-    trigger_ftp_batch_now
+    trigger_ftp_batch_now,
+    trigger_ftp_health_check_now
 )
 
 from ..backup.backup_scheduler import (
@@ -58,6 +59,7 @@ __all__ = [
     'shutdown_ftp_scheduler',
     'get_ftp_scheduler_status',
     'trigger_ftp_batch_now',
+    'trigger_ftp_health_check_now',
     # Backup Scheduler (v12.1)
     'init_backup_scheduler',
     'shutdown_backup_scheduler',
