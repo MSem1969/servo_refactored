@@ -103,6 +103,13 @@ def extract_chiesi(text: str, lines: List[str], pdf_path: str = None) -> List[Di
 
             aic_norm, aic_orig, is_esp, is_child = normalize_aic(codice_aic, descrizione)
 
+            # CHIESI: gli espositori (prezzo 0) sono SEMPRE omaggi.
+            # Quantita' venduta -> omaggio. Se 0, default 1.
+            if is_esp:
+                q_omaggio = q_venduta if q_venduta > 0 else 1
+                q_venduta = 0
+                prezzo_netto = 0.0
+
             data['righe'].append({
                 'n_riga': n_riga,
                 'codice_aic': aic_norm,
@@ -128,7 +135,13 @@ def extract_chiesi(text: str, lines: List[str], pdf_path: str = None) -> List[Di
             q_venduta = int(m.group(4))
             q_omaggio = int(m.group(5))
             sconto1 = float(m.group(6).replace(',', '.'))
-            prezzo_netto = float(m.group(7).replace(',', '.'))
+
+            # CHIESI: espositori SEMPRE come omaggi (prezzo 0).
+            # Quantita' venduta -> omaggio. Se entrambe 0, default 1.
+            totale = q_venduta + q_omaggio
+            q_omaggio = totale if totale > 0 else 1
+            q_venduta = 0
+            prezzo_netto = 0.0
 
             data['righe'].append({
                 'n_riga': n_riga,
