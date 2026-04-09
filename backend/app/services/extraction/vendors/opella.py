@@ -96,6 +96,16 @@ def extract_opella(text: str, lines: List[str], pdf_path: str = None) -> List[Di
         if m:
             data['data_consegna'] = parse_date(m.group(1))
 
+    # OPELLA emette PDF distinti con stesso numero ordine ma data_consegna diversa.
+    # Per evitare collisione su chiave_univoca_ordine, prefissiamo il numero
+    # con MMDD della data di consegna: MMDD_{numero_ordine}.
+    if data.get('numero_ordine') and data.get('data_consegna'):
+        m_dc = re.match(r'^(\d{2})/(\d{2})/(\d{4})$', data['data_consegna'])
+        if m_dc:
+            dd = m_dc.group(1)
+            mm = m_dc.group(2)
+            data['numero_ordine'] = f"{mm}{dd}_{data['numero_ordine']}"
+
     # === DESTINATARIO: Estrazione con coordinate X se pdf_path disponibile ===
     if pdf_path and PDFPLUMBER_AVAILABLE:
         try:
@@ -277,6 +287,16 @@ def _extract_opella_text_fallback(text: str, lines: List[str]) -> List[Dict]:
         m = re.search(r'Data\s+di\s+consegna\s+richiesta:?\s*(\d{2}\.\d{2}\.\d{4})', text, re.I)
         if m:
             data['data_consegna'] = parse_date(m.group(1))
+
+    # OPELLA emette PDF distinti con stesso numero ordine ma data_consegna diversa.
+    # Per evitare collisione su chiave_univoca_ordine, prefissiamo il numero
+    # con MMDD della data di consegna: MMDD_{numero_ordine}.
+    if data.get('numero_ordine') and data.get('data_consegna'):
+        m_dc = re.match(r'^(\d{2})/(\d{2})/(\d{4})$', data['data_consegna'])
+        if m_dc:
+            dd = m_dc.group(1)
+            mm = m_dc.group(2)
+            data['numero_ordine'] = f"{mm}{dd}_{data['numero_ordine']}"
 
     # Estrazione destinatario da testo con analisi semantica
     INDIRIZZO_PATTERN = r'^(VIA|V\.|CORSO|C\.SO|PIAZZA|P\.ZZA|PIAZZALE|P\.LE|VIALE|V\.LE|LARGO|VICOLO|CONTRADA|LOC\.|LOCALITA|FRAZIONE|FRAZ\.|STRADA|S\.DA|VIA\s|C/O)\s'
