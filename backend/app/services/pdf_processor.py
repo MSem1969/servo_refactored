@@ -666,21 +666,7 @@ def _insert_order(
 
     # 2. ANOMALIA LKP-A02: Farmacia non trovata (GRAVE - bloccante)
     if lookup_method == 'NESSUNO':
-        cursor = db.execute("""
-            INSERT INTO ANOMALIE
-            (id_testata, tipo_anomalia, livello, codice_anomalia,
-             descrizione, valore_anomalo, richiede_supervisione)
-            VALUES (%s, 'LOOKUP', 'ERRORE', 'LKP-A02', %s, %s, TRUE)
-            RETURNING id_anomalia
-        """, (
-            id_testata,
-            CODICI_ANOMALIA['LKP-A02'],
-            f"P.IVA: {order_data.get('partita_iva', 'N/D')}"
-        ))
-        id_anomalia_lkp = cursor.fetchone()[0]
-
-        # v8.0: Crea supervisione lookup
-        # v8.1: Aggiunta destinazione per pattern univoco (supporto multipunto)
+        # v12.2: Pre-check ML — se pattern ordinario, applica e NON aprire l'anomalia
         anomalia_lkp = {
             'tipo_anomalia': 'LOOKUP',
             'codice_anomalia': 'LKP-A02',
@@ -691,27 +677,31 @@ def _insert_order(
             'lookup_method': lookup_method,
             'lookup_score': None,
         }
-        crea_richiesta_supervisione(id_testata, id_anomalia_lkp, anomalia_lkp)
+        from .supervision.lookup import valuta_anomalia_lookup
+        applicato_auto, _ = valuta_anomalia_lookup(id_testata, anomalia_lkp)
 
-        richiede_supervisione = True
-        result['anomalie'].append(f"Ordine {order_data.get('numero_ordine')}: lookup fallito - richiede supervisione")
+        if not applicato_auto:
+            cursor = db.execute("""
+                INSERT INTO ANOMALIE
+                (id_testata, tipo_anomalia, livello, codice_anomalia,
+                 descrizione, valore_anomalo, richiede_supervisione)
+                VALUES (%s, 'LOOKUP', 'ERRORE', 'LKP-A02', %s, %s, TRUE)
+                RETURNING id_anomalia
+            """, (
+                id_testata,
+                CODICI_ANOMALIA['LKP-A02'],
+                f"P.IVA: {order_data.get('partita_iva', 'N/D')}"
+            ))
+            id_anomalia_lkp = cursor.fetchone()[0]
+            crea_richiesta_supervisione(id_testata, id_anomalia_lkp, anomalia_lkp)
+            richiede_supervisione = True
+            result['anomalie'].append(f"Ordine {order_data.get('numero_ordine')}: lookup fallito - richiede supervisione")
+        else:
+            result['anomalie'].append(f"Ordine {order_data.get('numero_ordine')}: lookup auto-risolto da pattern ML ordinario")
 
     # 3. ANOMALIA LKP-A04: P.IVA mismatch tra PDF e anagrafica (GRAVE - bloccante) v8.2
     elif lookup_method == 'MIN_ID_PIVA_MISMATCH':
-        cursor = db.execute("""
-            INSERT INTO ANOMALIE
-            (id_testata, tipo_anomalia, livello, codice_anomalia,
-             descrizione, valore_anomalo, richiede_supervisione)
-            VALUES (%s, 'LOOKUP', 'ERRORE', 'LKP-A04', %s, %s, TRUE)
-            RETURNING id_anomalia
-        """, (
-            id_testata,
-            CODICI_ANOMALIA['LKP-A04'],
-            f"P.IVA PDF: {order_data.get('partita_iva', 'N/D')} - Probabile subentro/cambio proprietà"
-        ))
-        id_anomalia_lkp = cursor.fetchone()[0]
-
-        # Crea supervisione lookup
+        # v12.2: Pre-check ML — se pattern ordinario, applica e NON aprire l'anomalia
         anomalia_lkp = {
             'tipo_anomalia': 'LOOKUP',
             'codice_anomalia': 'LKP-A04',
@@ -722,30 +712,35 @@ def _insert_order(
             'lookup_method': lookup_method,
             'lookup_score': lookup_score,
         }
-        crea_richiesta_supervisione(id_testata, id_anomalia_lkp, anomalia_lkp)
+        from .supervision.lookup import valuta_anomalia_lookup
+        applicato_auto, _ = valuta_anomalia_lookup(id_testata, anomalia_lkp)
 
-        richiede_supervisione = True
-        result['anomalie'].append(
-            f"Ordine {order_data.get('numero_ordine')}: P.IVA mismatch - verifica obbligatoria (probabile subentro)"
-        )
+        if not applicato_auto:
+            cursor = db.execute("""
+                INSERT INTO ANOMALIE
+                (id_testata, tipo_anomalia, livello, codice_anomalia,
+                 descrizione, valore_anomalo, richiede_supervisione)
+                VALUES (%s, 'LOOKUP', 'ERRORE', 'LKP-A04', %s, %s, TRUE)
+                RETURNING id_anomalia
+            """, (
+                id_testata,
+                CODICI_ANOMALIA['LKP-A04'],
+                f"P.IVA PDF: {order_data.get('partita_iva', 'N/D')} - Probabile subentro/cambio proprietà"
+            ))
+            id_anomalia_lkp = cursor.fetchone()[0]
+            crea_richiesta_supervisione(id_testata, id_anomalia_lkp, anomalia_lkp)
+            richiede_supervisione = True
+            result['anomalie'].append(
+                f"Ordine {order_data.get('numero_ordine')}: P.IVA mismatch - verifica obbligatoria (probabile subentro)"
+            )
+        else:
+            result['anomalie'].append(
+                f"Ordine {order_data.get('numero_ordine')}: P.IVA mismatch auto-risolto da pattern ML ordinario"
+            )
 
     # 4. ANOMALIA LKP-A01: Lookup score < 80% (GRAVE - bloccante)
     elif lookup_score is not None and lookup_score < LOOKUP_SCORE_GRAVE:
-        cursor = db.execute("""
-            INSERT INTO ANOMALIE
-            (id_testata, tipo_anomalia, livello, codice_anomalia,
-             descrizione, valore_anomalo, richiede_supervisione)
-            VALUES (%s, 'LOOKUP', 'ERRORE', 'LKP-A01', %s, %s, TRUE)
-            RETURNING id_anomalia
-        """, (
-            id_testata,
-            f"{CODICI_ANOMALIA['LKP-A01']} (score: {lookup_score}%)",
-            f"Metodo: {lookup_method}, Score: {lookup_score}%"
-        ))
-        id_anomalia_lkp = cursor.fetchone()[0]
-
-        # v8.0: Crea supervisione lookup
-        # v8.1: Aggiunta destinazione per pattern univoco (supporto multipunto)
+        # v12.2: Pre-check ML — se pattern ordinario, applica e NON aprire l'anomalia
         anomalia_lkp = {
             'tipo_anomalia': 'LOOKUP',
             'codice_anomalia': 'LKP-A01',
@@ -756,12 +751,31 @@ def _insert_order(
             'lookup_method': lookup_method,
             'lookup_score': lookup_score,
         }
-        crea_richiesta_supervisione(id_testata, id_anomalia_lkp, anomalia_lkp)
+        from .supervision.lookup import valuta_anomalia_lookup
+        applicato_auto, _ = valuta_anomalia_lookup(id_testata, anomalia_lkp)
 
-        richiede_supervisione = True
-        result['anomalie'].append(
-            f"Ordine {order_data.get('numero_ordine')}: lookup score grave ({lookup_score}%) - richiede supervisione"
-        )
+        if not applicato_auto:
+            cursor = db.execute("""
+                INSERT INTO ANOMALIE
+                (id_testata, tipo_anomalia, livello, codice_anomalia,
+                 descrizione, valore_anomalo, richiede_supervisione)
+                VALUES (%s, 'LOOKUP', 'ERRORE', 'LKP-A01', %s, %s, TRUE)
+                RETURNING id_anomalia
+            """, (
+                id_testata,
+                f"{CODICI_ANOMALIA['LKP-A01']} (score: {lookup_score}%)",
+                f"Metodo: {lookup_method}, Score: {lookup_score}%"
+            ))
+            id_anomalia_lkp = cursor.fetchone()[0]
+            crea_richiesta_supervisione(id_testata, id_anomalia_lkp, anomalia_lkp)
+            richiede_supervisione = True
+            result['anomalie'].append(
+                f"Ordine {order_data.get('numero_ordine')}: lookup score grave ({lookup_score}%) - richiede supervisione"
+            )
+        else:
+            result['anomalie'].append(
+                f"Ordine {order_data.get('numero_ordine')}: lookup score grave auto-risolto da pattern ML ordinario"
+            )
 
     # 5. ANOMALIA LKP-A03: Lookup score 80-95% (ORDINARIA - non bloccante)
     elif lookup_score is not None and lookup_score < LOOKUP_SCORE_ORDINARIA:
@@ -905,6 +919,17 @@ def _insert_order(
 
     if righe_senza_prezzo:
         for riga in righe_senza_prezzo:
+            # v12.2: Pre-check ML — se pattern listino ordinario, NON aprire l'anomalia
+            anomalia_precheck = {
+                'tipo_anomalia': 'LISTINO',
+                'codice_anomalia': 'LST-A01',
+                'vendor': vendor,
+                'valore_anomalo': riga['codice_aic'],
+            }
+            applicato_auto, _ = valuta_anomalia_con_apprendimento(id_testata, anomalia_precheck)
+            if applicato_auto:
+                continue
+
             descrizione_specifica = f"Prezzo mancante per AIC {riga['codice_aic'] or 'N/D'} - {riga['descrizione'][:40] if riga['descrizione'] else 'N/D'}"
 
             # v10.4: Verifica se esiste già un'anomalia generica (senza id_dettaglio) per lo stesso AIC
@@ -979,6 +1004,23 @@ def _insert_order(
         from .supervision.aic import crea_supervisione_aic, valuta_anomalia_aic
 
         for riga_senza_aic in righe_senza_aic:
+            # Prepara dati anomalia per ML
+            anomalia_aic = {
+                'tipo_anomalia': 'AIC',
+                'codice_anomalia': 'AIC-A01',
+                'vendor': vendor or 'UNKNOWN',
+                'n_riga': riga_senza_aic['n_riga'],
+                'id_dettaglio': riga_senza_aic['id_dettaglio'],
+                'descrizione_prodotto': riga_senza_aic['descrizione'],
+                'codice_originale': riga_senza_aic['codice_originale'],
+            }
+
+            # v12.2: Pre-check ML — se pattern ordinario, applica AIC e NON aprire l'anomalia
+            applicato_auto, _ = valuta_anomalia_aic(id_testata, anomalia_aic)
+
+            if applicato_auto:
+                continue
+
             # Prepara descrizione anomalia
             descrizione_anomalia = f"{CODICI_ANOMALIA.get('AIC-A01', 'Codice AIC mancante o non valido - verifica obbligatoria')}"
 
@@ -997,24 +1039,9 @@ def _insert_order(
             ))
             id_anomalia_aic = cursor.fetchone()[0]
 
-            # Prepara dati anomalia per supervisione
-            anomalia_aic = {
-                'tipo_anomalia': 'AIC',
-                'codice_anomalia': 'AIC-A01',
-                'vendor': vendor or 'UNKNOWN',
-                'n_riga': riga_senza_aic['n_riga'],
-                'id_dettaglio': riga_senza_aic['id_dettaglio'],
-                'descrizione_prodotto': riga_senza_aic['descrizione'],
-                'codice_originale': riga_senza_aic['codice_originale'],
-            }
-
-            # Valuta con apprendimento ML - può auto-applicare se pattern ordinario
-            applicato_auto, _ = valuta_anomalia_aic(id_testata, anomalia_aic)
-
-            if not applicato_auto:
-                # Crea richiesta supervisione AIC
-                crea_supervisione_aic(id_testata, id_anomalia_aic, anomalia_aic)
-                richiede_supervisione = True
+            # Crea richiesta supervisione AIC
+            crea_supervisione_aic(id_testata, id_anomalia_aic, anomalia_aic)
+            richiede_supervisione = True
 
         if richiede_supervisione:
             result['anomalie'].append(
@@ -1028,6 +1055,16 @@ def _insert_order(
     # NOTA: richiede_supervisione già impostato sopra per anomalie LOOKUP/ESTRAZIONE
 
     for anomalia in anomalie_esp:
+        # v12.2: Pre-check ML — se pattern ordinario, NON aprire l'anomalia
+        if anomalia.get('richiede_supervisione'):
+            applicato_auto, pattern_sig = valuta_anomalia_con_apprendimento(
+                id_testata, anomalia
+            )
+            if applicato_auto:
+                continue
+        else:
+            pattern_sig = None
+
         # Inserisci anomalia nel database
         cursor = db.execute("""
             INSERT INTO anomalie
@@ -1043,29 +1080,18 @@ def _insert_order(
             anomalia.get('descrizione', ''),
             anomalia.get('valore_anomalo', ''),
             bool(anomalia.get('richiede_supervisione', False)),
-            None,  # Pattern viene calcolato dalla supervisione
+            pattern_sig,
         ))
 
         id_anomalia = cursor.fetchone()[0]
 
-        # Se richiede supervisione, valuta con ML
         if anomalia.get('richiede_supervisione'):
-            applicato_auto, pattern_sig = valuta_anomalia_con_apprendimento(
-                id_testata, anomalia
+            # Crea richiesta supervisione
+            crea_richiesta_supervisione(id_testata, id_anomalia, anomalia)
+            richiede_supervisione = True
+            result['anomalie'].append(
+                f"Ordine {order_data.get('numero_ordine')}: richiede supervisione per {anomalia.get('codice_anomalia')}"
             )
-
-            # Aggiorna pattern signature nell'anomalia
-            db.execute("""
-                UPDATE ANOMALIE SET pattern_signature = %s WHERE id_anomalia = %s
-            """, (pattern_sig, id_anomalia))
-
-            if not applicato_auto:
-                # Crea richiesta supervisione
-                crea_richiesta_supervisione(id_testata, id_anomalia, anomalia)
-                richiede_supervisione = True
-                result['anomalie'].append(
-                    f"Ordine {order_data.get('numero_ordine')}: richiede supervisione per {anomalia.get('codice_anomalia')}"
-                )
 
     # =========================================================================
     # GESTIONE ANOMALIE LISTINO (CODIFI v7.0)
@@ -1091,6 +1117,16 @@ def _insert_order(
                 # Anomalia specifica già esiste, skip questa generica
                 continue
 
+        # v12.2: Pre-check ML — se pattern ordinario, NON aprire l'anomalia
+        if anomalia.get('richiede_supervisione'):
+            applicato_auto, pattern_sig = valuta_anomalia_con_apprendimento(
+                id_testata, anomalia
+            )
+            if applicato_auto:
+                continue
+        else:
+            pattern_sig = None
+
         # Inserisci anomalia nel database
         cursor = db.execute("""
             INSERT INTO anomalie
@@ -1106,29 +1142,18 @@ def _insert_order(
             anomalia.get('descrizione', ''),
             codice_aic,
             bool(anomalia.get('richiede_supervisione', False)),
-            None,
+            pattern_sig,
         ))
 
         id_anomalia = cursor.fetchone()[0]
 
-        # Se richiede supervisione, valuta con ML
         if anomalia.get('richiede_supervisione'):
-            applicato_auto, pattern_sig = valuta_anomalia_con_apprendimento(
-                id_testata, anomalia
+            # Crea richiesta supervisione
+            crea_richiesta_supervisione(id_testata, id_anomalia, anomalia)
+            richiede_supervisione = True
+            result['anomalie'].append(
+                f"Ordine {order_data.get('numero_ordine')}: richiede supervisione listino per {anomalia.get('codice_anomalia')}"
             )
-
-            # Aggiorna pattern signature nell'anomalia
-            db.execute("""
-                UPDATE ANOMALIE SET pattern_signature = %s WHERE id_anomalia = %s
-            """, (pattern_sig, id_anomalia))
-
-            if not applicato_auto:
-                # Crea richiesta supervisione
-                crea_richiesta_supervisione(id_testata, id_anomalia, anomalia)
-                richiede_supervisione = True
-                result['anomalie'].append(
-                    f"Ordine {order_data.get('numero_ordine')}: richiede supervisione listino per {anomalia.get('codice_anomalia')}"
-                )
 
     # Se almeno un'anomalia richiede supervisione, blocca ordine
     if richiede_supervisione:

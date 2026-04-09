@@ -314,15 +314,17 @@ def risolvi_anomalia_con_propagazione(
                 supervisioni_approvate += sup_count
 
         # Incrementa pattern ML per il numero di anomalie risolte
+        # v12.2: Propagazione GLOBALE → forza is_ordinario=TRUE (decisione esplicita superuser)
+        force_promote = (livello == LivelloPropagazione.GLOBALE)
         ml_incremento = 0
         if livello in (LivelloPropagazione.ORDINE, LivelloPropagazione.GLOBALE) and anomalie_risolte > 1:
             ml_incremento = _incrementa_pattern_ml(
-                db, anomalia_ref, operatore, anomalie_risolte
+                db, anomalia_ref, operatore, anomalie_risolte, force_promote=force_promote
             )
         elif anomalie_risolte == 1:
             # Singola anomalia: incrementa di 1
             ml_incremento = _incrementa_pattern_ml(
-                db, anomalia_ref, operatore, 1
+                db, anomalia_ref, operatore, 1, force_promote=force_promote
             )
 
         # Sblocca ordini coinvolti
@@ -444,7 +446,7 @@ def _approva_supervisioni_collegate(db, id_anomalia: int, operatore: str) -> int
     return count
 
 
-def _incrementa_pattern_ml(db, anomalia: Dict, operatore: str, count: int) -> int:
+def _incrementa_pattern_ml(db, anomalia: Dict, operatore: str, count: int, force_promote: bool = False) -> int:
     """
     Incrementa pattern ML per l'anomalia risolta.
 
@@ -536,8 +538,9 @@ def _incrementa_pattern_ml(db, anomalia: Dict, operatore: str, count: int) -> in
     """, (count, f"{operatore}(x{count})", pattern_sig)).fetchone()
 
     if result:
-        # Verifica promozione
-        if result[0] >= SOGLIA_PROMOZIONE:
+        # v12.2: GLOBALE forza promozione immediata (scelta esplicita superuser).
+        # Altrimenti promozione standard al raggiungimento della soglia.
+        if force_promote or result[0] >= SOGLIA_PROMOZIONE:
             db.execute(f"""
                 UPDATE {table}
                 SET is_ordinario = TRUE, data_promozione = CURRENT_TIMESTAMP
