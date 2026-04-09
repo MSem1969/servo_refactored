@@ -207,6 +207,8 @@ def extract_zentiva(text: str, lines: List[str], pdf_path: str = None) -> List[D
             if nxt and not data_re.search(nxt) and not nxt.startswith('IT_') and 'Totale' not in nxt:
                 desc_parts.append(nxt)
         descrizione = ' '.join(desc_parts).strip()
+        # Rimuove prefisso "IT_NN_" (codifica vendor non utile per la descrizione)
+        descrizione = re.sub(r'^IT_\d+_\s*', '', descrizione)
 
         # Parsing numerico:
         # split per "€" -> 4 segmenti monetari + resto
