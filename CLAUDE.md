@@ -236,6 +236,7 @@ Il bottone RIPRISTINA su singola riga effettua un **HARD RESET**:
 | **CHIESI** | In attesa | Escludere P.IVA 02944970348 |
 | **OPELLA** | Attivo | AIC 7-9 cifre, padding a 9 cifre |
 | **VIATRIS** | Attivo | Transfer Order, OR+numero, TRACC.F+MIN_ID |
+| **ZENTIVA** | Attivo | Transfer Order, numero ordine `O-NNNNNN` da nome file (SAP Nr. Ordine vuoto), prefix EDI `ZEN` |
 
 **Detection:** Solo contenuto PDF (nome file ignorato)
 

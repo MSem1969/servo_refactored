@@ -16,6 +16,7 @@ from .reckitt import extract_reckitt
 from .doc_generici import extract_doc_generici
 from .viatris import extract_viatris
 from .perrigo import extract_perrigo
+from .zentiva import extract_zentiva
 from .generic import extract_generic
 
 __all__ = [
@@ -31,5 +32,6 @@ __all__ = [
     'extract_reckitt',
     'extract_doc_generici',
     'extract_viatris',
+    'extract_zentiva',
     'extract_generic',
 ]

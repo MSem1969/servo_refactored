@@ -30,6 +30,7 @@ VENDOR_PREFIX_MAP = {
     'PERRIGO': 'PER',
     'RECKITT': 'REC',
     'VIATRIS': 'VIA',
+    'ZENTIVA': 'ZEN',
 }
 
 # =============================================================================

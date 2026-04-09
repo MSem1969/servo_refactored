@@ -23,6 +23,7 @@ from .vendors import (
     extract_reckitt,
     extract_doc_generici,
     extract_viatris,
+    extract_zentiva,
     extract_generic,
 )
 
@@ -44,6 +45,7 @@ EXTRACTORS: Dict[str, Callable] = {
     'PERRIGO': extract_perrigo,
     'RECKITT': extract_reckitt,
     'VIATRIS': extract_viatris,
+    'ZENTIVA': extract_zentiva,
     'GENERIC': extract_generic,
     'UNKNOWN': extract_generic,
 }
@@ -103,5 +105,6 @@ __all__ = [
     'extract_reckitt',
     'extract_doc_generici',
     'extract_viatris',
+    'extract_zentiva',
     'extract_generic',
 ]

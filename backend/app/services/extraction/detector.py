@@ -85,6 +85,13 @@ def detect_vendor(text: str, filename: str = "") -> Tuple[str, float]:
     if "PERRIGO ITALIA" in t:
         return "PERRIGO", 0.95
 
+    # ZENTIVA - Transfer Order Zentiva
+    # Pattern distintivi: "ZENTIVA" + "Codice SAP" + "Tipo Ordine" / email @zentiva.com
+    if "ZENTIVA" in t or "@ZENTIVA.COM" in t:
+        return "ZENTIVA", 0.95
+    if "CODICE SAP" in t and "TIPO ORDINE" in t and "RIEPILOGO CONSEGNA" in t:
+        return "ZENTIVA", 0.90
+
     # OPELLA
     if "INFORMAZIONI SULL'ORDINE" in t or "OPELLA" in t:
         return "OPELLA", 0.95
@@ -205,6 +212,7 @@ SUPPORTED_VENDORS = [
     'PERRIGO',
     'RECKITT',
     'VIATRIS',
+    'ZENTIVA',
 ]
 
 def get_supported_vendors() -> list:
