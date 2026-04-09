@@ -253,13 +253,13 @@ def extract_zentiva(text: str, lines: List[str], pdf_path: str = None) -> List[D
 
         if len(parts) >= 4:
             # parts[3]: "sconto_auto [sconto_agente] val_netto"
+            # NOTA Zentiva: il "Prezzo Netto" della tabella e' GIA' al netto
+            # dello sconto. Quindi NON popoliamo sconto1/sconto2 (verrebbero
+            # applicati una seconda volta dal formatter EDI). Estraiamo
+            # solo il valore netto totale per riferimento.
             tokens = re.findall(r'[\d.,]+', parts[3])
             if tokens:
-                sconto1 = _parse_price_eu(tokens[0])
-                if len(tokens) >= 2:
-                    valore_netto = _parse_price_eu(tokens[-1])
-                if len(tokens) >= 3:
-                    sconto2 = _parse_price_eu(tokens[1])
+                valore_netto = _parse_price_eu(tokens[-1])
 
         # Normalizza AIC
         aic_norm, aic_orig, _is_esp_desc, _ = normalize_aic(aic_raw, descrizione)
