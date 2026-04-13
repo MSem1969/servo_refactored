@@ -919,15 +919,13 @@ def _insert_order(
 
     if righe_senza_prezzo:
         for riga in righe_senza_prezzo:
-            # v12.2: Pre-check ML — se pattern listino ordinario, NON aprire l'anomalia
-            anomalia_precheck = {
-                'tipo_anomalia': 'LISTINO',
-                'codice_anomalia': 'LST-A01',
-                'vendor': vendor,
-                'valore_anomalo': riga['codice_aic'],
-            }
-            applicato_auto, _ = valuta_anomalia_con_apprendimento(id_testata, anomalia_precheck)
-            if applicato_auto:
+            # v12.3: Se pattern listino ordinario CON prezzo salvato, applica
+            # prezzo alla riga E aggiorna listini_vendor. Solo se l'applicazione
+            # ha successo (prezzo effettivamente scritto) saltiamo l'anomalia.
+            auto_applied = _try_auto_apply_listino_from_pattern(
+                db, id_testata, riga['id_dettaglio'], riga['codice_aic'], vendor
+            )
+            if auto_applied:
                 continue
 
             descrizione_specifica = f"Prezzo mancante per AIC {riga['codice_aic'] or 'N/D'} - {riga['descrizione'][:40] if riga['descrizione'] else 'N/D'}"
@@ -1117,22 +1115,28 @@ def _insert_order(
                 # Anomalia specifica già esiste, skip questa generica
                 continue
 
-        # v12.2: Pre-check ML — se pattern ordinario, NON aprire l'anomalia
-        if anomalia.get('richiede_supervisione'):
-            applicato_auto, pattern_sig = valuta_anomalia_con_apprendimento(
-                id_testata, anomalia
-            )
-            if applicato_auto:
-                continue
-        else:
-            pattern_sig = None
+        # v12.3: Per anomalie listino, tenta auto-applicazione prezzo da pattern ML.
+        # Se il pattern è ordinario E ha un prezzo salvato, aggiorna riga + listino.
+        if anomalia.get('richiede_supervisione') and codice_aic:
+            # Cerca id_dettaglio per questa anomalia
+            id_det_row = db.execute("""
+                SELECT id_dettaglio FROM ordini_dettaglio
+                WHERE id_testata = %s AND codice_aic = %s
+                ORDER BY n_riga LIMIT 1
+            """, (id_testata, codice_aic)).fetchone()
+            if id_det_row:
+                auto_applied = _try_auto_apply_listino_from_pattern(
+                    db, id_testata, id_det_row['id_dettaglio'], codice_aic, vendor
+                )
+                if auto_applied:
+                    continue
 
         # Inserisci anomalia nel database
         cursor = db.execute("""
             INSERT INTO anomalie
             (id_testata, tipo_anomalia, livello, codice_anomalia,
-             descrizione, valore_anomalo, richiede_supervisione, pattern_signature)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+             descrizione, valore_anomalo, richiede_supervisione)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
             RETURNING id_anomalia
         """, (
             id_testata,
@@ -1142,7 +1146,6 @@ def _insert_order(
             anomalia.get('descrizione', ''),
             codice_aic,
             bool(anomalia.get('richiede_supervisione', False)),
-            pattern_sig,
         ))
 
         id_anomalia = cursor.fetchone()[0]
@@ -1180,6 +1183,102 @@ def _insert_order(
 
     db.commit()
     return result
+
+
+def _try_auto_apply_listino_from_pattern(
+    db, id_testata: int, id_dettaglio: int, codice_aic: str, vendor: str
+) -> bool:
+    """
+    v12.3: Tenta di applicare automaticamente il prezzo da pattern ML ordinario.
+
+    A differenza di AIC/LOOKUP dove il ML applica una correzione concreta,
+    il pattern listino storicamente faceva solo "skip anomalia" senza applicare
+    il prezzo. Questo causava righe senza prezzo e senza segnalazione.
+
+    Ora il pattern ordinario:
+    1. Recupera prezzo_netto_pattern dai criteri_ordinari_listino
+    2. Aggiorna la riga ordini_dettaglio con il prezzo
+    3. Inserisce/aggiorna listini_vendor (così i prossimi ordini vengono
+       arricchiti direttamente dall'enrichment, senza passare da qui)
+
+    Returns:
+        True se prezzo applicato, False se pattern non trovato/senza prezzo
+    """
+    import hashlib
+    from .supervision.ml import log_criterio_applicato
+
+    # Calcola pattern_signature (stesso algoritmo di _calcola_pattern_signature_listino)
+    raw = f"{(vendor or 'UNKNOWN').upper()}|LST-A01|{codice_aic or 'NO_AIC'}"
+    pattern_sig = hashlib.md5(raw.encode()).hexdigest()[:16]
+
+    # Cerca pattern ordinario con prezzo
+    pattern = db.execute("""
+        SELECT prezzo_netto_pattern, prezzo_pubblico_pattern,
+               sconto_1_pattern, sconto_2_pattern, aliquota_iva_pattern,
+               pattern_descrizione
+        FROM criteri_ordinari_listino
+        WHERE pattern_signature = %s AND is_ordinario = TRUE
+    """, (pattern_sig,)).fetchone()
+
+    if not pattern or not pattern['prezzo_netto_pattern']:
+        return False
+
+    prezzo_netto = pattern['prezzo_netto_pattern']
+    prezzo_pubblico = pattern.get('prezzo_pubblico_pattern')
+    sconto_1 = pattern.get('sconto_1_pattern')
+    sconto_2 = pattern.get('sconto_2_pattern')
+    aliquota_iva = pattern.get('aliquota_iva_pattern')
+
+    # 1. Aggiorna la riga ordine con il prezzo dal pattern
+    db.execute("""
+        UPDATE ordini_dettaglio
+        SET prezzo_netto = %s,
+            prezzo_pubblico = COALESCE(%s, prezzo_pubblico),
+            sconto_1 = COALESCE(%s, sconto_1),
+            sconto_2 = COALESCE(%s, sconto_2),
+            aliquota_iva = COALESCE(%s, aliquota_iva)
+        WHERE id_dettaglio = %s
+    """, (prezzo_netto, prezzo_pubblico, sconto_1, sconto_2, aliquota_iva, id_dettaglio))
+
+    # 2. Inserisce/aggiorna listini_vendor per i prossimi ordini
+    db.execute("""
+        INSERT INTO listini_vendor (
+            vendor, codice_aic, descrizione,
+            prezzo_netto, prezzo_pubblico, sconto_1, sconto_2,
+            aliquota_iva, fonte_file
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'AUTO_ML_PATTERN')
+        ON CONFLICT (vendor, codice_aic) DO UPDATE SET
+            prezzo_netto = EXCLUDED.prezzo_netto,
+            prezzo_pubblico = COALESCE(EXCLUDED.prezzo_pubblico, listini_vendor.prezzo_pubblico),
+            sconto_1 = COALESCE(EXCLUDED.sconto_1, listini_vendor.sconto_1),
+            sconto_2 = COALESCE(EXCLUDED.sconto_2, listini_vendor.sconto_2),
+            aliquota_iva = COALESCE(EXCLUDED.aliquota_iva, listini_vendor.aliquota_iva),
+            data_import = CURRENT_TIMESTAMP
+    """, (
+        vendor.upper(), codice_aic,
+        (pattern.get('pattern_descrizione') or '')[:100],
+        prezzo_netto, prezzo_pubblico, sconto_1, sconto_2, aliquota_iva
+    ))
+
+    # 3. Log per audit
+    log_criterio_applicato(
+        id_testata=id_testata,
+        id_dettaglio=id_dettaglio,
+        pattern_signature=pattern_sig,
+        automatico=True,
+        operatore='SISTEMA'
+    )
+
+    from .database_pg import log_operation
+    log_operation(
+        'AUTO_APPLY_LISTINO',
+        'ORDINI_DETTAGLIO',
+        id_dettaglio,
+        f"Prezzo {prezzo_netto} applicato da pattern ML {pattern_sig} + listino aggiornato"
+    )
+
+    return True
 
 
 def _insert_detail_row(db, id_testata: int, riga: Dict) -> int:
