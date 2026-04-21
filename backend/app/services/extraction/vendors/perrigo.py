@@ -8,11 +8,15 @@ Struttura documento:
 - Sezione "Luogo destinazione": ragione sociale, indirizzo, CAP/città/provincia
 - NO P.IVA cliente, NO MIN_ID → lookup su indirizzo destinazione
 - Tabella prodotti: Linea (10,20,30...), Codice, Descrizione, Q.tà, Sconto%, Listino, Pr.Netto, Valore, %IVA
+- Codice in colonna = materiale SAP Perrigo (10 cifre), NON è AIC
+- Sotto la descrizione: "MINSAN : XXXXXXXXX" (9 cifre) = AIC ministeriale reale
+- Sotto la descrizione: "EAN : XXXXXXXXXXXXXX" (14 cifre) = GTIN (informativo)
 - Componenti espositore: righe child sotto "Componenti" con AIC 9 cifre
-- Codice 10 cifre = espositore (is_no_aic=True)
-- Codice 9 cifre sotto Componenti = child (AIC valido)
+- Espositore puro (senza MINSAN, solo EAN alfanumerico): is_no_aic=True + child elaborati
+- Prodotto regolare (con MINSAN): l'eventuale sezione "Componenti" è info bundle/LE, non child
 - Dilazione: default 60 giorni
 
+v1.1: AIC preso da "MINSAN :" anziché dal codice colonna (materiale SAP)
 v1.0: Implementazione iniziale
 """
 
@@ -161,17 +165,22 @@ def extract_perrigo(text: str, lines: List[str], pdf_path: str = None) -> List[D
         if iva_match:
             aliquota_iva = int(iva_match.group(1))
 
-        # Determina se espositore (codice 10 cifre = espositore senza AIC)
-        is_expo = len(codice) == 10
-        codice_aic = ''
-        codice_originale = codice
+        # AIC = MINSAN sotto la descrizione (9 cifre). Il codice colonna e' materiale SAP.
+        # Se manca MINSAN e' espositore puro senza AIC (caso PHYSIOMER EXPO BANCO).
+        minsan_match = re.search(r'MINSAN\s*:\s*(\d+)', block)
 
-        if not is_expo:
-            # Codice 9 cifre o meno → normalizza come AIC
-            aic_norm, aic_orig, is_esp_desc, _ = normalize_aic(codice, descrizione)
+        if minsan_match:
+            minsan = minsan_match.group(1)
+            aic_norm, aic_orig, is_esp_desc, _ = normalize_aic(minsan, descrizione)
             codice_aic = aic_norm
             codice_originale = aic_orig
             is_expo = is_esp_desc
+            is_no_aic = False
+        else:
+            codice_aic = ''
+            codice_originale = codice
+            is_expo = True
+            is_no_aic = True
 
         n_riga += 1
         data['righe'].append({
@@ -188,15 +197,18 @@ def extract_perrigo(text: str, lines: List[str], pdf_path: str = None) -> List[D
             'aliquota_iva': aliquota_iva,
             'is_espositore': is_expo,
             'is_child': False,
-            'is_no_aic': is_expo,  # Espositore 10 cifre non ha AIC
+            'is_no_aic': is_no_aic,
         })
 
         # =====================================================================
         # 6. COMPONENTI (child dell'espositore)
         # Formato: "951553003  PHYSIOMER GETTO NORMALE 135ML GR/IT  2 ST"
         # O senza AIC: "PHYSIOMER COUNTER DISPLAY 8 PZ VUOTO  1 ST"
+        # Elaborati per qualsiasi espositore (con o senza MINSAN proprio).
+        # Un prodotto LE/bundle che NON e' espositore (descrizione senza
+        # ESP/EXP/BANCO/EXPO) vede la sezione "Componenti" ignorata.
         # =====================================================================
-        if 'Componenti' in block or 'componenti' in block.lower():
+        if is_expo and ('Componenti' in block or 'componenti' in block.lower()):
             comp_section = block[block.lower().find('componenti'):]
 
             # Righe componente con AIC (9 cifre)
@@ -229,8 +241,9 @@ def extract_perrigo(text: str, lines: List[str], pdf_path: str = None) -> List[D
                 })
 
             # Righe componente SENZA AIC (es. display vuoto)
+            # Mixed-case supportato: "BIO OIL Expo Banco Misto Tp Vuoto IT"
             comp_noaic = re.finditer(
-                r'^\s{10,}([A-Z][A-Z\s\d]+?)\s+(\d+)\s+ST\s*$',
+                r'^\s{10,}([A-Za-z][A-Za-z0-9\s/+\-\.]+?)\s+(\d+)\s+ST\s*$',
                 comp_section, re.M
             )
             for cn in comp_noaic:
