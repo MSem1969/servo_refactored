@@ -388,6 +388,6 @@ def log_criterio_applicato(
         INSERT INTO LOG_CRITERI_APPLICATI
         (id_testata, id_dettaglio, pattern_signature, applicato_automaticamente, operatore)
         VALUES (?, ?, ?, ?, ?)
-    """, (id_testata, id_dettaglio, pattern_signature, 1 if automatico else 0, operatore))
+    """, (id_testata, id_dettaglio, pattern_signature, bool(automatico), operatore))
 
     db.commit()
