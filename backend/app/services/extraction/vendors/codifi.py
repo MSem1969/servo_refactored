@@ -67,7 +67,7 @@ def extract_codifi(text: str, lines: List[str], pdf_path: str = None) -> List[Di
                                 'Indirizzo' not in continuation and
                                 'AIC' not in continuation and
                                 len(continuation) < 40 and
-                                not re.match(r'^0\d{8}', continuation)):
+                                not re.match(r'^\d{9}\s+',continuation)):
                                 if continuation.startswith('-'):
                                     continuation = continuation[1:].strip()
                                 rs = rs + ' ' + continuation
@@ -87,7 +87,7 @@ def extract_codifi(text: str, lines: List[str], pdf_path: str = None) -> List[Di
                 if i+2 < len(lines):
                     continuation = lines[i+2].strip()
                     if (continuation and
-                        not re.match(r'^0\d{8}', continuation) and
+                        not re.match(r'^\d{9}\s+',continuation) and
                         len(continuation) < 25 and
                         'AIC' not in continuation and
                         'Cod.' not in continuation):
@@ -145,7 +145,7 @@ def extract_codifi(text: str, lines: List[str], pdf_path: str = None) -> List[Di
 
         # CODIFI-T01/T02/T03/T04/T05: Righe prodotto
         # Formato: AIC (9 cifre) | Cod.Prodotto (6 alfanum, IGNORARE) | Descrizione (inizia con lettera) | Quantità
-        if current_order and re.match(r'^0\d{8}', line.strip()):
+        if current_order and re.match(r'^\d{9}\s+',line.strip()):
             parts = line.split()
             if len(parts) >= 3:
                 # Colonna 1: Codice AIC (9 cifre)
