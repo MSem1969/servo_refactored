@@ -1270,7 +1270,7 @@ def _try_auto_apply_listino_from_pattern(
         operatore='SISTEMA'
     )
 
-    from .database_pg import log_operation
+    from ..database_pg import log_operation
     log_operation(
         'AUTO_APPLY_LISTINO',
         'ORDINI_DETTAGLIO',
