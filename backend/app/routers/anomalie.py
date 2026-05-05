@@ -1121,7 +1121,7 @@ async def correggi_erp_anomalia(
                 db.execute("""
                     UPDATE ordini_testata
                     SET stato = 'ESTRATTO'
-                    WHERE id_testata = %s AND stato IN ('ANOMALIA', 'PENDING_REVIEW')
+                    WHERE id_testata = %s AND stato = 'ANOMALIA'
                 """, (id_testata,))
 
             db.commit()
@@ -1323,7 +1323,7 @@ async def risolvi_anomalia_deposito(
                 db.execute("""
                     UPDATE ordini_testata
                     SET stato = 'ESTRATTO'
-                    WHERE id_testata = %s AND stato IN ('ANOMALIA', 'PENDING_REVIEW')
+                    WHERE id_testata = %s AND stato = 'ANOMALIA'
                 """, (id_testata,))
 
         db.commit()

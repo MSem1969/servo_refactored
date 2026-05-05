@@ -369,7 +369,7 @@ async def revisiona_depositi() -> Dict[str, Any]:
     """
     Revisiona ordini con anomalie DEP-A01 (deposito mancante).
 
-    Cerca ordini in stato ANOMALIA/PENDING_REVIEW con anomalie DEP-A01 aperte,
+    Cerca ordini in stato ANOMALIA con anomalie DEP-A01 aperte,
     e prova a trovare il deposito in anagrafica_clienti usando P.IVA e/o MIN_ID.
 
     Logica di matching:

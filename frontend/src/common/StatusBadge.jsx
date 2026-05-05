@@ -137,21 +137,15 @@ const StatusBadge = ({
       label: 'In Tracciato', 
       icon: '📋' 
     },
-    PARZIALMENTE_ESP: { 
-      bg: 'bg-amber-100', 
-      text: 'text-amber-700', 
-      label: 'Parziale', 
-      icon: '⚡' 
+    PARZIALE: {
+      bg: 'bg-amber-100',
+      text: 'text-amber-700',
+      label: 'Parziale',
+      icon: '⚡'
     },
     
     // Stati supervisione
-    PENDING_REVIEW: { 
-      bg: 'bg-orange-100', 
-      text: 'text-orange-700', 
-      label: 'In Revisione', 
-      icon: '⏳' 
-    },
-    APPROVED: { 
+    APPROVED: {
       bg: 'bg-emerald-100', 
       text: 'text-emerald-700', 
       label: 'Approvato', 
@@ -251,7 +245,7 @@ StatusBadge.hasStatus = (status) => {
     completed: true, processing: true, pending: true, error: true,
     ESTRATTO: true, ANOMALIA: true, VALIDATO: true, ESPORTATO: true, PARZ_ESPORTATO: true, PARZ_EVASO: true, EVASO: true, ARCHIVIATO: true,
     CONFERMATO: true, IN_SUPERVISIONE: true, SUPERVISIONATO: true, IN_TRACCIATO: true,
-    PARZIALMENTE_ESP: true, PENDING_REVIEW: true, APPROVED: true, REJECTED: true,
+    PARZIALE: true, APPROVED: true, REJECTED: true,
     MODIFIED: true, APERTA: true, RISOLTA: true, IGNORATA: true,
     duplicato: true, uploading: true
   };

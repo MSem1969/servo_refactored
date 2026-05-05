@@ -614,7 +614,7 @@ def _sblocca_ordine_se_possibile(id_testata: int) -> bool:
         result = db.execute("""
             UPDATE ordini_testata
             SET stato = 'ESTRATTO'
-            WHERE id_testata = %s AND stato IN ('ANOMALIA', 'PENDING_REVIEW')
+            WHERE id_testata = %s AND stato = 'ANOMALIA'
             RETURNING id_testata
         """, (id_testata,)).fetchone()
 

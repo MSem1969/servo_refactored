@@ -72,7 +72,6 @@ def get_ordini_pronti_export() -> List[Dict]:
 
     Logica:
     - Stato ESTRATTO (non ancora esportati)
-    - Esclusi SCARTATO, ESPORTATO
     - Con lookup valido
     """
     db = get_db()

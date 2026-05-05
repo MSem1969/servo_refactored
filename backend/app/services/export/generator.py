@@ -87,9 +87,8 @@ def generate_tracciati_per_ordine(
     else:
         ordini = db.execute("""
             SELECT * FROM V_ORDINI_COMPLETI
-            WHERE stato NOT IN ('SCARTATO', 'PENDING_REVIEW', 'ARCHIVIATO')
+            WHERE stato NOT IN ('ARCHIVIATO', 'ESPORTATO')
             AND lookup_method != 'NESSUNO'
-            AND stato != 'ESPORTATO'
             ORDER BY vendor, numero_ordine_vendor
         """).fetchall()
 
@@ -286,20 +285,15 @@ def valida_e_genera_tracciato(
     """, (id_testata,)).fetchone()
     ordine_dict['deposito_riferimento'] = deposito_row['deposito_riferimento'] if deposito_row else None
 
-    # 1a. Verifica stato ordine - blocca generazione per stati non validi
+    # 1a. Verifica stato ordine - blocca generazione per stati ANOMALIA
     stato_ordine = ordine_dict.get('stato', 'ESTRATTO')
-    stati_bloccanti = {
-        'PENDING_REVIEW': 'IN REVISIONE',
-        'ANOMALIA': 'ANOMALIA',
-    }
-    if stato_ordine in stati_bloccanti:
-        stato_label = stati_bloccanti[stato_ordine]
+    if stato_ordine == 'ANOMALIA':
         return {
             'success': False,
-            'error': f'Ordine in stato {stato_label}. Impossibile generare tracciato. Risolvere le anomalie prima di procedere.'
+            'error': 'Ordine in stato ANOMALIA. Impossibile generare tracciato. Risolvere le anomalie prima di procedere.'
         }
 
-    # v11.4: Verifica supervisioni pending - blocco anche se stato non è PENDING_REVIEW
+    # v11.4: Verifica supervisioni pending - blocca anche se stato != ANOMALIA
     # Inclusa supervisione_prezzo
     # v12.0: Aggiunta supervisione_erp al conteggio pending
     supervisioni_pending = db.execute("""

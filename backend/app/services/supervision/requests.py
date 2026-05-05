@@ -237,7 +237,7 @@ def _crea_supervisione_espositore(
 
 def blocca_ordine_per_supervisione(id_testata: int):
     """
-    Blocca un ordine settando stato PENDING_REVIEW.
+    Blocca un ordine settando stato ANOMALIA.
 
     L'ordine non potra essere esportato finche tutte le supervisioni
     non sono state gestite.
@@ -249,7 +249,7 @@ def blocca_ordine_per_supervisione(id_testata: int):
 
     db.execute("""
         UPDATE ordini_testata
-        SET stato = 'PENDING_REVIEW'
+        SET stato = 'ANOMALIA'
         WHERE id_testata = %s
     """, (id_testata,))
 
@@ -347,7 +347,7 @@ def sblocca_ordine_se_completo(id_testata: int):
         db.execute("""
             UPDATE ordini_testata
             SET stato = %s
-            WHERE id_testata = %s AND stato IN ('PENDING_REVIEW', 'ANOMALIA')
+            WHERE id_testata = %s AND stato = 'ANOMALIA'
         """, (nuovo_stato, id_testata))
         db.commit()
 

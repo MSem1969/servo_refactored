@@ -904,7 +904,7 @@ class AnomaliaResolver:
             self.db.execute("""
                 UPDATE ordini_testata
                 SET stato = 'ESTRATTO'
-                WHERE id_testata = %s AND stato IN ('ANOMALIA', 'PENDING_REVIEW')
+                WHERE id_testata = %s AND stato = 'ANOMALIA'
             """, (id_testata,))
 
 

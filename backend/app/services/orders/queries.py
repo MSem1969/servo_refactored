@@ -336,7 +336,7 @@ def get_stato_righe_ordine(id_testata: int) -> Dict[str, int]:
             COALESCE(SUM(CASE WHEN stato_riga = 'ESPORTATO' THEN 1 ELSE 0 END), 0) AS esportato,
             COALESCE(SUM(CASE WHEN stato_riga = 'EVASO' THEN 1 ELSE 0 END), 0) AS evaso,
             COALESCE(SUM(CASE WHEN stato_riga = 'ARCHIVIATO' THEN 1 ELSE 0 END), 0) AS archiviato,
-            COALESCE(SUM(CASE WHEN stato_riga IN ('PARZIALMENTE_ESP', 'PARZIALE') THEN 1 ELSE 0 END), 0) AS parzialmente_esp,
+            COALESCE(SUM(CASE WHEN stato_riga = 'PARZIALE' THEN 1 ELSE 0 END), 0) AS parziale,
             COALESCE(SUM(CASE WHEN richiede_supervisione = TRUE THEN 1 ELSE 0 END), 0) AS richiede_supervisione
         FROM ORDINI_DETTAGLIO
         WHERE id_testata = ? AND (is_child = FALSE OR is_child IS NULL)
@@ -345,7 +345,7 @@ def get_stato_righe_ordine(id_testata: int) -> Dict[str, int]:
     return dict(stats) if stats else {
         'totale': 0, 'estratto': 0, 'in_supervisione': 0,
         'supervisionato': 0, 'confermato': 0, 'in_tracciato': 0,
-        'esportato': 0, 'parzialmente_esp': 0, 'richiede_supervisione': 0
+        'esportato': 0, 'parziale': 0, 'richiede_supervisione': 0
     }
 
 

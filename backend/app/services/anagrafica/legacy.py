@@ -766,7 +766,7 @@ def revisiona_ordini_deposito_mancante() -> Dict[str, Any]:
     """
     Revisiona ordini con anomalie DEP-A01 (deposito mancante) dopo import anagrafica.
 
-    Cerca ordini in stato ANOMALIA/PENDING_REVIEW con anomalie DEP-A01 o LKP-A05 aperte,
+    Cerca ordini in stato ANOMALIA con anomalie DEP-A01 o LKP-A05 aperte,
     e prova a trovare il deposito in anagrafica_clienti usando P.IVA e/o MIN_ID.
 
     Logica di matching con score:
@@ -805,7 +805,7 @@ def revisiona_ordini_deposito_mancante() -> Dict[str, Any]:
             JOIN anomalie a ON ot.id_testata = a.id_testata
             WHERE a.codice_anomalia IN ('DEP-A01', 'LKP-A05')
               AND a.stato IN ('APERTA', 'IN_GESTIONE')
-              AND ot.stato IN ('ANOMALIA', 'PENDING_REVIEW')
+              AND ot.stato = 'ANOMALIA'
               AND ot.deposito_riferimento IS NULL
             ORDER BY ot.id_testata
         """).fetchall()
@@ -919,7 +919,7 @@ def revisiona_ordini_deposito_mancante() -> Dict[str, Any]:
                         db.execute("""
                             UPDATE ordini_testata
                             SET stato = 'ESTRATTO'
-                            WHERE id_testata = %s AND stato IN ('ANOMALIA', 'PENDING_REVIEW')
+                            WHERE id_testata = %s AND stato = 'ANOMALIA'
                         """, (ordine['id_testata'],))
 
                     result['dettagli'].append({

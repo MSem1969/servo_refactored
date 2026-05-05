@@ -14,7 +14,7 @@ def può_emettere_tracciato(id_testata: int) -> bool:
     Verifica se un ordine puo essere esportato come tracciato.
 
     Condizioni:
-    1. Stato != PENDING_REVIEW e != ANOMALIA
+    1. Stato != ANOMALIA
     2. Nessuna supervisione PENDING (su tutte le tabelle)
     3. Nessuna anomalia bloccante aperta (ERRORE, CRITICO)
 
@@ -32,7 +32,7 @@ def può_emettere_tracciato(id_testata: int) -> bool:
         (id_testata,)
     ).fetchone()
 
-    if not ordine or ordine['stato'] in ('PENDING_REVIEW', 'ANOMALIA'):
+    if not ordine or ordine['stato'] == 'ANOMALIA':
         return False
 
     # v11.4: Verifica supervisioni pending su TUTTE le tabelle (inclusa prezzo)

@@ -258,7 +258,7 @@ def conferma_ordine_completo(
             continue
 
         q_totale = calcola_q_totale(riga)
-        if riga['stato_riga'] == 'PARZIALMENTE_ESP':
+        if riga['stato_riga'] == 'PARZIALE':
             q_da_esportare = riga['q_residua'] or q_totale
         else:
             q_da_esportare = q_totale
@@ -603,7 +603,7 @@ def _aggiorna_contatori_ordine(id_testata: int):
         stats.get('confermato', 0) +
         stats.get('in_tracciato', 0) +
         stats.get('esportato', 0) +
-        stats.get('parzialmente_esp', 0)
+        stats.get('parziale', 0)
     )
 
     totale = stats.get('totale', 0)
@@ -611,7 +611,7 @@ def _aggiorna_contatori_ordine(id_testata: int):
     evaso = stats.get('evaso', 0)
     archiviato = stats.get('archiviato', 0)
     confermate = stats.get('confermato', 0)
-    parziali = stats.get('parzialmente_esp', 0)
+    parziali = stats.get('parziale', 0)
 
     # Righe completate = EVASO + ESPORTATO + ARCHIVIATO
     righe_completate = evaso + esportate + archiviato
