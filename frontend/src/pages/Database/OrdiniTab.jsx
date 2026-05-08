@@ -56,14 +56,24 @@ export default function OrdiniTab({
     }
   };
 
-  // Helper: converti data DD/MM/YYYY in timestamp per confronto
+  // Helper: converti data in timestamp. Supporta sia ISO (YYYY-MM-DD,
+  // YYYY-MM-DDTHH:mm:ss.sssZ — formato del backend Postgres) sia DD/MM/YYYY
+  // (formato legacy in alcuni endpoint).
   const parseDate = (dateStr) => {
     if (!dateStr) return 0;
-    // Formato: DD/MM/YYYY
-    const parts = String(dateStr).split('/');
-    if (parts.length !== 3) return 0;
-    const [day, month, year] = parts.map(Number);
-    return new Date(year, month - 1, day).getTime() || 0;
+    const s = String(dateStr);
+    // ISO: YYYY-MM-DD o YYYY-MM-DDTHH:mm:ss
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+      const t = new Date(s).getTime();
+      return Number.isNaN(t) ? 0 : t;
+    }
+    // Legacy: DD/MM/YYYY
+    const parts = s.split('/');
+    if (parts.length === 3) {
+      const [day, month, year] = parts.map(Number);
+      return new Date(year, month - 1, day).getTime() || 0;
+    }
+    return 0;
   };
 
   // Ordini ordinati
@@ -83,13 +93,8 @@ export default function OrdiniTab({
         valA = Number(valA) || 0;
         valB = Number(valB) || 0;
       }
-      // Confronto date YYYY-MM-DD (data_evasione dal backend)
-      else if (sortField === 'data_evasione') {
-        valA = valA ? new Date(valA).getTime() : 0;
-        valB = valB ? new Date(valB).getTime() : 0;
-      }
-      // Confronto date per campi data (formato DD/MM/YYYY)
-      else if (['data_consegna', 'data_ordine', 'data_estrazione'].includes(sortField)) {
+      // Confronto date (parseDate supporta ISO e DD/MM/YYYY)
+      else if (['data_consegna', 'data_ordine', 'data_estrazione', 'data_evasione'].includes(sortField)) {
         valA = parseDate(valA);
         valB = parseDate(valB);
       }
