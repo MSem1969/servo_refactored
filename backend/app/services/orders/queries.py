@@ -153,7 +153,10 @@ def get_ordini(
             for i, exp in enumerate(exports, 1):
                 row = {**ordine}
                 row['numero_progressivo'] = i
-                row['numero_ordine_display'] = f"{ordine.get('numero_ordine') or ordine.get('numero_ordine_vendor', '')}.{i}"
+                # Suffisso .N solo per ordini originali. Cloni parziali hanno
+                # gia' un suffisso `.N` nel numero_ordine_vendor — non duplicarlo.
+                num_base = ordine.get('numero_ordine') or ordine.get('numero_ordine_vendor', '')
+                row['numero_ordine_display'] = num_base if '.' in (num_base or '') else f"{num_base}.{i}"
                 row['id_esportazione_dettaglio'] = exp['id_esportazione_dettaglio']
                 row['id_esportazione'] = exp['id_esportazione']
                 row['data_evasione'] = str(exp['data_evasione']) if exp['data_evasione'] else None

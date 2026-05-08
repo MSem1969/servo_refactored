@@ -178,7 +178,23 @@ export default function OrdiniTab({
                   <VendorBadge vendor={ordine.vendor} size="xs" />
                 </td>
                 <td className="p-2 text-center align-middle font-mono text-xs font-medium">
-                  {ordine.numero_ordine_display || ordine.numero_ordine || ordine.numero_ordine_vendor || '-'}
+                  <span>{ordine.numero_ordine_display || ordine.numero_ordine || ordine.numero_ordine_vendor || '-'}</span>
+                  {ordine.is_clone_parziale && (
+                    <span
+                      className="ml-1 px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-bold"
+                      title={`Consegna ripartita di ${ordine.numero_ordine_root}`}
+                    >
+                      RIP
+                    </span>
+                  )}
+                  {!ordine.is_clone_parziale && ordine.n_cloni_catena > 0 && (
+                    <span
+                      className="ml-1 px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 text-[10px] font-bold"
+                      title={`${ordine.n_cloni_catena} consegne ripartite generate`}
+                    >
+                      +{ordine.n_cloni_catena}
+                    </span>
+                  )}
                 </td>
                 <td className="p-2 text-center align-middle">
                   <DeliveryBadge dataConsegna={ordine.data_consegna} dataOrdine={ordine.data_ordine} />

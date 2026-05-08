@@ -12,7 +12,6 @@ from datetime import datetime
 
 from ...config import config
 from ...database_pg import get_db, log_operation
-from ...utils import calcola_q_totale
 from ..supervisione import può_emettere_tracciato
 from .formatters import generate_to_t_line, generate_to_d_line
 from .validators import valida_campi_tracciato
@@ -52,6 +51,21 @@ def _get_export_suffix(db, id_testata: int) -> int:
         (id_testata,)
     ).fetchone()[0]
     return count + 1  # Il corrente INSERT avviene dopo la generazione
+
+
+def _apply_export_suffix(numero_ordine: str, db, id_testata: int) -> str:
+    """
+    Applica il suffisso `.N` al numero ordine per il tracciato EDI.
+
+    Se `numero_ordine` contiene gia' un punto (es. clone parziale "ORD001.2"),
+    il numero e' restituito invariato: il suffisso e' gia' materializzato in
+    `numero_ordine_vendor` del clone.
+    Altrimenti calcola il prossimo suffisso da `esportazioni_dettaglio`.
+    """
+    if '.' in (numero_ordine or ''):
+        return numero_ordine
+    suffix = _get_export_suffix(db, id_testata)
+    return f"{numero_ordine}.{suffix}"
 
 
 def generate_tracciati_per_ordine(
@@ -102,9 +116,8 @@ def generate_tracciati_per_ordine(
         id_testata = ordine_dict['id_testata']
         # Supporta sia 'numero_ordine' che 'numero_ordine_vendor'
         numero_ordine = ordine_dict.get('numero_ordine') or ordine_dict.get('numero_ordine_vendor') or ''
-        # Suffisso incrementale per evitare duplicati nel sistema ricevente
-        suffix = _get_export_suffix(db, id_testata)
-        numero_ordine_tracciato = f"{numero_ordine}.{suffix}"
+        # Suffisso incrementale, salvo per cloni parziali con suffisso gia' nel DB
+        numero_ordine_tracciato = _apply_export_suffix(numero_ordine, db, id_testata)
         ordine_dict['numero_ordine'] = numero_ordine_tracciato
         vendor = ordine_dict['vendor']
 
@@ -429,9 +442,8 @@ def valida_e_genera_tracciato(
     numero_ordine = ordine_dict['numero_ordine']
     vendor = ordine_dict['vendor']
 
-    # Suffisso incrementale per evitare duplicati nel sistema ricevente
-    suffix = _get_export_suffix(db, id_testata)
-    numero_ordine_tracciato = f"{numero_ordine}.{suffix}"
+    # Suffisso incrementale, salvo per cloni parziali con suffisso gia' nel DB
+    numero_ordine_tracciato = _apply_export_suffix(numero_ordine, db, id_testata)
     ordine_dict['numero_ordine'] = numero_ordine_tracciato
 
     # v11.3: Nome file con formato TO_T_AAMMGG_HHMMSS.txt
@@ -575,58 +587,17 @@ def valida_e_genera_tracciato(
         VALUES (?, ?)
     """, (id_esportazione, id_testata))
 
-    # 6. Aggiorna stato righe esportate
-    # LOGICA v6.2.1: q_evasa += q_da_evadere, poi q_da_evadere = 0
-    righe_complete = 0
-    righe_parziali = 0
-
+    # 6. Aggiorna stato righe esportate → ESPORTATO
+    # NOTA: q_evasa NON viene modificato dall'export. L'evasione reale
+    # avviene a registrazione bolla (routers/ordini.py aggiorna_evasione)
+    # leggendo q_esportata che memorizza la quantita' di questo export.
     for det_dict in righe_esportate:
         id_dettaglio = det_dict['id_dettaglio']
-        q_da_evadere = det_dict.get('_q_da_evadere_originale', 0) or det_dict.get('q_da_evadere', 0) or 0
-
-        # Recupera riga originale per calcolo quantita
-        riga_orig = db.execute("""
-            SELECT q_venduta, q_sconto_merce, q_omaggio, q_evasa
-            FROM ORDINI_DETTAGLIO WHERE id_dettaglio = ?
-        """, (id_dettaglio,)).fetchone()
-
-        if riga_orig:
-            q_totale = calcola_q_totale(dict(riga_orig))
-            q_evasa_precedente = riga_orig['q_evasa'] or 0
-        else:
-            q_totale = det_dict.get('q_venduta_originale') or det_dict.get('q_originale') or 0
-            q_evasa_precedente = 0
-
-        # FIX v6.2.2: Logica unificata per tutti i casi
-        # q_evasa = quantita gia esportata in tracciati precedenti
-        # q_da_evadere = quantita da esportare in QUESTO tracciato
-        # nuovo_q_evasa = cumulativo dopo questo tracciato
-        nuovo_q_evasa = q_evasa_precedente + q_da_evadere
-
-        # Calcola residuo
-        q_residua = q_totale - nuovo_q_evasa
-
-        # v6.2.1: Determina nuovo stato dopo generazione tracciato
-        # - EVASO: riga completamente evasa (q_evasa >= q_totale)
-        # - PARZIALE: riga parzialmente evasa (0 < q_evasa < q_totale)
-        # - ESTRATTO: nessuna evasione
-        if q_totale > 0 and nuovo_q_evasa >= q_totale:
-            nuovo_stato = 'EVASO'
-            righe_complete += 1
-        elif nuovo_q_evasa > 0:
-            nuovo_stato = 'PARZIALE'
-            righe_parziali += 1
-        else:
-            nuovo_stato = 'ESTRATTO'
-
-        # Aggiorna riga: q_evasa += q_da_evadere, q_da_evadere = 0
-        # ESCLUDI righe ARCHIVIATO - stato finale immutabile (v9.1)
         db.execute("""
             UPDATE ORDINI_DETTAGLIO
-            SET stato_riga = ?,
-                q_evasa = ?,
+            SET stato_riga = 'ESPORTATO',
+                q_esportata = COALESCE(q_da_evadere, 0),
                 q_da_evadere = 0,
-                q_residua = ?,
                 confermato_da = ?,
                 data_conferma = ?,
                 num_esportazioni = COALESCE(num_esportazioni, 0) + 1,
@@ -635,97 +606,21 @@ def valida_e_genera_tracciato(
             WHERE id_dettaglio = ?
               AND stato_riga != 'ARCHIVIATO'
         """, (
-            nuovo_stato, nuovo_q_evasa, q_residua, operatore, now.isoformat(),
-            now.isoformat(), id_esportazione, id_dettaglio
+            operatore, now.isoformat(), now.isoformat(),
+            id_esportazione, id_dettaglio
         ))
 
-    # 7. AGGIORNA STATO TUTTE LE RIGHE dell'ordine
-    # Corregge lo stato anche per righe non processate in questo tracciato
-    # (es. righe gia evase in tracciati precedenti)
-
-    # Righe completamente evase -> EVASO (escluso ARCHIVIATO)
+    # 7. Aggiorna stato ordine: VALIDATO dopo generazione tracciato.
+    # Lo stato ESPORTATO/PARZ_ESPORTATO verra' assegnato dopo invio FTP
+    # (ftp/sender.py). EVASO/PARZ_EVASO solo a registrazione bolla.
     db.execute("""
-        UPDATE ORDINI_DETTAGLIO
-        SET stato_riga = 'EVASO'
+        UPDATE ORDINI_TESTATA
+        SET stato = 'VALIDATO',
+            data_validazione = COALESCE(data_validazione, datetime('now')),
+            validato_da = COALESCE(validato_da, ?)
         WHERE id_testata = ?
-          AND (is_child = FALSE OR is_child IS NULL)
-          AND q_evasa >= (COALESCE(q_venduta,0) + COALESCE(q_sconto_merce,0) + COALESCE(q_omaggio,0))
-          AND (COALESCE(q_venduta,0) + COALESCE(q_sconto_merce,0) + COALESCE(q_omaggio,0)) > 0
-          AND stato_riga != 'ARCHIVIATO'
-    """, (id_testata,))
-
-    # Righe parzialmente evase -> PARZIALE (escluso ARCHIVIATO)
-    db.execute("""
-        UPDATE ORDINI_DETTAGLIO
-        SET stato_riga = 'PARZIALE'
-        WHERE id_testata = ?
-          AND (is_child = FALSE OR is_child IS NULL)
-          AND q_evasa > 0
-          AND q_evasa < (COALESCE(q_venduta,0) + COALESCE(q_sconto_merce,0) + COALESCE(q_omaggio,0))
-          AND stato_riga != 'ARCHIVIATO'
-    """, (id_testata,))
-
-    # Righe con q_da_evadere > 0 ma non ancora esportate -> CONFERMATO (escluso ARCHIVIATO)
-    db.execute("""
-        UPDATE ORDINI_DETTAGLIO
-        SET stato_riga = 'CONFERMATO'
-        WHERE id_testata = ?
-          AND (is_child = FALSE OR is_child IS NULL)
-          AND (q_evasa IS NULL OR q_evasa = 0)
-          AND q_da_evadere > 0
-          AND stato_riga != 'ARCHIVIATO'
-    """, (id_testata,))
-
-    # Righe senza evasione e senza q_da_evadere -> ESTRATTO (escluso ARCHIVIATO)
-    db.execute("""
-        UPDATE ORDINI_DETTAGLIO
-        SET stato_riga = 'ESTRATTO'
-        WHERE id_testata = ?
-          AND (is_child = FALSE OR is_child IS NULL)
-          AND (q_evasa IS NULL OR q_evasa = 0)
-          AND (q_da_evadere IS NULL OR q_da_evadere = 0)
-          AND stato_riga != 'ARCHIVIATO'
-    """, (id_testata,))
-
-    # 8. Verifica stato complessivo ordine
-    # Conta righe totali e righe completamente evase
-    # v6.2: q_totale = q_venduta + q_sconto_merce + q_omaggio
-    stats = db.execute("""
-        SELECT
-            COUNT(*) as totale,
-            SUM(CASE
-                WHEN q_evasa >= (COALESCE(q_venduta,0) + COALESCE(q_sconto_merce,0) + COALESCE(q_omaggio,0))
-                     AND (COALESCE(q_venduta,0) + COALESCE(q_sconto_merce,0) + COALESCE(q_omaggio,0)) > 0
-                THEN 1 ELSE 0 END) as complete,
-            SUM(CASE
-                WHEN q_evasa > 0
-                     AND q_evasa < (COALESCE(q_venduta,0) + COALESCE(q_sconto_merce,0) + COALESCE(q_omaggio,0))
-                THEN 1 ELSE 0 END) as parziali,
-            SUM(CASE WHEN q_evasa IS NULL OR q_evasa = 0 THEN 1 ELSE 0 END) as non_evase
-        FROM ORDINI_DETTAGLIO
-        WHERE id_testata = ? AND (is_child = FALSE OR is_child IS NULL)
-    """, (id_testata,)).fetchone()
-
-    totale_righe = stats['totale'] or 0
-    righe_complete_tot = stats['complete'] or 0
-    righe_parziali_tot = stats['parziali'] or 0
-    righe_non_evase = stats['non_evase'] or 0
-
-    # 8. Aggiorna stato ordine: VALIDATO dopo generazione tracciato
-    # Lo stato ESPORTATO/PARZ_ESPORTATO verrà assegnato dopo invio FTP
-    # EVASO/PARZ_EVASO saranno gestiti manualmente (fase futura)
-    if righe_complete_tot > 0 or righe_parziali_tot > 0:
-        db.execute("""
-            UPDATE ORDINI_TESTATA
-            SET stato = 'VALIDATO',
-                data_validazione = COALESCE(data_validazione, datetime('now')),
-                validato_da = COALESCE(validato_da, ?)
-            WHERE id_testata = ?
-        """, (operatore, id_testata))
-        stato_ordine = 'VALIDATO'
-    else:
-        # Nessuna riga evasa - mantieni stato precedente
-        stato_ordine = ordine_dict.get('stato', 'ESTRATTO')
+    """, (operatore, id_testata))
+    stato_ordine = 'VALIDATO'
 
     # v11.0: Chiudi anomalie INFO e ATTENZIONE quando ordine viene validato
     # Le anomalie ERRORE e CRITICO devono essere risolte manualmente prima della validazione
@@ -739,11 +634,22 @@ def valida_e_genera_tracciato(
           AND livello IN ('INFO', 'ATTENZIONE')
     """, (now.isoformat(), f'Chiusa automaticamente con validazione ordine (operatore: {operatore})', id_testata))
 
+    # v11.6: Consegne ripartite. Se ci sono righe non archiviate con residuo
+    # > 0 dopo l'export, genera clone parziale ".N" in stato ESTRATTO.
+    # Stessa transazione del generator -> atomicita' garantita.
+    from ..orders.fulfillment import crea_clone_parziale
+    id_clone = crea_clone_parziale(id_testata, operatore=operatore)
+
     db.commit()
 
     log_operation('VALIDA_TRACCIATO', 'ORDINI_TESTATA', id_testata,
                  f"Generato tracciato: {len(lines_d)} righe. Stato ordine: {stato_ordine}",
                  operatore=operatore)
+
+    if id_clone:
+        log_operation('CREA_CLONE_PARZIALE', 'ORDINI_TESTATA', id_clone,
+                     f"Clone parziale generato da id_testata={id_testata} (consegna ripartita)",
+                     operatore=operatore)
 
     # Costruisci messaggio con eventuali warning
     message = f"Tracciato generato: {len(lines_d)} righe esportate. Stato ordine: {stato_ordine}"
@@ -751,10 +657,13 @@ def valida_e_genera_tracciato(
         message += f"\n\nAvvisi: {len(validation_warnings)}"
         for w in validation_warnings:
             message += f"\n- {w}"
+    if id_clone:
+        message += f"\n\nConsegna ripartita: generato ordine .N (id_testata={id_clone}) con le righe residue."
 
     return {
         'success': True,
         'id_testata': id_testata,
+        'id_clone_parziale': id_clone,
         'stato': stato_ordine,
         'tracciato': {
             'to_t': {
@@ -771,9 +680,12 @@ def valida_e_genera_tracciato(
         },
         'statistiche': {
             'righe_esportate': len(lines_d),
-            'righe_complete': righe_complete_tot,
-            'righe_parziali': righe_parziali_tot,
-            'righe_non_evase': righe_non_evase
+            # Conteggi EVASO/PARZIALE/non-evase non sono piu' disponibili
+            # all'export: la transizione a EVASO avviene solo a registrazione
+            # bolla. Mantenuti per retro-compat API (sempre 0 al momento dell'export).
+            'righe_complete': 0,
+            'righe_parziali': 0,
+            'righe_non_evase': len(lines_d)
         },
         'validation_warnings': validation_warnings,
         'message': message

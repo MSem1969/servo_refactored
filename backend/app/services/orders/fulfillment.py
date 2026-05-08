@@ -138,8 +138,8 @@ def conferma_singola_riga(
     if riga['stato_riga'] == 'EVASO':
         return {'success': False, 'error': 'Riga già evasa - non modificabile'}
 
-    if riga['stato_riga'] in ('CONFERMATO', 'IN_TRACCIATO', 'ESPORTATO'):
-        return {'success': False, 'error': 'Riga già confermata o esportata'}
+    if riga['stato_riga'] == 'CONFERMATO':
+        return {'success': False, 'error': 'Riga già confermata'}
 
     # v11.3: Verifica data consegna (max 30 giorni da oggi)
     verifica_data = _verifica_data_consegna(riga.get('data_consegna_riga'))
@@ -232,7 +232,7 @@ def conferma_ordine_completo(
             gia_esportate += 1
             continue
 
-        if riga['stato_riga'] in ('CONFERMATO', 'IN_TRACCIATO'):
+        if riga['stato_riga'] == 'CONFERMATO':
             gia_confermate += 1
             continue
 
@@ -301,13 +301,18 @@ def conferma_ordine_completo(
 # EVASIONI PARZIALI
 # =============================================================================
 
-def registra_evasione(
+def imposta_q_da_evadere(
     id_testata: int,
     id_dettaglio: int,
     q_da_evadere: int,
     operatore: str
 ) -> Dict[str, Any]:
-    """Imposta quantità DA EVADERE per una riga (per il prossimo tracciato)."""
+    """Imposta quantità DA EVADERE per una riga (per il prossimo tracciato).
+
+    Nota: nonostante il nome storico `registra_evasione`, questa funzione NON
+    registra un'evasione reale (non aggiorna q_evasa). L'evasione vera avviene
+    solo a registrazione bolla.
+    """
     db = get_db()
 
     riga = db.execute("""
@@ -365,7 +370,7 @@ def registra_evasione(
     _aggiorna_contatori_ordine(id_testata)
     db.commit()
 
-    log_operation('REGISTRA_EVASIONE', 'ORDINI_DETTAGLIO', id_dettaglio,
+    log_operation('IMPOSTA_Q_DA_EVADERE', 'ORDINI_DETTAGLIO', id_dettaglio,
                  f"q_da_evadere={q_da_evadere}, stato={nuovo_stato}",
                  operatore=operatore)
 
@@ -381,6 +386,37 @@ def registra_evasione(
     }
 
 
+def _cloni_parziali_discendenti(id_testata: int) -> List[Dict[str, Any]]:
+    """
+    Restituisce la lista di cloni "consegna ripartita" discendenti dello stesso
+    ordine root di `id_testata` (escluso l'ordine stesso).
+
+    Se id_testata e' clone, root = id_testata_originale.
+    Se id_testata e' root, root = id_testata.
+    """
+    db = get_db()
+    parent = db.execute("""
+        SELECT id_testata, is_clone_parziale, id_testata_originale
+        FROM ordini_testata
+        WHERE id_testata = ?
+    """, (id_testata,)).fetchone()
+    if not parent:
+        return []
+
+    root_id = parent['id_testata_originale'] if parent['is_clone_parziale'] else parent['id_testata']
+
+    cloni = db.execute("""
+        SELECT id_testata, numero_ordine_vendor, stato
+        FROM ordini_testata
+        WHERE id_testata_originale = ?
+          AND is_clone_parziale = TRUE
+          AND id_testata != ?
+        ORDER BY id_testata
+    """, (root_id, id_testata)).fetchall()
+
+    return [dict(c) for c in cloni]
+
+
 def ripristina_riga(
     id_testata: int,
     id_dettaglio: int,
@@ -392,10 +428,26 @@ def ripristina_riga(
     v11.5: HARD RESET - permette anche il ripristino di righe EVASO.
     Azzera q_evasa e q_da_evadere, la riga torna a ESTRATTO.
 
+    v11.6: Bloccato se l'ordine ha cloni "consegna ripartita" discendenti
+    (le righe residue sono ora gestite sui figli).
+
     NOTA: I tracciati già generati NON vengono annullati.
     L'operatore è responsabile di gestire eventuali discrepanze.
     """
     db = get_db()
+
+    cloni = _cloni_parziali_discendenti(id_testata)
+    if cloni:
+        elenco = ', '.join(c['numero_ordine_vendor'] for c in cloni)
+        return {
+            'success': False,
+            'error': (
+                f"Impossibile ripristinare: l'ordine ha {len(cloni)} consegne "
+                f"ripartite figlie ({elenco}). Le righe residue sono gestite "
+                f"su quegli ordini. Ripristina/elimina prima i figli."
+            ),
+            'cloni_bloccanti': cloni
+        }
 
     riga = db.execute("""
         SELECT id_dettaglio, stato_riga, q_da_evadere, q_evasa,
@@ -412,10 +464,10 @@ def ripristina_riga(
 
     # v11.5: Tutti gli stati sono ripristinabili (incluso EVASO)
     # ARCHIVIATO: undo archiviazione
-    # CONFERMATO/IN_TRACCIATO: revoca conferma
+    # CONFERMATO/ESPORTATO: revoca conferma
     # PARZIALE: azzera q_evasa e q_da_evadere
     # EVASO: HARD RESET - azzera q_evasa e torna a ESTRATTO
-    stati_ripristinabili = ('ARCHIVIATO', 'CONFERMATO', 'IN_TRACCIATO', 'PARZIALE', 'EVASO')
+    stati_ripristinabili = ('ARCHIVIATO', 'CONFERMATO', 'ESPORTATO', 'PARZIALE', 'EVASO')
     if riga['stato_riga'] not in stati_ripristinabili:
         return {'success': False, 'error': f'Stato riga {riga["stato_riga"]} non ripristinabile'}
 
@@ -471,8 +523,23 @@ def ripristina_ordine(
     - IN_SUPERVISIONE: in attesa supervisione
 
     Opera SOLO su righe con stato_riga = 'CONFERMATO' e q_evasa < q_totale.
+
+    v11.6: Bloccato se l'ordine ha cloni "consegna ripartita" discendenti.
     """
     db = get_db()
+
+    cloni = _cloni_parziali_discendenti(id_testata)
+    if cloni:
+        elenco = ', '.join(c['numero_ordine_vendor'] for c in cloni)
+        return {
+            'success': False,
+            'error': (
+                f"Impossibile ripristinare: l'ordine ha {len(cloni)} consegne "
+                f"ripartite figlie ({elenco}). Le righe residue sono gestite "
+                f"su quegli ordini. Ripristina/elimina prima i figli."
+            ),
+            'cloni_bloccanti': cloni
+        }
 
     righe_da_ripristinare = db.execute("""
         SELECT COUNT(*) FROM ORDINI_DETTAGLIO
@@ -591,8 +658,374 @@ def crea_o_recupera_supervisione(
 
 
 # =============================================================================
+# CONSEGNE RIPARTITE - CLONE PARZIALE (v11.6)
+# =============================================================================
+
+def crea_clone_parziale(
+    id_testata: int,
+    operatore: str = 'SYSTEM'
+) -> Optional[int]:
+    """
+    Genera un clone "consegna ripartita" dell'ordine `id_testata`:
+    - copia testata con `numero_ordine_vendor = root.N` (N progressivo .2/.3/...)
+    - copia righe parent NON archiviate con residuo > 0; q_venduta/omaggi
+      proporzionati al residuo, q_evasa=0, q_da_evadere=0, stato 'ESTRATTO'
+    - copia child dei parent migrati con id_parent_espositore aggiornato
+    - SPOSTA anomalie con id_dettaglio sulle righe migrate
+    - COPIA supervisione_aic / supervisione_listino in stato PENDING legate
+      alle righe migrate (preserva storico ML del parent)
+    - lascia anomalie/supervisioni testata-level sul parent
+
+    NON committa: la transazione e' del chiamante (tipicamente generator).
+
+    Returns:
+        id_testata del clone, o None se non ci sono righe residue da clonare.
+    """
+    db = get_db()
+
+    # Righe residue = righe con quantita' ancora da esportare (q_residua > 0).
+    # Quantita' "consumata" = q_evasa (post-bolla) + q_esportata (post-export
+    # pre-bolla). Casi:
+    # - ESTRATTO/CONFERMATO: q_evasa=0, q_esportata=0 → residuo = q_totale
+    # - ESPORTATO totale (q_esportata = q_totale): residuo=0 → esclusa
+    # - ESPORTATO parziale (0 < q_esportata < q_totale): residuo da clonare
+    # - PARZIALE (post-bolla parziale): q_evasa < q_totale → residuo da clonare
+    # - EVASO/ARCHIVIATO: stati finali → escluse
+    righe_residue = db.execute("""
+        SELECT id_dettaglio, q_venduta, q_sconto_merce, q_omaggio,
+               COALESCE(q_evasa, 0) AS q_evasa,
+               COALESCE(q_esportata, 0) AS q_esportata
+        FROM ordini_dettaglio
+        WHERE id_testata = ?
+          AND (is_child = FALSE OR is_child IS NULL)
+          AND stato_riga NOT IN ('EVASO', 'ARCHIVIATO')
+          AND (COALESCE(q_venduta, 0) + COALESCE(q_sconto_merce, 0) + COALESCE(q_omaggio, 0))
+              > (COALESCE(q_evasa, 0) + COALESCE(q_esportata, 0))
+    """, (id_testata,)).fetchall()
+
+    if not righe_residue:
+        return None
+
+    parent = db.execute("""
+        SELECT id_testata, numero_ordine_vendor,
+               id_testata_originale, is_clone_parziale
+        FROM ordini_testata
+        WHERE id_testata = ?
+    """, (id_testata,)).fetchone()
+
+    if parent['is_clone_parziale'] and parent['id_testata_originale']:
+        root_id = parent['id_testata_originale']
+        root_numero = db.execute(
+            "SELECT numero_ordine_vendor FROM ordini_testata WHERE id_testata = ?",
+            (root_id,)
+        ).fetchone()['numero_ordine_vendor']
+    else:
+        root_id = parent['id_testata']
+        root_numero = parent['numero_ordine_vendor']
+
+    n_cloni = db.execute("""
+        SELECT COUNT(*) FROM ordini_testata
+        WHERE id_testata_originale = ? AND is_clone_parziale = TRUE
+    """, (root_id,)).fetchone()[0]
+    suffisso = n_cloni + 2  # primo clone = .2
+    nuovo_numero = f"{root_numero}.{suffisso}"
+    chiave_univoca = f"CLONE_{root_id}_{suffisso}_{int(datetime.now().timestamp())}"
+
+    clone_row = db.execute("""
+        INSERT INTO ordini_testata (
+            id_acquisizione, id_vendor, numero_ordine_vendor,
+            data_ordine, data_consegna,
+            partita_iva_estratta, codice_ministeriale_estratto,
+            ragione_sociale_1, ragione_sociale_2, indirizzo, cap, citta, provincia,
+            nome_agente, gg_dilazione_1, gg_dilazione_2, gg_dilazione_3,
+            note_ordine, note_ddt,
+            id_farmacia_lookup, id_parafarmacia_lookup,
+            lookup_method, lookup_source, lookup_score,
+            ragione_sociale_1_estratta, indirizzo_estratto, cap_estratto,
+            citta_estratta, provincia_estratta,
+            data_ordine_estratta, data_consegna_estratta,
+            fonte_anagrafica, deposito_riferimento, id_cliente_manuale,
+            id_testata_originale, is_clone_parziale, is_ordine_duplicato,
+            stato, data_estrazione,
+            chiave_univoca_ordine, difarm
+        )
+        SELECT
+            id_acquisizione, id_vendor, ?,
+            data_ordine, data_consegna,
+            partita_iva_estratta, codice_ministeriale_estratto,
+            ragione_sociale_1, ragione_sociale_2, indirizzo, cap, citta, provincia,
+            nome_agente, gg_dilazione_1, gg_dilazione_2, gg_dilazione_3,
+            note_ordine, note_ddt,
+            id_farmacia_lookup, id_parafarmacia_lookup,
+            lookup_method, lookup_source, lookup_score,
+            ragione_sociale_1_estratta, indirizzo_estratto, cap_estratto,
+            citta_estratta, provincia_estratta,
+            data_ordine_estratta, data_consegna_estratta,
+            fonte_anagrafica, deposito_riferimento, id_cliente_manuale,
+            ?, TRUE, FALSE,
+            'ESTRATTO', CURRENT_TIMESTAMP,
+            ?, difarm
+        FROM ordini_testata
+        WHERE id_testata = ?
+        RETURNING id_testata
+    """, (nuovo_numero, root_id, chiave_univoca, id_testata)).fetchone()
+
+    id_clone = clone_row['id_testata']
+
+    map_dettagli = {}  # old_id -> new_id
+
+    for riga in righe_residue:
+        q_venduta_orig = riga['q_venduta'] or 0
+        q_sconto_merce_orig = riga['q_sconto_merce'] or 0
+        q_omaggio_orig = riga['q_omaggio'] or 0
+        q_totale_orig = q_venduta_orig + q_sconto_merce_orig + q_omaggio_orig
+        q_consumata = (riga['q_evasa'] or 0) + (riga['q_esportata'] or 0)
+        q_residuo = q_totale_orig - q_consumata
+
+        if q_consumata == 0 or q_totale_orig == 0:
+            nuovo_q_venduta = q_venduta_orig
+            nuovo_q_sconto_merce = q_sconto_merce_orig
+            nuovo_q_omaggio = q_omaggio_orig
+        else:
+            ratio = q_residuo / q_totale_orig
+            nuovo_q_venduta = int(q_venduta_orig * ratio)
+            nuovo_q_sconto_merce = int(q_sconto_merce_orig * ratio)
+            nuovo_q_omaggio = int(q_omaggio_orig * ratio)
+            diff = q_residuo - (nuovo_q_venduta + nuovo_q_sconto_merce + nuovo_q_omaggio)
+            if diff != 0:
+                if nuovo_q_venduta > 0:
+                    nuovo_q_venduta += diff
+                elif nuovo_q_omaggio > 0:
+                    nuovo_q_omaggio += diff
+                else:
+                    nuovo_q_sconto_merce += diff
+
+        nuovo_q_totale = nuovo_q_venduta + nuovo_q_sconto_merce + nuovo_q_omaggio
+
+        riga_clone = db.execute("""
+            INSERT INTO ordini_dettaglio (
+                id_testata, n_riga, codice_aic, codice_originale, codice_materiale,
+                descrizione, tipo_posizione,
+                q_venduta, q_sconto_merce, q_omaggio,
+                data_consegna_riga,
+                sconto_1, sconto_2, sconto_3, sconto_4,
+                prezzo_netto, prezzo_scontare, prezzo_pubblico, prezzo_listino,
+                valore_netto, aliquota_iva, scorporo_iva,
+                note_allestimento, is_espositore, is_child, is_no_aic, tipo_riga,
+                id_parent_espositore, espositore_metadata,
+                stato_riga, richiede_supervisione,
+                modificato_manualmente, valori_originali,
+                q_originale, q_residua, q_evasa, q_da_evadere,
+                codice_aic_inserito, descrizione_estratta,
+                fonte_codice_aic, fonte_quantita,
+                num_esportazioni
+            )
+            SELECT
+                ?, n_riga, codice_aic, codice_originale, codice_materiale,
+                descrizione, tipo_posizione,
+                ?, ?, ?,
+                data_consegna_riga,
+                sconto_1, sconto_2, sconto_3, sconto_4,
+                prezzo_netto, prezzo_scontare, prezzo_pubblico, prezzo_listino,
+                valore_netto, aliquota_iva, scorporo_iva,
+                note_allestimento, is_espositore, is_child, is_no_aic, tipo_riga,
+                NULL, espositore_metadata,
+                'ESTRATTO', richiede_supervisione,
+                modificato_manualmente, valori_originali,
+                ?, ?, 0, 0,
+                codice_aic_inserito, descrizione_estratta,
+                fonte_codice_aic, fonte_quantita,
+                0
+            FROM ordini_dettaglio
+            WHERE id_dettaglio = ?
+            RETURNING id_dettaglio
+        """, (
+            id_clone,
+            nuovo_q_venduta, nuovo_q_sconto_merce, nuovo_q_omaggio,
+            nuovo_q_totale, nuovo_q_totale,
+            riga['id_dettaglio']
+        )).fetchone()
+
+        map_dettagli[riga['id_dettaglio']] = riga_clone['id_dettaglio']
+
+    if map_dettagli:
+        parent_old_ids = list(map_dettagli.keys())
+        placeholders = ','.join(['?'] * len(parent_old_ids))
+        children = db.execute(f"""
+            SELECT id_dettaglio, id_parent_espositore
+            FROM ordini_dettaglio
+            WHERE id_testata = ?
+              AND is_child = TRUE
+              AND id_parent_espositore IN ({placeholders})
+              AND stato_riga != 'ARCHIVIATO'
+        """, (id_testata, *parent_old_ids)).fetchall()
+
+        for child in children:
+            new_parent_id = map_dettagli.get(child['id_parent_espositore'])
+            child_clone = db.execute("""
+                INSERT INTO ordini_dettaglio (
+                    id_testata, n_riga, codice_aic, codice_originale, codice_materiale,
+                    descrizione, tipo_posizione,
+                    q_venduta, q_sconto_merce, q_omaggio,
+                    data_consegna_riga,
+                    sconto_1, sconto_2, sconto_3, sconto_4,
+                    prezzo_netto, prezzo_scontare, prezzo_pubblico, prezzo_listino,
+                    valore_netto, aliquota_iva, scorporo_iva,
+                    note_allestimento, is_espositore, is_child, is_no_aic, tipo_riga,
+                    id_parent_espositore, espositore_metadata,
+                    stato_riga, richiede_supervisione,
+                    modificato_manualmente, valori_originali,
+                    q_originale, q_residua, q_evasa, q_da_evadere,
+                    codice_aic_inserito, descrizione_estratta,
+                    fonte_codice_aic, fonte_quantita,
+                    num_esportazioni
+                )
+                SELECT
+                    ?, n_riga, codice_aic, codice_originale, codice_materiale,
+                    descrizione, tipo_posizione,
+                    q_venduta, q_sconto_merce, q_omaggio,
+                    data_consegna_riga,
+                    sconto_1, sconto_2, sconto_3, sconto_4,
+                    prezzo_netto, prezzo_scontare, prezzo_pubblico, prezzo_listino,
+                    valore_netto, aliquota_iva, scorporo_iva,
+                    note_allestimento, is_espositore, is_child, is_no_aic, tipo_riga,
+                    ?, espositore_metadata,
+                    'ESTRATTO', richiede_supervisione,
+                    modificato_manualmente, valori_originali,
+                    q_originale, q_originale, 0, 0,
+                    codice_aic_inserito, descrizione_estratta,
+                    fonte_codice_aic, fonte_quantita,
+                    0
+                FROM ordini_dettaglio
+                WHERE id_dettaglio = ?
+                RETURNING id_dettaglio
+            """, (id_clone, new_parent_id, child['id_dettaglio'])).fetchone()
+            map_dettagli[child['id_dettaglio']] = child_clone['id_dettaglio']
+
+        # Sposta anomalie con id_dettaglio sulle righe migrate
+        for old_id, new_id in map_dettagli.items():
+            db.execute("""
+                UPDATE anomalie
+                SET id_dettaglio = ?, id_testata = ?
+                WHERE id_dettaglio = ? AND id_testata = ?
+            """, (new_id, id_clone, old_id, id_testata))
+
+        # Copia supervisione_aic e supervisione_listino PENDING legate alle righe
+        for tabella in ('supervisione_aic', 'supervisione_listino'):
+            _copia_supervisione_pending(
+                tabella,
+                map_dettagli,
+                id_testata_old=id_testata,
+                id_testata_new=id_clone,
+                db=db
+            )
+
+    # NB: il logging operatore va fatto DOPO il commit del chiamante
+    # (log_operation committa internamente, romperebbe l'atomicita').
+    return id_clone
+
+
+def _copia_supervisione_pending(
+    tabella: str,
+    map_dettagli: Dict[int, int],
+    id_testata_old: int,
+    id_testata_new: int,
+    db
+) -> None:
+    """
+    Copia righe PENDING da una tabella di supervisione (tipo riga-level)
+    sostituendo id_testata e id_dettaglio con i nuovi valori.
+    Schema dinamico: introspect colonne escludendo PK seriale.
+    """
+    cols_rows = db.execute("""
+        SELECT column_name FROM information_schema.columns
+        WHERE table_name = ?
+          AND column_name NOT IN ('id_supervisione', 'id_correzione', 'id')
+        ORDER BY ordinal_position
+    """, (tabella,)).fetchall()
+
+    cols = [c['column_name'] for c in cols_rows]
+    if 'id_dettaglio' not in cols or 'id_testata' not in cols:
+        return  # Non e' una tabella riga-level
+
+    cols_str = ', '.join(cols)
+
+    for old_det, new_det in map_dettagli.items():
+        select_parts = []
+        params = []
+        for col in cols:
+            if col == 'id_testata':
+                select_parts.append('?')
+                params.append(id_testata_new)
+            elif col == 'id_dettaglio':
+                select_parts.append('?')
+                params.append(new_det)
+            else:
+                select_parts.append(col)
+        select_str = ', '.join(select_parts)
+        params.extend([old_det, id_testata_old])
+
+        db.execute(f"""
+            INSERT INTO {tabella} ({cols_str})
+            SELECT {select_str}
+            FROM {tabella}
+            WHERE id_dettaglio = ? AND id_testata = ?
+              AND COALESCE(stato, 'PENDING') = 'PENDING'
+        """, tuple(params))
+
+
+# =============================================================================
 # HELPER INTERNI
 # =============================================================================
+
+def _calcola_stato_ordine(stato_attuale: str, stats: Dict[str, int],
+                          righe_con_da_evadere: int) -> str:
+    """Calcola stato testata canonico basato su statistiche righe.
+
+    Regole (ordine di precedenza):
+    1. righe_attive == 0:
+       - se ci sono righe EVASO → EVASO (archiviazione post-evasione)
+       - altrimenti → ARCHIVIATO
+    2. tutte righe attive EVASO → EVASO
+    3. almeno una EVASO o PARZIALE → PARZ_EVASO
+    4. stato_attuale post-tracciato (VALIDATO/ESPORTATO/PARZ_ESPORTATO):
+       - se l'operatore ha riportato righe a CONFERMATO con q_da_evadere > 0
+         → retrocede a CONFERMATO (mutabilita' ESPORTATO)
+       - altrimenti mantiene lo stato post-tracciato
+    5. righe confermate o con q_da_evadere > 0 → CONFERMATO
+    6. default → ESTRATTO
+    """
+    totale = stats.get('totale', 0)
+    evaso = stats.get('evaso', 0)
+    archiviato = stats.get('archiviato', 0)
+    parziale = stats.get('parziale', 0)
+    confermato = stats.get('confermato', 0)
+    esportato = stats.get('esportato', 0)
+
+    righe_attive = totale - archiviato
+
+    if righe_attive == 0:
+        return 'EVASO' if evaso > 0 else 'ARCHIVIATO'
+
+    if evaso == righe_attive:
+        return 'EVASO'
+
+    if evaso > 0 or parziale > 0:
+        return 'PARZ_EVASO'
+
+    stati_post_tracciato = ('VALIDATO', 'ESPORTATO', 'PARZ_ESPORTATO')
+    if stato_attuale in stati_post_tracciato:
+        # Mutabilita' ESPORTATO: se sono state riportate righe a CONFERMATO
+        # con quantita' da esportare, retrocedi a CONFERMATO.
+        if righe_con_da_evadere > 0 and confermato > 0 and esportato == 0:
+            return 'CONFERMATO'
+        return stato_attuale
+
+    if confermato > 0 or esportato > 0 or righe_con_da_evadere > 0:
+        return 'CONFERMATO'
+
+    return 'ESTRATTO'
+
 
 def _aggiorna_contatori_ordine(id_testata: int):
     """Aggiorna contatori righe nella testata ordine E lo stato dell'ordine."""
@@ -601,20 +1034,9 @@ def _aggiorna_contatori_ordine(id_testata: int):
 
     righe_confermate = (
         stats.get('confermato', 0) +
-        stats.get('in_tracciato', 0) +
         stats.get('esportato', 0) +
         stats.get('parziale', 0)
     )
-
-    totale = stats.get('totale', 0)
-    esportate = stats.get('esportato', 0)
-    evaso = stats.get('evaso', 0)
-    archiviato = stats.get('archiviato', 0)
-    confermate = stats.get('confermato', 0)
-    parziali = stats.get('parziale', 0)
-
-    # Righe completate = EVASO + ESPORTATO + ARCHIVIATO
-    righe_completate = evaso + esportate + archiviato
 
     righe_con_da_evadere = db.execute("""
         SELECT COUNT(*) FROM ORDINI_DETTAGLIO
@@ -632,32 +1054,13 @@ def _aggiorna_contatori_ordine(id_testata: int):
     """, (id_testata,)).fetchone()
     valore_totale_netto = float(valore_totale_row[0]) if valore_totale_row else 0.0
 
-    # Leggi stato attuale per proteggere stati post-validazione
+    # Leggi stato attuale per logica stati post-tracciato
     stato_attuale_row = db.execute("""
         SELECT stato FROM ORDINI_TESTATA WHERE id_testata = ?
     """, (id_testata,)).fetchone()
     stato_attuale = stato_attuale_row['stato'] if stato_attuale_row else None
 
-    # Stati protetti: non sovrascrivere se ordine è già in fase post-validazione
-    stati_protetti = ('VALIDATO', 'ESPORTATO', 'PARZ_ESPORTATO', 'ARCHIVIATO')
-
-    if stato_attuale in stati_protetti:
-        # Aggiorna solo i contatori, mantieni lo stato
-        nuovo_stato = stato_attuale
-    else:
-        # Logica stato ordine:
-        # - EVASO: tutte le righe sono completate (EVASO/ESPORTATO/ARCHIVIATO)
-        # - PARZ_EVASO: alcune righe completate, altre no
-        # - CONFERMATO: righe confermate ma non ancora evase
-        # - ESTRATTO: nessuna riga confermata
-        if totale > 0 and righe_completate == totale:
-            nuovo_stato = 'EVASO'
-        elif righe_completate > 0 or parziali > 0:
-            nuovo_stato = 'PARZ_EVASO'
-        elif righe_con_da_evadere > 0 or confermate > 0:
-            nuovo_stato = 'CONFERMATO'
-        else:
-            nuovo_stato = 'ESTRATTO'
+    nuovo_stato = _calcola_stato_ordine(stato_attuale, stats, righe_con_da_evadere)
 
     db.execute("""
         UPDATE ORDINI_TESTATA

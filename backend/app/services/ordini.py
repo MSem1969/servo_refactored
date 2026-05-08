@@ -38,7 +38,7 @@ from .orders import (
     # Fulfillment
     conferma_singola_riga,
     conferma_ordine_completo,
-    registra_evasione,
+    imposta_q_da_evadere,
     ripristina_riga,
     ripristina_ordine,
     crea_o_recupera_supervisione,
@@ -70,7 +70,7 @@ __all__ = [
     'create_anomalia',
     'conferma_singola_riga',
     'conferma_ordine_completo',
-    'registra_evasione',
+    'imposta_q_da_evadere',
     'ripristina_riga',
     'ripristina_ordine',
     'crea_o_recupera_supervisione',

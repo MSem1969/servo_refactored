@@ -37,10 +37,11 @@ from ..anomalies.commands import update_anomalia_stato
 from .fulfillment import (
     conferma_singola_riga,
     conferma_ordine_completo,
-    registra_evasione,
+    imposta_q_da_evadere,
     ripristina_riga,
     ripristina_ordine,
     crea_o_recupera_supervisione,
+    crea_clone_parziale,
     fix_stati_righe,
 )
 
@@ -73,10 +74,11 @@ __all__ = [
     # Fulfillment
     'conferma_singola_riga',
     'conferma_ordine_completo',
-    'registra_evasione',
+    'imposta_q_da_evadere',
     'ripristina_riga',
     'ripristina_ordine',
     'crea_o_recupera_supervisione',
+    'crea_clone_parziale',
     'fix_stati_righe',
     # Uploads
     'get_recent_uploads',

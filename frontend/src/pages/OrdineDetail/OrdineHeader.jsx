@@ -58,6 +58,22 @@ export default function OrdineHeader({ ordine, onBack, onShowPdf, onEditHeader, 
               Modificato manualmente
             </span>
           )}
+          {ordine.is_clone_parziale && (
+            <span
+              className="px-2 py-0.5 bg-amber-100 text-amber-800 text-xs rounded-full font-medium"
+              title={`Consegna ripartita di ${ordine.numero_ordine_root}`}
+            >
+              Consegna ripartita {ordine.numero_ordine_root && `(da ${ordine.numero_ordine_root})`}
+            </span>
+          )}
+          {!ordine.is_clone_parziale && ordine.n_cloni_catena > 0 && (
+            <span
+              className="px-2 py-0.5 bg-sky-100 text-sky-800 text-xs rounded-full font-medium"
+              title="Questo ordine ha consegne ripartite figlie"
+            >
+              {ordine.n_cloni_catena} consegna{ordine.n_cloni_catena > 1 ? 'e' : ''} ripartita{ordine.n_cloni_catena > 1 ? 'e' : ''}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {isEditable && onEditHeader && (

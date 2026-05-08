@@ -29,7 +29,7 @@ from ..services.ordini import (
     modifica_riga_dettaglio,
     crea_o_recupera_supervisione,
     get_stato_righe_ordine,
-    registra_evasione,
+    imposta_q_da_evadere,
     ripristina_riga,
     ripristina_ordine,
     fix_stati_righe,
@@ -157,15 +157,19 @@ async def aggiorna_evasione(
     db = get_db()
 
     try:
-        # Verifica esistenza
+        # Verifica esistenza e recupera id_esportazione + id_testata
         existing = db.execute(
-            "SELECT id, id_testata FROM esportazioni_dettaglio WHERE id = %s",
+            "SELECT id, id_esportazione, id_testata FROM esportazioni_dettaglio WHERE id = %s",
             (id_esp_dettaglio,)
         ).fetchone()
 
         if not existing:
             raise HTTPException(status_code=404, detail="Esportazione dettaglio non trovata")
 
+        id_esportazione = existing['id_esportazione']
+        id_testata = existing['id_testata']
+
+        # 1. Registra dati bolla
         db.execute("""
             UPDATE esportazioni_dettaglio
             SET data_evasione = %s,
@@ -180,6 +184,31 @@ async def aggiorna_evasione(
             id_esp_dettaglio
         ))
 
+        # 2. Cascade EVASO: la bolla conferma implicitamente la quantita'
+        # esportata in quell'export (q_esportata, salvata da generator.py).
+        # q_evasa cumulativo += q_esportata; stato = EVASO se raggiunto
+        # q_totale, altrimenti PARZIALE. Esclude ARCHIVIATO/EVASO.
+        righe_aggiornate = db.execute("""
+            UPDATE ordini_dettaglio
+            SET q_evasa = COALESCE(q_evasa, 0) + COALESCE(q_esportata, 0),
+                stato_riga = CASE
+                    WHEN COALESCE(q_evasa, 0) + COALESCE(q_esportata, 0)
+                         >= COALESCE(q_venduta,0) + COALESCE(q_sconto_merce,0) + COALESCE(q_omaggio,0)
+                         AND COALESCE(q_venduta,0) + COALESCE(q_sconto_merce,0) + COALESCE(q_omaggio,0) > 0
+                    THEN 'EVASO'
+                    ELSE 'PARZIALE'
+                END,
+                q_esportata = 0
+            WHERE id_ultima_esportazione = %s
+              AND stato_riga NOT IN ('ARCHIVIATO', 'EVASO')
+            RETURNING id_dettaglio
+        """, (id_esportazione,)).fetchall()
+
+        # 3. Ricalcola stato testata (cascade -> EVASO/PARZ_EVASO)
+        if id_testata:
+            from ..services.orders.fulfillment import _aggiorna_contatori_ordine
+            _aggiorna_contatori_ordine(id_testata)
+
         db.commit()
 
         return {
@@ -189,7 +218,8 @@ async def aggiorna_evasione(
                 "id": id_esp_dettaglio,
                 "data_evasione": request.data_evasione,
                 "numero_bolla": request.numero_bolla,
-                "operatore_evasione": request.operatore
+                "operatore_evasione": request.operatore,
+                "righe_evase": len(righe_aggiornate)
             }
         }
 
@@ -1346,7 +1376,7 @@ async def registra_evasione_riga(
         success, q_da_evadere, q_evasa (cumulativo), q_residua, q_totale
     """
     try:
-        result = registra_evasione(
+        result = imposta_q_da_evadere(
             id_testata=id_testata,
             id_dettaglio=id_dettaglio,
             q_da_evadere=request.q_da_evadere,
