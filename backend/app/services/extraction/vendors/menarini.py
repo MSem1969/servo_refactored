@@ -202,7 +202,11 @@ def extract_menarini(text: str, lines: List[str], pdf_path: str = None) -> List[
                     # Cerca righe con codice AIC (9 cifre) o "--" nella seconda colonna
                     if len(table) >= 1 and len(table[0]) >= 2:
                         first_row = table[0]
+                        desc_col = str(first_row[0] or '').strip().lower()
                         cod_col = str(first_row[1] or '') if len(first_row) > 1 else ''
+                        # Skip tabella spuria "Note Cliente" (overflow note legali su pagina extra)
+                        if desc_col == 'note cliente':
+                            continue
                         if cod_col == '--' or (cod_col.isdigit() and len(cod_col) == 9):
                             # Probabilmente è una tabella dati prodotti
                             data_table = table
@@ -211,12 +215,17 @@ def extract_menarini(text: str, lines: List[str], pdf_path: str = None) -> List[
                 if not data_table:
                     continue
 
+                # Skip pagine di overflow (note legali su pagina extra senza
+                # header ordine): se manca "Ordine N." nel testo non e' un
+                # ordine reale.
+                m_ord = re.search(r'Ordine\s+N\.?:?\s*(\d+)(?:_\d{8})?', page_text)
+                if not m_ord:
+                    continue
+
                 data = {'vendor': 'MENARINI', 'righe': []}
 
                 # Estrazione header
-                m = re.search(r'Ordine\s+N\.?:?\s*(\d+)(?:_\d{8})?', page_text)
-                if m:
-                    data['numero_ordine'] = m.group(1).strip()
+                data['numero_ordine'] = m_ord.group(1).strip()
 
                 m = re.search(r'Cliente\s+(.+?)\s+Cod\.?\s*Cliente', page_text)
                 if m:
