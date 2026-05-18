@@ -232,11 +232,11 @@ class FTPSender:
         """
         Aggiorna stato ordini collegati all'esportazione dopo invio FTP con successo.
 
-        Per ogni ordine in stato VALIDATO:
-        - Se tutte le righe (non child) hanno q_evasa >= q_totale → ESPORTATO
-        - Altrimenti → PARZ_ESPORTATO
+        Per ogni ordine in stato VALIDATO con almeno una riga ESPORTATO -> ESPORTATO.
+        I residui non trasmessi vengono gestiti dal clone parziale (consegna ripartita)
+        creato dal generator, quindi nell'ordine di partenza tutte le righe attive
+        sono ESPORTATE. q_evasa NON va usato: viene popolato solo a registrazione bolla.
         """
-        # Recupera tutti gli id_testata collegati all'esportazione
         testate = self.db.execute("""
             SELECT DISTINCT ed.id_testata
             FROM esportazioni_dettaglio ed
@@ -250,22 +250,27 @@ class FTPSender:
 
             stats = self.db.execute("""
                 SELECT
-                    COUNT(*) as totale,
-                    SUM(CASE
-                        WHEN q_evasa >= (COALESCE(q_venduta,0) + COALESCE(q_sconto_merce,0) + COALESCE(q_omaggio,0))
-                             AND (COALESCE(q_venduta,0) + COALESCE(q_sconto_merce,0) + COALESCE(q_omaggio,0)) > 0
-                        THEN 1 ELSE 0 END) as complete
+                    COUNT(*) FILTER (
+                        WHERE stato_riga <> 'ARCHIVIATO'
+                          AND (is_child = FALSE OR is_child IS NULL)
+                    ) AS attive,
+                    COUNT(*) FILTER (
+                        WHERE stato_riga = 'ESPORTATO'
+                          AND (is_child = FALSE OR is_child IS NULL)
+                    ) AS esportate
                 FROM ORDINI_DETTAGLIO
-                WHERE id_testata = %s AND (is_child = FALSE OR is_child IS NULL)
+                WHERE id_testata = %s
             """, (id_testata,)).fetchone()
 
-            totale = stats['totale'] or 0
-            complete = stats['complete'] or 0
+            attive = stats['attive'] or 0
+            esportate = stats['esportate'] or 0
 
-            if totale > 0 and complete == totale:
+            if attive > 0 and esportate == attive:
                 nuovo_stato = 'ESPORTATO'
-            else:
+            elif esportate > 0:
                 nuovo_stato = 'PARZ_ESPORTATO'
+            else:
+                continue
 
             self.db.execute("""
                 UPDATE ORDINI_TESTATA
