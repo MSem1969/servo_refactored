@@ -5,7 +5,7 @@
 import React, { useState, useMemo } from 'react';
 import { Button, StatusBadge, VendorBadge, Loading } from '../../common';
 import DeliveryBadge from './DeliveryBadge';
-import { getRowHighlightClass } from './utils';
+import { getRowHighlightClass, parseDataConsegna } from './utils';
 
 // Componente per intestazione colonna ordinabile
 function SortableHeader({ label, field, sortField, sortDirection, onSort }) {
@@ -76,32 +76,44 @@ export default function OrdiniTab({
     return 0;
   };
 
+  // Effective consegna timestamp: deve combaciare col valore mostrato in
+  // DeliveryBadge (data_consegna se presente, altrimenti data_ordine + 10
+  // giorni lavorativi). Senza questo, righe con data_consegna NULL hanno
+  // tutte timestamp 0 e l'ordinamento sembra rotto rispetto al display.
+  const effectiveConsegnaTs = (row) => {
+    if (!row?.data_consegna && !row?.data_ordine) return 0;
+    const d = parseDataConsegna(row.data_consegna, row.data_ordine);
+    const t = d?.getTime?.();
+    return Number.isFinite(t) ? t : 0;
+  };
+
   // Ordini ordinati
   const sortedOrdini = useMemo(() => {
     if (!sortField) return ordini;
 
     return [...ordini].sort((a, b) => {
-      let valA = a[sortField];
-      let valB = b[sortField];
-
-      // Gestione null/undefined
-      if (valA == null) valA = '';
-      if (valB == null) valB = '';
+      let valA, valB;
 
       // Confronto numerico per campi numerici
       if (['righe_totali', 'num_righe', 'righe_confermate'].includes(sortField)) {
-        valA = Number(valA) || 0;
-        valB = Number(valB) || 0;
+        valA = Number(a[sortField]) || 0;
+        valB = Number(b[sortField]) || 0;
       }
-      // Confronto date (parseDate supporta ISO e DD/MM/YYYY)
-      else if (['data_consegna', 'data_ordine', 'data_estrazione', 'data_evasione'].includes(sortField)) {
-        valA = parseDate(valA);
-        valB = parseDate(valB);
+      // data_consegna: usa lo stesso fallback del display (data_ordine + 10gg
+      // lavorativi quando manca), altrimenti il sort non riflette ciò che
+      // l'utente vede nel badge.
+      else if (sortField === 'data_consegna') {
+        valA = effectiveConsegnaTs(a);
+        valB = effectiveConsegnaTs(b);
+      }
+      // Altre date: parseDate supporta ISO e DD/MM/YYYY
+      else if (['data_ordine', 'data_estrazione', 'data_evasione'].includes(sortField)) {
+        valA = parseDate(a[sortField]);
+        valB = parseDate(b[sortField]);
       }
       else {
-        // Confronto stringa case-insensitive
-        valA = String(valA).toLowerCase();
-        valB = String(valB).toLowerCase();
+        valA = a[sortField] == null ? '' : String(a[sortField]).toLowerCase();
+        valB = b[sortField] == null ? '' : String(b[sortField]).toLowerCase();
       }
 
       if (valA < valB) return sortDirection === 'asc' ? -1 : 1;
