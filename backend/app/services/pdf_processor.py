@@ -7,6 +7,7 @@
 
 import os
 import io
+import re
 import uuid
 from typing import Dict, Any, List, Optional
 from datetime import datetime
@@ -67,7 +68,7 @@ def _fix_encoding_manual(text: str) -> str:
 
 from ..config import config
 from ..database_pg import get_db, get_vendor_id, log_operation
-from ..utils import compute_file_hash, generate_order_key, calcola_q_totale
+from ..utils import compute_file_hash, generate_order_key, calcola_q_totale, parse_date
 from .extraction import get_extractor, detect_vendor
 from .lookup import lookup_farmacia, lookup_cliente_by_piva
 from .supervisione import (
@@ -171,23 +172,33 @@ Il documento originale è allegato a questo ticket."""
 def _convert_date_to_iso(date_str: str) -> Optional[str]:
     """
     Converte data da formato italiano (DD/MM/YYYY) a ISO (YYYY-MM-DD).
-    Ritorna None per date vuote (PostgreSQL non accetta stringhe vuote per DATE).
+    Ritorna None per date vuote o non parsabili (PostgreSQL non accetta
+    stringhe vuote o non-date per colonne DATE).
     """
     if not date_str or date_str.strip() == '':
         return None
 
+    # Tenta normalizzazione attraverso parse_date (gestisce formati testuali, ISO, etc.)
+    normalized = parse_date(date_str)
+
     # Se contiene '/', assumiamo formato DD/MM/YYYY
-    if '/' in date_str:
-        parts = date_str.split('/')
+    if '/' in normalized:
+        parts = normalized.split('/')
         if len(parts) == 3:
             day, month, year = parts
-            # Normalizza anno a 4 cifre
+            # Tutte le componenti devono essere numeriche, altrimenti scarta
+            if not (day.isdigit() and month.isdigit() and year.isdigit()):
+                return None
             if len(year) == 2:
                 year = '20' + year
             return f"{year}-{month.zfill(2)}-{day.zfill(2)}"
 
-    # Già in formato ISO o altro, ritorna invariato
-    return date_str
+    # Forma ISO YYYY-MM-DD già valida
+    if re.match(r'^\d{4}-\d{2}-\d{2}$', normalized):
+        return normalized
+
+    # Non riconosciuta: scarta invece di passare stringa invalida al DB
+    return None
 
 
 # =============================================================================

@@ -15,7 +15,7 @@ def parse_date(date_str: str) -> str:
     - DD/MM/YYYY, DD.MM.YYYY, DD-MM-YYYY
     - DD/MM/YY (aggiunge 20)
     - YYYY-MM-DD (ISO)
-    - "1 Dec 2025" (testuale)
+    - "1 Dec 2025", "24/mag/2026", "24-mag-26" (testuale, qualunque separatore tra spazio/slash/punto/trattino)
 
     Returns:
         Data in formato DD/MM/YYYY o stringa vuota se non parsabile
@@ -46,21 +46,24 @@ def parse_date(date_str: str) -> str:
     if m:
         return f"{m.group(3)}/{m.group(2)}/{m.group(1)}"
 
-    # Formato testuale "1 Dec 2025" o "01 Dic 2025"
+    # Formato testuale con vari separatori: "1 Dec 2025", "24/mag/2026", "24-mag-26", "24.mag.26"
     months = {
         'JAN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04',
         'MAY': '05', 'JUN': '06', 'JUL': '07', 'AUG': '08',
         'SEP': '09', 'OCT': '10', 'NOV': '11', 'DEC': '12',
-        'GEN': '01', 'FEB': '02', 'MAR': '03', 'APR': '04',
-        'MAG': '05', 'GIU': '06', 'LUG': '07', 'AGO': '08',
-        'SET': '09', 'OTT': '10', 'NOV': '11', 'DIC': '12',
+        'GEN': '01', 'MAG': '05', 'GIU': '06', 'LUG': '07',
+        'AGO': '08', 'SET': '09', 'OTT': '10', 'DIC': '12',
     }
-    m = re.match(r'^(\d{1,2})\s+(\w{3})\s+(\d{4})$', date_str)
+    m = re.match(r'^(\d{1,2})[\s/.\-]+([A-Za-z]{3,})[\s/.\-]+(\d{2,4})$', date_str)
     if m:
         day = int(m.group(1))
-        mon = months.get(m.group(2).upper()[:3], '01')
-        year = m.group(3)
-        return f"{day:02d}/{mon}/{year}"
+        mon = months.get(m.group(2).upper()[:3])
+        if mon:
+            year = m.group(3)
+            if len(year) == 2:
+                y = int(year)
+                year = f"20{year}" if y < 50 else f"19{year}"
+            return f"{day:02d}/{mon}/{year}"
 
     # Non riconosciuto, ritorna originale
     return date_str
