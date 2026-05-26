@@ -5,11 +5,13 @@
 # =============================================================================
 
 import os
-from fastapi import APIRouter, HTTPException, Query, Body
+from fastapi import APIRouter, HTTPException, Query, Body, Depends, Request
 from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, Field
 from typing import Dict, Any, List, Optional
 
 from ..config import config
+from ..auth import get_current_user
 from ..services.tracciati import (
     generate_tracciati_per_ordine,
     get_tracciato_preview,
@@ -17,9 +19,27 @@ from ..services.tracciati import (
     get_esportazioni_storico,
     get_file_tracciato,
 )
+from ..services.export.riemissione import (
+    read_tracciato_files,
+    crea_riemissione,
+    ritrasmetti_esportazione,
+)
+from ..services.tracking import track_from_user, Sezione, Azione
 
 
 router = APIRouter(prefix="/tracciati")
+
+
+def _require_admin(current_user) -> None:
+    """Verifica che l'utente sia admin (riemissione/ritrasmissione)."""
+    if getattr(current_user, "ruolo", None) != "admin":
+        raise HTTPException(403, "Operazione consentita solo agli admin")
+
+
+class RiemissionePayload(BaseModel):
+    to_t_content: str = Field(..., min_length=1)
+    to_d_content: str = Field(..., min_length=1)
+    note: Optional[str] = None
 
 
 # =============================================================================
@@ -261,6 +281,9 @@ async def ricerca_tracciati(
                 e.nome_file_to_d,
                 e.num_testate,
                 e.num_dettagli,
+                e.stato_ftp,
+                e.is_riemissione,
+                e.riemessa_da_id,
                 COALESCE(e.data_generazione, t.data_validazione) AS sort_date,
                 (SELECT COUNT(*) FROM ordini_dettaglio d WHERE d.id_testata = t.id_testata AND (d.is_child = FALSE OR d.is_child IS NULL)) as num_righe,
                 t.difarm
@@ -324,7 +347,10 @@ async def ricerca_tracciati(
                     "id": r["id_esportazione"],
                     "data": r["data_esportazione"] or r["data_validazione"],
                     "file_to_t": r["nome_file_to_t"],
-                    "file_to_d": r["nome_file_to_d"]
+                    "file_to_d": r["nome_file_to_d"],
+                    "stato_ftp": r["stato_ftp"],
+                    "is_riemissione": r["is_riemissione"],
+                    "riemessa_da_id": r["riemessa_da_id"]
                 },
                 "num_righe": r["num_righe"],
                 "validato_da": r["validato_da"],
@@ -402,6 +428,130 @@ async def lista_files_tracciato() -> Dict[str, Any]:
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# =============================================================================
+# RIEMISSIONE TRACCIATO (edit + ritrasmissione dopo scarto ERP)
+# =============================================================================
+
+@router.get("/{id_esportazione}/raw")
+async def get_tracciato_raw(
+    id_esportazione: int,
+    current_user=Depends(get_current_user),
+) -> Dict[str, Any]:
+    """
+    Ritorna il contenuto testuale di TO_T/TO_D di un'esportazione
+    insieme ai metadati per popolare l'editor di riemissione.
+    Solo admin.
+    """
+    _require_admin(current_user)
+    try:
+        data = read_tracciato_files(id_esportazione)
+        return {"success": True, "data": data}
+    except FileNotFoundError as e:
+        raise HTTPException(404, str(e))
+    except ValueError as e:
+        raise HTTPException(404, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"Errore lettura tracciato: {e}")
+
+
+@router.post("/{id_esportazione}/riemetti")
+async def riemetti_tracciato(
+    id_esportazione: int,
+    payload: RiemissionePayload,
+    request: Request,
+    current_user=Depends(get_current_user),
+) -> Dict[str, Any]:
+    """
+    Crea una nuova esportazione a partire dal contenuto editato del
+    tracciato originale. L'esportazione originale viene marcata SUPERSEDED
+    e i suoi file vengono spostati in archive/. La nuova esportazione e'
+    PENDING e puo' essere ritrasmessa via FTP.
+    Solo admin.
+    """
+    _require_admin(current_user)
+    try:
+        result = crea_riemissione(
+            id_esportazione=id_esportazione,
+            to_t_content=payload.to_t_content,
+            to_d_content=payload.to_d_content,
+            note=payload.note,
+            operatore_username=getattr(current_user, "username", None),
+        )
+
+        # Audit (best-effort: non deve mai far fallire la response)
+        try:
+            track_from_user(
+                current_user,
+                Sezione.TRACCIATI,
+                Azione.RIEMETTI_TRACCIATO,
+                request=request,
+                entita="esportazione",
+                id_entita=id_esportazione,
+                parametri={
+                    "id_riemessa": result["id_esportazione_riemessa"],
+                    "nuovo_numero_ordine": result["nuovo_numero_ordine"],
+                    "note": payload.note,
+                },
+            )
+        except Exception:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Audit fallito per riemissione esportazione %s", id_esportazione, exc_info=True
+            )
+
+        return {"success": True, "data": result}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"Errore riemissione: {e}")
+
+
+@router.post("/{id_esportazione}/ritrasmetti")
+async def ritrasmetti_tracciato(
+    id_esportazione: int,
+    request: Request,
+    current_user=Depends(get_current_user),
+) -> Dict[str, Any]:
+    """
+    Rinomina i file dell'esportazione con nuovo timestamp e li invia via FTP.
+    Consentito solo per esportazioni in stato PENDING/RETRY/FAILED.
+    Solo admin.
+    """
+    _require_admin(current_user)
+    try:
+        result = ritrasmetti_esportazione(
+            id_esportazione=id_esportazione,
+            operatore_username=getattr(current_user, "username", None),
+        )
+
+        # Audit (best-effort)
+        try:
+            track_from_user(
+                current_user,
+                Sezione.TRACCIATI,
+                Azione.RITRASMETTI_TRACCIATO,
+                request=request,
+                entita="esportazione",
+                id_entita=id_esportazione,
+                parametri={
+                    "file_to_t": result.get("file_to_t"),
+                    "file_to_d": result.get("file_to_d"),
+                },
+                risultato=result.get("ftp_result"),
+            )
+        except Exception:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Audit fallito per ritrasmissione esportazione %s", id_esportazione, exc_info=True
+            )
+
+        return {"success": True, "data": result}
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"Errore ritrasmissione: {e}")
 
 
 # =============================================================================

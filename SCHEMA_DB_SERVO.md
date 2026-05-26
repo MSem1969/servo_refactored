@@ -615,12 +615,16 @@ Storico esportazioni tracciati EDI.
 | stato | varchar(20) | YES | 'GENERATO' | GENERATO/INVIATO/ERRORE |
 | note | text | YES | | |
 | data_generazione | timestamp | YES | CURRENT_TIMESTAMP | |
-| stato_ftp | varchar(20) | YES | 'PENDING' | PENDING/SENT/ERROR |
+| stato_ftp | varchar(20) | YES | 'PENDING' | PENDING/SENDING/SENT/RETRY/FAILED/SKIPPED/ALERT_SENT/SUPERSEDED (CHECK constraint) |
 | data_invio_ftp | timestamp | YES | | |
 | tentativi_ftp | integer | YES | 0 | |
 | ultimo_errore_ftp | text | YES | | |
 | ftp_path_remoto | varchar(255) | YES | | |
 | ftp_file_inviati | text | YES | | Lista file inviati |
+| is_riemissione | boolean | NO | false | TRUE se questa esportazione è una riemissione di un'altra |
+| riemessa_da_id | integer | YES | | FK self → esportazioni.id_esportazione (parent della riemissione) |
+| data_riemissione | timestamp | YES | | Popolata sull'originale quando viene sostituita |
+| note_riemissione | text | YES | | Motivo della correzione |
 
 ### esportazioni_dettaglio
 Dettaglio ordini inclusi in esportazione.

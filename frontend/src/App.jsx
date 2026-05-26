@@ -804,7 +804,7 @@ export default function App() {
           />
         );
       case "tracciati":
-        return <TracciatiPage />;
+        return <TracciatiPage currentUser={currentUser} />;
       case "report":
         return <ExportPage />;
       case "crm":

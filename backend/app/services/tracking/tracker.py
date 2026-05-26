@@ -67,6 +67,8 @@ class Azione:
     EXPORT = 'EXPORT'                # Esporta dati
     EXPORT_EXCEL = 'EXPORT_EXCEL'    # Esporta Excel
     EXPORT_TRACCIATO = 'EXPORT_TRACCIATO'  # Genera tracciato EDI
+    RIEMETTI_TRACCIATO = 'RIEMETTI_TRACCIATO'   # Edit + riemissione tracciato (admin)
+    RITRASMETTI_TRACCIATO = 'RITRASMETTI_TRACCIATO'  # Ritrasmissione FTP tracciato (admin)
     DOWNLOAD = 'DOWNLOAD'            # Download file
     UPLOAD = 'UPLOAD'                # Upload file
 

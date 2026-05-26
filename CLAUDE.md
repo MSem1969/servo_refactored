@@ -358,6 +358,7 @@ POST /api/v1/tracciati/ftp/reset/{id} # Reset per retry
 | FAILED | Fallito dopo max tentativi |
 | SKIPPED | Vendor non mappato |
 | ALERT_SENT | Alert email inviato |
+| SUPERSEDED | Sostituita da una riemissione (vedi sezione Riemissione) |
 
 ### Tabelle Database
 
@@ -365,6 +366,49 @@ POST /api/v1/tracciati/ftp/reset/{id} # Reset per retry
 - `ftp_vendor_mapping` - Mapping vendor → path
 - `ftp_log` - Log operazioni FTP
 - `esportazioni.stato_ftp` - Stato invio
+
+---
+
+## Riemissione tracciato (edit + ritrasmissione)
+
+Quando l'ERP scarta un tracciato per errore di formato/contenuto, un admin può
+editare il testo raw di TO_T/TO_D e generare una nuova esportazione che sostituisce
+la precedente, senza toccare i dati dell'ordine in DB.
+
+### Regole
+
+- **Solo admin** può eseguire edit e ritrasmissione (verifica lato endpoint e UI).
+- **Dati ordine intoccati**: l'ordine resta `ESPORTATO/PARZ_ESPORTATO`, `q_evasa`
+  invariata. La riemissione opera solo a livello tracciato.
+- **Numero ordine suffissato**: la riemissione applica sempre `.N` (con `force=True`
+  in `_apply_export_suffix`). Su un clone parziale già suffissato (es. `ORD001.2`)
+  applica un ulteriore tail (`ORD001.2.3`). N proviene dal conteggio totale di
+  `esportazioni_dettaglio` per quell'`id_testata` (incluse le esportazioni SUPERSEDED).
+- **Nessun limite** al numero di riemissioni per ordine.
+- **Originale SUPERSEDED**: la riga in `esportazioni` cambia `stato_ftp` a `SUPERSEDED`
+  e popola `data_riemissione`. I suoi file vengono spostati in `outputs/archive/`.
+- **Nuova esportazione**: nuova riga con `is_riemissione=TRUE`, `riemessa_da_id`
+  pointing al parent, `stato_ftp='PENDING'`. Pronta per ritrasmissione FTP.
+- **Ritrasmissione**: rinomina i file con nuovo timestamp prima dell'upload (evita
+  collisioni di nome sul ricevente) e riusa il sender FTP standard.
+
+### Endpoint API
+
+```
+GET  /api/v1/tracciati/{id_esportazione}/raw          # Carica testo TO_T/TO_D + metadati
+POST /api/v1/tracciati/{id_esportazione}/riemetti     # Crea riemissione (body: to_t_content, to_d_content, note)
+POST /api/v1/tracciati/{id_esportazione}/ritrasmetti  # Rinomina + invia FTP
+```
+
+### Audit
+
+Le azioni vengono tracciate su `operatore_azioni_log` con:
+- `sezione = TRACCIATI`
+- `azione = RIEMETTI_TRACCIATO` | `RITRASMETTI_TRACCIATO`
+
+E un log dedicato su `ftp_log.azione`:
+- `RIEMISSIONE` (sull'esportazione originale al momento della sostituzione)
+- `RITRASMISSIONE` (sull'esportazione al momento dell'invio FTP)
 
 ---
 

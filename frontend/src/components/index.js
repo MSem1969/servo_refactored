@@ -16,6 +16,7 @@ export {
   colorMappings
 } from '../common/StatusBadge';
 export { AnomaliaDetailModal } from './AnomaliaDetailModal';
+export { RiemissionTracciatoModal } from './RiemissionTracciatoModal';
 export { default as Avatar, AvatarWithName } from './Avatar';
 export { default as ProfiloModal } from './ProfiloModal';
 // v11.0: Unified AIC Assignment Modal (TIER 2.1)

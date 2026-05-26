@@ -14,4 +14,9 @@ export const tracciatiApi = {
   deleteFiles: () => api.delete('/tracciati/files?confirm=true').then(r => r.data),
   getDownloadUrl: (filename) => `${API_URL}/tracciati/download/${filename}`,
   updateDifarm: (idTestata, difarm) => api.patch(`/tracciati/${idTestata}/difarm`, { difarm }).then(r => r.data),
+
+  // Riemissione tracciato (admin only)
+  getRaw: (idEsportazione) => api.get(`/tracciati/${idEsportazione}/raw`).then(r => r.data),
+  riemetti: (idEsportazione, payload) => api.post(`/tracciati/${idEsportazione}/riemetti`, payload).then(r => r.data),
+  ritrasmetti: (idEsportazione) => api.post(`/tracciati/${idEsportazione}/ritrasmetti`).then(r => r.data),
 };

@@ -53,16 +53,22 @@ def _get_export_suffix(db, id_testata: int) -> int:
     return count + 1  # Il corrente INSERT avviene dopo la generazione
 
 
-def _apply_export_suffix(numero_ordine: str, db, id_testata: int) -> str:
+def _apply_export_suffix(numero_ordine: str, db, id_testata: int, force: bool = False) -> str:
     """
     Applica il suffisso `.N` al numero ordine per il tracciato EDI.
 
-    Se `numero_ordine` contiene gia' un punto (es. clone parziale "ORD001.2"),
-    il numero e' restituito invariato: il suffisso e' gia' materializzato in
-    `numero_ordine_vendor` del clone.
-    Altrimenti calcola il prossimo suffisso da `esportazioni_dettaglio`.
+    Modalita' normale (force=False):
+      - Se `numero_ordine` contiene gia' un punto (es. clone parziale "ORD001.2"),
+        il numero e' restituito invariato: il suffisso e' gia' materializzato in
+        `numero_ordine_vendor` del clone.
+      - Altrimenti applica `.N` calcolato da `esportazioni_dettaglio`.
+
+    Modalita' riemissione (force=True):
+      - Applica SEMPRE `.N` come tail, anche se il numero contiene gia' un punto.
+        Es. "ORD001" -> "ORD001.2", "ORD001.2" -> "ORD001.2.3".
+        Necessario per evitare collisioni quando si riemette un clone parziale.
     """
-    if '.' in (numero_ordine or ''):
+    if not force and '.' in (numero_ordine or ''):
         return numero_ordine
     suffix = _get_export_suffix(db, id_testata)
     return f"{numero_ordine}.{suffix}"

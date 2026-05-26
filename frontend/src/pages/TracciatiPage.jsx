@@ -8,6 +8,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { tracciatiApi, getApiBaseUrl } from '../api';
 import { Button, StatusBadge, VendorBadge, Loading } from '../common';
+import { RiemissionTracciatoModal } from '../components';
 
 /**
  * Componente TracciatiPage - Ricerca e Analisi
@@ -18,10 +19,16 @@ import { Button, StatusBadge, VendorBadge, Loading } from '../common';
  * - Visualizzazione storico esportazioni
  * - Download file TO_T e TO_D
  */
-const TracciatiPage = () => {
+const TracciatiPage = ({ currentUser }) => {
+  const admin = currentUser?.ruolo?.toLowerCase() === 'admin';
+
   // State ricerca
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  // State riemissione
+  const [editingIdEsportazione, setEditingIdEsportazione] = useState(null);
+  const [resending, setResending] = useState(null);
   const [filters, setFilters] = useState({
     numero_ordine: '',
     ragione_sociale: '',
@@ -152,6 +159,23 @@ const TracciatiPage = () => {
 
     } catch (err) {
       alert('Errore download: ' + err.message);
+    }
+  };
+
+  // Ritrasmissione FTP diretta (senza edit)
+  const handleRitrasmetti = async (idEsportazione) => {
+    if (!idEsportazione) return;
+    if (!window.confirm(`Ritrasmettere il tracciato #${idEsportazione} via FTP?`)) return;
+    setResending(idEsportazione);
+    try {
+      const res = await tracciatiApi.ritrasmetti(idEsportazione);
+      const ok = res.data?.ftp_result?.success;
+      alert(ok ? '✅ Tracciato ritrasmesso via FTP.' : '⚠️ Invio FTP non confermato. Controlla i log.');
+      await loadInitialData();
+    } catch (err) {
+      alert('Errore ritrasmissione: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setResending(null);
     }
   };
 
@@ -369,7 +393,11 @@ const TracciatiPage = () => {
                   <th className="text-left p-3 text-xs font-medium text-slate-600 uppercase">Stato</th>
                   <th className="text-left p-3 text-xs font-medium text-slate-600 uppercase">Data Export</th>
                   <th className="text-left p-3 text-xs font-medium text-slate-600 uppercase">Validato Da</th>
+                  <th className="text-left p-3 text-xs font-medium text-slate-600 uppercase">Stato FTP</th>
                   <th className="text-left p-3 text-xs font-medium text-slate-600 uppercase">Download</th>
+                  {admin && (
+                    <th className="text-left p-3 text-xs font-medium text-slate-600 uppercase">Azioni</th>
+                  )}
                   <th className="text-center p-3 text-xs font-medium text-slate-600 uppercase">DIFARM</th>
                 </tr>
               </thead>
@@ -423,6 +451,28 @@ const TracciatiPage = () => {
                       </div>
                     </td>
                     <td className="p-3">
+                      {item.esportazione?.stato_ftp ? (
+                        <div className="flex flex-col gap-0.5">
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium w-fit ${
+                            item.esportazione.stato_ftp === 'SENT' ? 'bg-emerald-100 text-emerald-800' :
+                            item.esportazione.stato_ftp === 'FAILED' ? 'bg-rose-100 text-rose-800' :
+                            item.esportazione.stato_ftp === 'RETRY' ? 'bg-amber-100 text-amber-800' :
+                            item.esportazione.stato_ftp === 'SUPERSEDED' ? 'bg-slate-200 text-slate-600 line-through' :
+                            'bg-slate-100 text-slate-700'
+                          }`}>
+                            {item.esportazione.stato_ftp}
+                          </span>
+                          {item.esportazione.is_riemissione && (
+                            <span className="text-xs text-amber-700" title={`Riemissione di #${item.esportazione.riemessa_da_id}`}>
+                              ↻ riemissione
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400">-</span>
+                      )}
+                    </td>
+                    <td className="p-3">
                       <div className="flex gap-1">
                         {item.esportazione?.file_to_t && (
                           <Button
@@ -449,6 +499,39 @@ const TracciatiPage = () => {
                         )}
                       </div>
                     </td>
+                    {admin && (
+                      <td className="p-3">
+                        <div className="flex gap-1">
+                          {item.esportazione?.id &&
+                           item.esportazione?.stato_ftp &&
+                           !['SUPERSEDED'].includes(item.esportazione.stato_ftp) && (
+                            <Button
+                              variant="ghost"
+                              size="xs"
+                              onClick={() => setEditingIdEsportazione(item.esportazione.id)}
+                              title="Edit + Riemissione"
+                            >
+                              ✏️ Edit
+                            </Button>
+                          )}
+                          {item.esportazione?.id &&
+                           ['PENDING', 'RETRY', 'FAILED'].includes(item.esportazione?.stato_ftp) && (
+                            <Button
+                              variant="ghost"
+                              size="xs"
+                              disabled={resending === item.esportazione.id}
+                              onClick={() => handleRitrasmetti(item.esportazione.id)}
+                              title="Ritrasmetti via FTP"
+                            >
+                              {resending === item.esportazione.id ? '…' : '📤 Invia'}
+                            </Button>
+                          )}
+                          {!item.esportazione?.id && (
+                            <span className="text-xs text-slate-400">-</span>
+                          )}
+                        </div>
+                      </td>
+                    )}
                     <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
                       <input
                         type="checkbox"
@@ -464,6 +547,19 @@ const TracciatiPage = () => {
           </div>
         )}
       </div>
+
+      {/* Modale Edit + Riemissione */}
+      {editingIdEsportazione && (
+        <RiemissionTracciatoModal
+          isOpen={!!editingIdEsportazione}
+          idEsportazione={editingIdEsportazione}
+          onClose={() => {
+            setEditingIdEsportazione(null);
+            loadInitialData();
+          }}
+          onSuccess={() => loadInitialData()}
+        />
+      )}
     </div>
   );
 };
