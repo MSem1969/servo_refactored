@@ -207,6 +207,9 @@ def _extract_products_page1(table: list, date_columns: list) -> List[Dict]:
             continue
 
         aic = _parse_aic_from_cell(cell0)
+        if not aic:
+            # Regola DOMPE: prodotti senza Cod. AIC/Paraf non vengono considerati.
+            continue
         descrizione = _parse_description_from_cell(cell0)
 
         # Quantità e prezzi
@@ -264,10 +267,10 @@ def _extract_products_page2(table: list, num_date_columns: int) -> List[Dict]:
         if not cell0 or not re.match(r'^\d{5,8}\s+', cell0):
             continue
 
-        if 'Cod.' not in cell0 and 'AIC' not in cell0:
-            continue
-
         aic = _parse_aic_from_cell(cell0)
+        if not aic:
+            # Regola DOMPE: prodotti senza Cod. AIC/Paraf non vengono considerati.
+            continue
         descrizione = _parse_description_from_cell(cell0)
 
         # Page 2: colonne compresse (no spacer cols)
@@ -323,6 +326,9 @@ def _extract_products_from_text(text: str, num_date_columns: int) -> List[Dict]:
         aic_clean = re.sub(r'/[A-Za-z]+$', '', aic_raw)
         aic_digits = re.sub(r'[^\d]', '', aic_clean)
         aic = aic_digits.zfill(9) if aic_digits else None
+        if not aic:
+            # Regola DOMPE: prodotti senza Cod. AIC/Paraf validi non vengono considerati.
+            continue
 
         # La riga precedente contiene: cod_interno DESCRIZIONE PP IVA QTY ... TOTALE date_qtys
         if i > 0:
@@ -464,11 +470,19 @@ def extract_dompe(text: str, lines: List[str], pdf_path: str = None) -> List[Dic
         except Exception as e:
             print(f"[DOMPE] Text fallback error: {e}")
 
-    # Deduplicazione (stessa AIC + stessa q_totale potrebbe essere estratta da tabella e testo)
+    # Deduplicazione: stesso AIC + stessa q_totale + stesso prezzo + STESSA distribuzione date.
+    # IMPORTANTE: includere date_quantities nella chiave per non fondere righe distinte
+    # che hanno le stesse quantita' totali ma su date di consegna diverse (Dompe puo'
+    # spalmare lo stesso AIC su piu' righe, una per ciascuna data di consegna).
     seen = set()
     unique_products = []
     for p in all_products:
-        key = (p.get('aic'), p.get('q_totale'), p.get('prezzo_netto'))
+        key = (
+            p.get('aic'),
+            p.get('q_totale'),
+            p.get('prezzo_netto'),
+            tuple(p.get('date_quantities') or []),
+        )
         if key not in seen:
             seen.add(key)
             unique_products.append(p)
@@ -487,6 +501,9 @@ def extract_dompe(text: str, lines: List[str], pdf_path: str = None) -> List[Dic
         # Quantità sconto merce
         q_merce_sconto = product.get('q_merce_sconto', 0)
 
+        # Regola omaggio: prezzo netto (P.zzo Cess.) == 0 → quantità su q_omaggio invece di q_venduta
+        is_omaggio = float(product.get('prezzo_netto') or 0) == 0.0
+
         # Verifica date quantities
         date_quantities = product.get('date_quantities', [])
         has_date_quantities = any(qty > 0 for qty in date_quantities)
@@ -501,17 +518,17 @@ def extract_dompe(text: str, lines: List[str], pdf_path: str = None) -> List[Dic
                 'codice_aic': aic or '',
                 'codice_originale': product.get('aic_raw', ''),
                 'descrizione': product['descrizione'],
-                'q_venduta': qty,
+                'q_venduta': 0 if is_omaggio else qty,
                 'q_sconto_merce': q_merce_sconto,
                 'merce_sconto_extra': 0,
-                'q_omaggio': 0,
+                'q_omaggio': qty if is_omaggio else 0,
                 'prezzo_netto': product['prezzo_netto'],
                 'prezzo_pubblico': product['prezzo_pubblico'],
                 'aliquota_iva': product['aliquota_iva'],
-                'valore_netto': product['valore_netto'],
+                'valore_netto': 0.0 if is_omaggio else product['valore_netto'],
                 'data_consegna': data.get('data_consegna'),
                 'is_espositore': is_espositore,
-                'tipo_riga': 'PRODOTTO_STANDARD',
+                'tipo_riga': 'OMAGGIO' if is_omaggio else 'PRODOTTO_STANDARD',
             }
             righe.append(riga)
 
@@ -542,17 +559,17 @@ def extract_dompe(text: str, lines: List[str], pdf_path: str = None) -> List[Dic
                 'codice_aic': aic or '',
                 'codice_originale': product.get('aic_raw', ''),
                 'descrizione': product['descrizione'],
-                'q_venduta': qty,
+                'q_venduta': 0 if is_omaggio else qty,
                 'q_sconto_merce': q_merce_sconto,
                 'merce_sconto_extra': 0,
-                'q_omaggio': 0,
+                'q_omaggio': qty if is_omaggio else 0,
                 'prezzo_netto': product['prezzo_netto'],
                 'prezzo_pubblico': product['prezzo_pubblico'],
                 'aliquota_iva': product['aliquota_iva'],
-                'valore_netto': product['prezzo_netto'] * qty,
+                'valore_netto': 0.0 if is_omaggio else product['prezzo_netto'] * qty,
                 'data_consegna': data_consegna,
                 'is_espositore': is_espositore,
-                'tipo_riga': 'PRODOTTO_STANDARD',
+                'tipo_riga': 'OMAGGIO' if is_omaggio else 'PRODOTTO_STANDARD',
             }
             righe.append(riga)
 
