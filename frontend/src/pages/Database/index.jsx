@@ -290,17 +290,16 @@ export default function DatabasePage({ currentUser, onOpenOrdine, restoreScrollY
               <option value="">Tutti i Vendor</option>
               {[
                 { value: 'ANGELINI', label: 'Angelini' },
-                { value: 'BAYER', label: 'Bayer' },
                 { value: 'CHIESI', label: 'Chiesi' },
                 { value: 'CODIFI', label: 'Codifi' },
                 { value: 'COOPER', label: 'Cooper' },
                 { value: 'DOC_GENERICI', label: 'DOC Generici' },
                 { value: 'DOMPE', label: 'Dompé' },
                 { value: 'MENARINI', label: 'Menarini' },
-                { value: 'OPELLA', label: 'Opella' },
                 { value: 'PERRIGO', label: 'Perrigo' },
                 { value: 'RECKITT', label: 'Reckitt' },
                 { value: 'VIATRIS', label: 'Viatris' },
+                { value: 'ZENTIVA', label: 'Zentiva' },
               ].map((v) => (
                 <option key={v.value} value={v.value}>{v.label}</option>
               ))}

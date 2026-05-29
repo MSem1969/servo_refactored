@@ -48,17 +48,16 @@ const TracciatiPage = ({ currentUser }) => {
   // Lista vendor disponibili con nomi leggibili
   const vendorOptions = [
     { value: 'ANGELINI', label: 'Angelini' },
-    { value: 'BAYER', label: 'Bayer' },
     { value: 'CHIESI', label: 'Chiesi' },
     { value: 'CODIFI', label: 'Codifi' },
     { value: 'COOPER', label: 'Cooper' },
     { value: 'DOC_GENERICI', label: 'DOC Generici' },
     { value: 'DOMPE', label: 'Dompé' },
     { value: 'MENARINI', label: 'Menarini' },
-    { value: 'OPELLA', label: 'Opella' },
     { value: 'PERRIGO', label: 'Perrigo' },
     { value: 'RECKITT', label: 'Reckitt' },
     { value: 'VIATRIS', label: 'Viatris' },
+    { value: 'ZENTIVA', label: 'Zentiva' },
   ];
 
   // Carica dati iniziali

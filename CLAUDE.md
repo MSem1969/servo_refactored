@@ -229,16 +229,21 @@ Il bottone RIPRISTINA su singola riga effettua un **HARD RESET**:
 | Vendor | Stato | Note |
 |--------|-------|------|
 | **ANGELINI** | Attivo | MIN_ID diretto, sconti cascata, espositore 6 cifre |
-| **BAYER** | Attivo | Formato SAP |
 | **CODIFI** | Attivo | Multi-cliente (N ordini/PDF) |
 | **MENARINI** | Attivo | Espositore `--`, chiusura su somma netto |
 | **DOC_GENERICI** | Attivo | Transfer Order, NO prezzi |
 | **CHIESI** | In attesa | Escludere P.IVA 02944970348 |
-| **OPELLA** | Attivo | AIC 7-9 cifre, padding a 9 cifre |
+| **COOPER** | Attivo | — |
+| **RECKITT** | Attivo | — |
 | **VIATRIS** | Attivo | Transfer Order, OR+numero, TRACC.F+MIN_ID |
+| **PERRIGO** | Attivo | — |
+| **DOMPE** | Attivo | AIC/Paraf nel corpo cella; skip righe senza AIC; netto=0 → omaggio; supporto multi-data |
 | **ZENTIVA** | Attivo | Transfer Order, numero ordine `O-NNNNNN` da nome file (SAP Nr. Ordine vuoto), prefix EDI `ZEN` |
+| ~~OPELLA~~ | Escluso | PDF ignorati (vedi `config.VENDORS_ESCLUSI`). Ordini storici mantenuti |
+| ~~BAYER~~ | Escluso | PDF ignorati (vedi `config.VENDORS_ESCLUSI`). Ordini storici mantenuti |
 
 **Detection:** Solo contenuto PDF (nome file ignorato)
+**Esclusione:** `config.VENDORS_ESCLUSI` (env `VENDORS_ESCLUSI=OPELLA,BAYER`). PDF rilevati con uno di questi vendor non vengono salvati né su disco né in DB.
 
 ### Vendor Non Riconosciuto (v11.3)
 

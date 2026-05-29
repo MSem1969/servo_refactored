@@ -20,7 +20,7 @@ import React from 'react';
  * - Usato in: DatabasePage, DashboardPage, OrderDetailPage, SupervisionePage
  * - Sostituisce: tutti gli span vendor sparsi nel codice
  * 
- * @param {string} vendor - Nome vendor (ANGELINI, BAYER, etc.)
+ * @param {string} vendor - Nome vendor (ANGELINI, CHIESI, etc.)
  * @param {boolean} showAcronym - Mostra solo acronimo (per spazi stretti)
  * @param {string} size - Dimensione (xs, sm, md)
  * @param {string} className - Classi aggiuntive
@@ -42,14 +42,6 @@ const VendorBadge = ({
       name: 'Angelini',
       acronym: 'ANG',
       icon: '🏥'
-    },
-    BAYER: {
-      bg: 'bg-amber-100',
-      text: 'text-amber-700',
-      border: 'border-amber-200',
-      name: 'Bayer',
-      acronym: 'BAY',
-      icon: '🌿'
     },
     CODIFI: {
       bg: 'bg-emerald-100',
@@ -74,14 +66,6 @@ const VendorBadge = ({
       name: 'Menarini',
       acronym: 'MEN',
       icon: '❤️'
-    },
-    OPELLA: {
-      bg: 'bg-indigo-100',
-      text: 'text-indigo-700',
-      border: 'border-indigo-200',
-      name: 'Opella',
-      acronym: 'OPE',
-      icon: '⚡'
     },
     DOC_GENERICI: {
       bg: 'bg-gray-100',
@@ -130,6 +114,14 @@ const VendorBadge = ({
       name: 'Dompé',
       acronym: 'DOM',
       icon: '🔴'
+    },
+    ZENTIVA: {
+      bg: 'bg-violet-100',
+      text: 'text-violet-700',
+      border: 'border-violet-200',
+      name: 'Zentiva',
+      acronym: 'ZEN',
+      icon: '🧪'
     }
   };
   
@@ -188,12 +180,12 @@ const VendorBadge = ({
 // Utility per ottenere lista vendor supportati
 // v11.2: Lista aggiornata vendor abilitati + COOPER + RECKITT
 VendorBadge.getSupportedVendors = () => {
-  return ['DOC_GENERICI', 'CODIFI', 'COOPER', 'MENARINI', 'OPELLA', 'CHIESI', 'ANGELINI', 'BAYER', 'RECKITT', 'VIATRIS', 'PERRIGO', 'DOMPE'];
+  return ['DOC_GENERICI', 'CODIFI', 'COOPER', 'MENARINI', 'CHIESI', 'ANGELINI', 'RECKITT', 'VIATRIS', 'PERRIGO', 'DOMPE', 'ZENTIVA'];
 };
 
 // Utility per verificare se vendor è supportato
 VendorBadge.isSupported = (vendor) => {
-  const supported = ['DOC_GENERICI', 'CODIFI', 'COOPER', 'MENARINI', 'OPELLA', 'CHIESI', 'ANGELINI', 'BAYER', 'RECKITT', 'VIATRIS', 'PERRIGO', 'DOMPE'];
+  const supported = ['DOC_GENERICI', 'CODIFI', 'COOPER', 'MENARINI', 'CHIESI', 'ANGELINI', 'RECKITT', 'VIATRIS', 'PERRIGO', 'DOMPE', 'ZENTIVA'];
   return supported.includes(vendor?.toUpperCase());
 };
 

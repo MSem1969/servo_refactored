@@ -296,6 +296,17 @@ def process_pdf(
         vendor, confidence = detect_vendor(text, filename)
         result['vendor'] = vendor
 
+        # Vendor esclusi (config.VENDORS_ESCLUSI): skip totale.
+        # Nessun PDF salvato su disco, nessuna acquisizione/ordine in DB,
+        # nessuna anomalia. Gli ordini gia' presenti per quel vendor
+        # restano invariati.
+        if vendor in config.VENDORS_ESCLUSI:
+            result['status'] = 'ESCLUSO'
+            result['anomalie'].append(
+                f"Vendor '{vendor}' escluso da configurazione: file ignorato."
+            )
+            return result
+
         # v6.2: Vendor UNKNOWN non blocca più l'elaborazione
         # L'ordine viene inserito con anomalia bloccante EXT-A01
         # v11.3: Crea anche ticket CRM automatico per analisi

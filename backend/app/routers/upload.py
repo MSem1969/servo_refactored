@@ -67,9 +67,12 @@ async def upload_pdf(
     # Elabora PDF
     try:
         result = process_pdf(file.filename, content)
-        
+
+        # 'ESCLUSO' e' un esito legittimo (vendor disabilitato), non un errore.
+        is_success = result['status'] in ('OK', 'ESCLUSO')
+
         return {
-            "success": result['status'] == 'OK',
+            "success": is_success,
             "data": result,
             "message": _get_result_message(result)
         }
@@ -94,8 +97,8 @@ async def upload_multiple_pdfs(
         raise HTTPException(status_code=400, detail="Nessun file caricato")
     
     results = []
-    totals = {'ok': 0, 'duplicati': 0, 'errori': 0, 'ordini': 0, 'righe': 0}
-    
+    totals = {'ok': 0, 'duplicati': 0, 'errori': 0, 'esclusi': 0, 'ordini': 0, 'righe': 0}
+
     for file in files:
         if not file.filename or not file.filename.lower().endswith('.pdf'):
             results.append({
@@ -105,12 +108,12 @@ async def upload_multiple_pdfs(
             })
             totals['errori'] += 1
             continue
-        
+
         try:
             content = await file.read()
             result = process_pdf(file.filename, content)
             results.append(result)
-            
+
             if result['status'] == 'OK':
                 totals['ok'] += 1
                 totals['ordini'] += result['ordini']
@@ -118,9 +121,11 @@ async def upload_multiple_pdfs(
             elif result['status'] == 'DUPLICATO':
                 totals['duplicati'] += 1
                 totals['errori'] += 1  # Duplicati contano come errori
+            elif result['status'] == 'ESCLUSO':
+                totals['esclusi'] += 1
             else:
                 totals['errori'] += 1
-                
+
         except Exception as e:
             results.append({
                 'filename': file.filename,
@@ -128,14 +133,15 @@ async def upload_multiple_pdfs(
                 'error': str(e)
             })
             totals['errori'] += 1
-    
+
+    extra = f", {totals['esclusi']} esclusi" if totals['esclusi'] else ''
     return {
         "success": totals['errori'] == 0,
         "data": {
             "results": results,
             "totals": totals
         },
-        "message": f"Elaborati {totals['ok']} PDF, {totals['ordini']} ordini, {totals['righe']} righe"
+        "message": f"Elaborati {totals['ok']} PDF, {totals['ordini']} ordini, {totals['righe']} righe{extra}"
     }
 
 
@@ -346,6 +352,8 @@ def _get_result_message(result: Dict) -> str:
     """Genera messaggio descrittivo per risultato."""
     if result['status'] == 'OK':
         return f"Elaborato {result['vendor']}: {result['ordini']} ordini, {result['righe']} righe"
+    elif result['status'] == 'ESCLUSO':
+        return f"Vendor {result.get('vendor') or 'sconosciuto'} escluso da configurazione: file ignorato"
     elif result['status'] == 'DUPLICATO':
         dup_info = result.get('duplicato_info', {})
         if dup_info:

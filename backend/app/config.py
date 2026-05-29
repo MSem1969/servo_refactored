@@ -55,6 +55,16 @@ class Settings:
     MAX_UPLOAD_SIZE: int = 10 * 1024 * 1024  # 10 MB
     MAX_FILE_SIZE: int = 10 * 1024 * 1024  # Alias per compatibilita
 
+    # Vendor esclusi: i PDF rilevati con questo vendor vengono ignorati
+    # (nessun salvataggio su disco, nessun record in DB). Configurabile via
+    # env VENDORS_ESCLUSI (lista separata da virgole). Gli ordini gia'
+    # registrati in passato vengono mantenuti.
+    VENDORS_ESCLUSI: set = frozenset(
+        s.strip().upper()
+        for s in os.getenv("VENDORS_ESCLUSI", "OPELLA,BAYER").split(",")
+        if s.strip()
+    )
+
     # Versione
     VERSION: str = "8.2.0"
     APP_NAME: str = "SERV.O"
