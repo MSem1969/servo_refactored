@@ -243,18 +243,15 @@ Il bottone RIPRISTINA su singola riga effettua un **HARD RESET**:
 | ~~BAYER~~ | Escluso | PDF ignorati (vedi `config.VENDORS_ESCLUSI`). Ordini storici mantenuti |
 
 **Detection:** Solo contenuto PDF (nome file ignorato)
-**Esclusione:** `config.VENDORS_ESCLUSI` (env `VENDORS_ESCLUSI=OPELLA,BAYER`). PDF rilevati con uno di questi vendor non vengono salvati né su disco né in DB.
+**Esclusione:** `config.VENDORS_ESCLUSI` (env `VENDORS_ESCLUSI=OPELLA,BAYER,UNKNOWN`). PDF rilevati con uno di questi vendor non vengono salvati né su disco né in DB e non generano ticket CRM.
 
-### Vendor Non Riconosciuto (v11.3)
+### Vendor Non Riconosciuto
 
-Quando un PDF non viene riconosciuto (vendor UNKNOWN):
-1. Viene creata anomalia **EXT-A01** (bloccante)
-2. Viene aperto **ticket CRM automatico**:
-   - Oggetto: "ANALISI NUOVO DOCUMENTO"
-   - Categoria: assistenza
-   - Priorità: alta
-   - PDF allegato
-3. L'ordine viene comunque elaborato con estrattore generico
+I PDF il cui vendor non viene riconosciuto (`detect_vendor` ritorna `UNKNOWN`) sono inclusi di default in `VENDORS_ESCLUSI` → **non vengono gestiti**: nessuna acquisizione, nessun ordine, nessuna anomalia EXT-A01, nessun ticket CRM.
+
+Gli ordini storici con `codice_vendor='GENERIC'` (creati prima di questa scelta) restano consultabili in DB come prima.
+
+Se in futuro si vorrà tornare al comportamento precedente (ordine elaborato con estrattore generico + ticket CRM), basta rimuovere `UNKNOWN` dall'env `VENDORS_ESCLUSI`.
 
 ---
 

@@ -59,9 +59,13 @@ class Settings:
     # (nessun salvataggio su disco, nessun record in DB). Configurabile via
     # env VENDORS_ESCLUSI (lista separata da virgole). Gli ordini gia'
     # registrati in passato vengono mantenuti.
+    # 'UNKNOWN' = vendor non riconosciuto (PDF generico): viene scartato
+    # senza creare acquisizione/ordine/ticket. Eventuali ordini storici
+    # con vendor 'GENERIC' (codice usato in DB per gli UNKNOWN del passato)
+    # restano consultabili come prima.
     VENDORS_ESCLUSI: set = frozenset(
         s.strip().upper()
-        for s in os.getenv("VENDORS_ESCLUSI", "OPELLA,BAYER").split(",")
+        for s in os.getenv("VENDORS_ESCLUSI", "OPELLA,BAYER,UNKNOWN").split(",")
         if s.strip()
     )
 

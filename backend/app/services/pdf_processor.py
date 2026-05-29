@@ -298,13 +298,15 @@ def process_pdf(
 
         # Vendor esclusi (config.VENDORS_ESCLUSI): skip totale.
         # Nessun PDF salvato su disco, nessuna acquisizione/ordine in DB,
-        # nessuna anomalia. Gli ordini gia' presenti per quel vendor
-        # restano invariati.
+        # nessuna anomalia, nessun ticket CRM. Gli ordini gia' presenti
+        # per quel vendor restano invariati.
         if vendor in config.VENDORS_ESCLUSI:
             result['status'] = 'ESCLUSO'
-            result['anomalie'].append(
-                f"Vendor '{vendor}' escluso da configurazione: file ignorato."
-            )
+            if vendor == 'UNKNOWN':
+                msg = "Vendor non riconosciuto: file ignorato (PDF generici non vengono gestiti)."
+            else:
+                msg = f"Vendor '{vendor}' escluso da configurazione: file ignorato."
+            result['anomalie'].append(msg)
             return result
 
         # v6.2: Vendor UNKNOWN non blocca più l'elaborazione

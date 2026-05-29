@@ -353,7 +353,10 @@ def _get_result_message(result: Dict) -> str:
     if result['status'] == 'OK':
         return f"Elaborato {result['vendor']}: {result['ordini']} ordini, {result['righe']} righe"
     elif result['status'] == 'ESCLUSO':
-        return f"Vendor {result.get('vendor') or 'sconosciuto'} escluso da configurazione: file ignorato"
+        vendor = result.get('vendor') or ''
+        if vendor == 'UNKNOWN':
+            return "Vendor non riconosciuto: file ignorato (PDF generici non vengono gestiti)"
+        return f"Vendor {vendor or 'sconosciuto'} escluso da configurazione: file ignorato"
     elif result['status'] == 'DUPLICATO':
         dup_info = result.get('duplicato_info', {})
         if dup_info:
