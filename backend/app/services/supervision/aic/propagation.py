@@ -341,7 +341,8 @@ class AICPropagator:
 
         # Aggiorna pattern ML
         ml_incrementato = self._registra_approvazione_pattern(
-            sup['pattern_signature'], operatore, codice_aic
+            sup['pattern_signature'], operatore, codice_aic,
+            sup['vendor'], sup['descrizione_normalizzata']
         )
 
         self.db.commit()
@@ -390,7 +391,7 @@ class AICPropagator:
 
         # Trova supervisioni pending
         rows = self.db.execute("""
-            SELECT id_supervisione, id_testata, id_dettaglio
+            SELECT id_supervisione, id_testata, id_dettaglio, vendor, descrizione_normalizzata
             FROM supervisione_aic
             WHERE pattern_signature = %s AND stato = 'PENDING'
         """, (pattern_signature,)).fetchall()
@@ -437,7 +438,10 @@ class AICPropagator:
             """, (f"AIC assegnato: {codice_aic} [BULK]", row['id_testata']))
 
         # Incrementa pattern ML UNA SOLA VOLTA
-        ml_incrementato = self._registra_approvazione_pattern(pattern_signature, operatore, codice_aic)
+        ml_incrementato = self._registra_approvazione_pattern(
+            pattern_signature, operatore, codice_aic,
+            rows[0]['vendor'], rows[0]['descrizione_normalizzata']
+        )
 
         self.db.commit()
 
@@ -712,7 +716,10 @@ class AICPropagator:
 
             for v in vendors:
                 pattern_sig = calcola_pattern_signature(v['codice_vendor'], desc_norm)
-                self._registra_approvazione_pattern(pattern_sig, operatore, codice_aic)
+                self._registra_approvazione_pattern(
+                    pattern_sig, operatore, codice_aic,
+                    v['codice_vendor'], desc_norm
+                )
 
             return sup_approvate, len(vendors) > 0
 
@@ -722,11 +729,16 @@ class AICPropagator:
         self,
         pattern_sig: str,
         operatore: str,
-        codice_aic: str
+        codice_aic: str,
+        vendor: str,
+        desc_norm: str = None
     ) -> bool:
         """
         Registra approvazione nel pattern ML AIC.
         Incrementa contatore e promuove se raggiunge soglia.
+
+        vendor e desc_norm sono richiesti per la creazione del pattern:
+        criteri_ordinari_aic.vendor e' NOT NULL.
         """
         # Assicura che pattern esista
         existing = self.db.execute(
@@ -735,12 +747,13 @@ class AICPropagator:
         ).fetchone()
 
         if not existing:
-            # Crea pattern se non esiste
+            # Crea pattern se non esiste (vendor e' NOT NULL: deve essere valorizzato)
+            pattern_desc = f"AIC {vendor} - {(desc_norm or '')[:30]}"
             self.db.execute("""
                 INSERT INTO criteri_ordinari_aic
-                (pattern_signature, pattern_descrizione, codice_aic_default)
-                VALUES (%s, %s, %s)
-            """, (pattern_sig, f"Auto-created pattern", codice_aic))
+                (pattern_signature, pattern_descrizione, vendor, descrizione_normalizzata, codice_aic_default)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (pattern_sig, pattern_desc, vendor, desc_norm, codice_aic))
 
         # Incrementa contatore
         self.db.execute("""
