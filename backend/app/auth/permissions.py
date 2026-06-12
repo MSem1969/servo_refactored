@@ -242,9 +242,9 @@ def puo_creare_ruolo(ruolo_creatore: RuoloUtente, ruolo_da_creare: RuoloUtente) 
     Verifica se un ruolo può crearne un altro.
 
     Regole gerarchia:
-    - admin può creare: superuser, supervisore, operatore
-    - superuser può creare: supervisore, operatore
-    - supervisore può creare: solo operatore
+    - admin può creare: superuser, supervisore, operatore, readonly
+    - superuser può creare: supervisore, operatore, readonly
+    - supervisore può creare: operatore, readonly
     - operatore: non può creare nessuno
     - readonly: non può creare nessuno
 
@@ -260,16 +260,16 @@ def puo_creare_ruolo(ruolo_creatore: RuoloUtente, ruolo_da_creare: RuoloUtente) 
             raise HTTPException(403, "Non autorizzato")
     """
     if ruolo_creatore == RuoloUtente.ADMIN:
-        # Admin può creare superuser, supervisori e operatori (non altri admin)
-        return ruolo_da_creare in [RuoloUtente.SUPERUSER, RuoloUtente.SUPERVISORE, RuoloUtente.OPERATORE]
+        # Admin può creare superuser, supervisori, operatori e readonly (non altri admin)
+        return ruolo_da_creare in [RuoloUtente.SUPERUSER, RuoloUtente.SUPERVISORE, RuoloUtente.OPERATORE, RuoloUtente.READONLY]
 
     if ruolo_creatore == RuoloUtente.SUPERUSER:
-        # Superuser può creare supervisori e operatori
-        return ruolo_da_creare in [RuoloUtente.SUPERVISORE, RuoloUtente.OPERATORE]
+        # Superuser può creare supervisori, operatori e readonly
+        return ruolo_da_creare in [RuoloUtente.SUPERVISORE, RuoloUtente.OPERATORE, RuoloUtente.READONLY]
 
     if ruolo_creatore == RuoloUtente.SUPERVISORE:
-        # Supervisore può creare solo operatori
-        return ruolo_da_creare == RuoloUtente.OPERATORE
+        # Supervisore può creare operatori e readonly (ruolo di sola lettura, livello inferiore)
+        return ruolo_da_creare in [RuoloUtente.OPERATORE, RuoloUtente.READONLY]
 
     # Operatore e readonly non possono creare nessuno
     return False
@@ -289,13 +289,13 @@ def get_ruoli_creabili(ruolo_creatore: RuoloUtente) -> List[RuoloUtente]:
         ruoli_disponibili = get_ruoli_creabili(current_user.ruolo)
     """
     if ruolo_creatore == RuoloUtente.ADMIN:
-        return [RuoloUtente.SUPERUSER, RuoloUtente.SUPERVISORE, RuoloUtente.OPERATORE]
+        return [RuoloUtente.SUPERUSER, RuoloUtente.SUPERVISORE, RuoloUtente.OPERATORE, RuoloUtente.READONLY]
 
     if ruolo_creatore == RuoloUtente.SUPERUSER:
-        return [RuoloUtente.SUPERVISORE, RuoloUtente.OPERATORE]
+        return [RuoloUtente.SUPERVISORE, RuoloUtente.OPERATORE, RuoloUtente.READONLY]
 
     if ruolo_creatore == RuoloUtente.SUPERVISORE:
-        return [RuoloUtente.OPERATORE]
+        return [RuoloUtente.OPERATORE, RuoloUtente.READONLY]
 
     return []
 
