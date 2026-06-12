@@ -41,6 +41,7 @@ from .services.scheduler import (
 
 # Import router autenticazione (NUOVO v6.2)
 from .auth import auth_router
+from .auth.write_guard import WriteGuardMiddleware
 from .routers.utenti import router as utenti_router
 
 
@@ -113,6 +114,11 @@ ALLOWED_ORIGINS = [
     "https://servo-frontend.onrender.com", # Render frontend
     "https://servo-backend.onrender.com",  # Render backend
 ]
+
+# WriteGuard: aggiunto PRIMA della CORS cosi' la CORS resta il middleware
+# piu' esterno e applica gli header anche alle risposte 401/403 del guard
+# (altrimenti il browser vedrebbe un errore CORS al posto del 403).
+app.add_middleware(WriteGuardMiddleware)
 
 app.add_middleware(
     CORSMiddleware,

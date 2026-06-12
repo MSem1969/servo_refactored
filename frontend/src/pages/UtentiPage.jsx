@@ -187,17 +187,35 @@ export default function UtentiPage({ currentUser }) {
     setShowModal(true);
   };
 
+  // Estrae un messaggio leggibile da una risposta di errore axios.
+  // FastAPI restituisce per i 422 un `detail` come array di {loc, msg, type};
+  // per gli altri errori (403/409/...) un `detail` stringa.
+  const extractErrorMessage = (err) => {
+    const detail = err.response?.data?.detail;
+    if (Array.isArray(detail)) {
+      return detail
+        .map(d => {
+          const campo = Array.isArray(d.loc) ? d.loc[d.loc.length - 1] : null;
+          return campo ? `${campo}: ${d.msg}` : d.msg;
+        })
+        .join('\n');
+    }
+    return detail || err.message;
+  };
+
   // Valida form
   const validateForm = () => {
     const errors = {};
 
     if (modalMode === 'create') {
       if (!formData.username?.trim()) errors.username = 'Username obbligatorio';
-      if (formData.username && formData.username.length < 3) errors.username = 'Minimo 3 caratteri';
+      else if (formData.username.length < 3) errors.username = 'Minimo 3 caratteri';
+      else if (!/^[a-zA-Z0-9._-]+$/.test(formData.username)) errors.username = 'Solo lettere, numeri e . _ - (no spazi o accenti)';
       if (!formData.password) errors.password = 'Password obbligatoria';
-      if (formData.password && formData.password.length < 6) errors.password = 'Minimo 6 caratteri';
+      if (formData.password && formData.password.length < 8) errors.password = 'Minimo 8 caratteri';
       if (formData.password !== formData.conferma_password) errors.conferma_password = 'Le password non coincidono';
       if (!formData.email?.trim()) errors.email = 'Email obbligatoria';
+      else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) errors.email = 'Formato email non valido';
     }
 
     if (modalMode === 'edit') {
@@ -206,7 +224,7 @@ export default function UtentiPage({ currentUser }) {
 
     if (modalMode === 'password') {
       if (!formData.password) errors.password = 'Password obbligatoria';
-      if (formData.password && formData.password.length < 6) errors.password = 'Minimo 6 caratteri';
+      if (formData.password && formData.password.length < 8) errors.password = 'Minimo 8 caratteri';
       if (formData.password !== formData.conferma_password) errors.conferma_password = 'Le password non coincidono';
     }
 
@@ -247,7 +265,7 @@ export default function UtentiPage({ currentUser }) {
       setShowModal(false);
       loadUtenti();
     } catch (err) {
-      alert('Errore: ' + (err.response?.data?.detail || err.message));
+      alert('Errore: ' + (extractErrorMessage(err)));
     } finally {
       setSaving(false);
     }
@@ -262,7 +280,7 @@ export default function UtentiPage({ currentUser }) {
       alert('Utente disabilitato');
       loadUtenti();
     } catch (err) {
-      alert('Errore: ' + (err.response?.data?.detail || err.message));
+      alert('Errore: ' + (extractErrorMessage(err)));
     }
   };
 
@@ -275,7 +293,7 @@ export default function UtentiPage({ currentUser }) {
       alert('Utente riabilitato');
       loadUtenti();
     } catch (err) {
-      alert('Errore: ' + (err.response?.data?.detail || err.message));
+      alert('Errore: ' + (extractErrorMessage(err)));
     }
   };
 
