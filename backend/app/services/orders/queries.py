@@ -84,10 +84,16 @@ def get_ordini(
     count_query = f"SELECT COUNT(*) FROM V_ORDINI_COMPLETI WHERE {where_clause}"
     totale = db.execute(count_query, params).fetchone()[0]
 
+    # Ordina SEMPRE per data di consegna effettiva, coerente col valore
+    # mostrato nel frontend: data_consegna se presente, altrimenti
+    # data_ordine + ~10 giorni lavorativi (~14 giorni solari, approssimazione
+    # lato DB; il frontend riordina poi il set caricato con il calcolo esatto
+    # dei giorni lavorativi). Gli ordini senza data finiscono in fondo.
     query = f"""
         SELECT * FROM V_ORDINI_COMPLETI
         WHERE {where_clause}
-        ORDER BY id_testata DESC
+        ORDER BY COALESCE(data_consegna, data_ordine + INTERVAL '14 days') ASC NULLS LAST,
+                 id_testata DESC
         LIMIT ? OFFSET ?
     """
     params.extend([limit, offset])

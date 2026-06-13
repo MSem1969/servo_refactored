@@ -41,7 +41,10 @@ export default function OrdiniTab({
   onToggleDifarm
 }) {
   // Stato ordinamento
-  const [sortField, setSortField] = useState(null);
+  // Default: SEMPRE per data di consegna (la stessa mostrata nel badge, con
+  // fallback data_ordine + 10gg lavorativi). L'utente puo' comunque cambiare
+  // ordinamento cliccando le altre intestazioni.
+  const [sortField, setSortField] = useState('data_consegna');
   const [sortDirection, setSortDirection] = useState('asc');
 
   // Gestione click su intestazione
