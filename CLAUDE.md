@@ -238,7 +238,7 @@ Il bottone RIPRISTINA su singola riga effettua un **HARD RESET**:
 | **VIATRIS** | Attivo | Transfer Order, OR+numero, TRACC.F+MIN_ID |
 | **PERRIGO** | Attivo | — |
 | **DOMPE** | Attivo | AIC/Paraf nel corpo cella; skip righe senza AIC; netto=0 → omaggio; supporto multi-data |
-| **ZENTIVA** | Attivo | Transfer Order, numero ordine `O-NNNNNN` da nome file (SAP Nr. Ordine vuoto), prefix EDI `ZEN` |
+| **ZENTIVA** | Attivo | Transfer Order, numero ordine `O-NNNNNN` da nome file (SAP Nr. Ordine vuoto), prefix EDI `ZEN`. Detection: stringa `ZENTIVA`/email `@zentiva.com`, **oppure** fallback strutturale (`RIEPILOGO CONSEGNA`+`REFERIMENTO`+`TRANSFER`) per i T.O. col contatto `@iqvia.com` che non contengono mai "ZENTIVA" |
 | ~~OPELLA~~ | Escluso | PDF ignorati (vedi `config.VENDORS_ESCLUSI`). Ordini storici mantenuti |
 | ~~BAYER~~ | Escluso | PDF ignorati (vedi `config.VENDORS_ESCLUSI`). Ordini storici mantenuti |
 
