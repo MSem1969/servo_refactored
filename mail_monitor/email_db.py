@@ -66,14 +66,16 @@ class EmailDB:
         conn = get_db()
         try:
             cur = conn.cursor()
+            # Considera "gia processata" solo gli stati FINALI: ERRORE e
+            # DA_PROCESSARE devono poter essere ritentati al sync successivo.
             if attachment_hash:
                 cur.execute(
-                    "SELECT 1 FROM EMAIL_ACQUISIZIONI WHERE message_id = %s AND attachment_hash = %s",
+                    "SELECT 1 FROM EMAIL_ACQUISIZIONI WHERE message_id = %s AND attachment_hash = %s AND stato IN ('PROCESSATA','SCARTATO','DUPLICATO')",
                     (message_id, attachment_hash)
                 )
             else:
                 cur.execute(
-                    "SELECT 1 FROM EMAIL_ACQUISIZIONI WHERE message_id = %s",
+                    "SELECT 1 FROM EMAIL_ACQUISIZIONI WHERE message_id = %s AND stato IN ('PROCESSATA','SCARTATO','DUPLICATO')",
                     (message_id,)
                 )
             result = cur.fetchone()
@@ -88,8 +90,10 @@ class EmailDB:
         conn = get_db()
         try:
             cur = conn.cursor()
+            # Solo stati finali contano come "gia processato": un upload fallito
+            # (ERRORE) non deve bloccare per sempre il riprocessamento.
             cur.execute(
-                "SELECT 1 FROM EMAIL_ACQUISIZIONI WHERE attachment_hash = %s",
+                "SELECT 1 FROM EMAIL_ACQUISIZIONI WHERE attachment_hash = %s AND stato IN ('PROCESSATA','SCARTATO','DUPLICATO')",
                 (attachment_hash,)
             )
             result = cur.fetchone()
@@ -104,6 +108,15 @@ class EmailDB:
         conn = get_db()
         try:
             cur = conn.cursor()
+            # Ripulisce eventuali tentativi precedenti NON finali (ERRORE/
+            # DA_PROCESSARE) con lo stesso allegato, cosi' i retry non
+            # accumulano righe duplicate. Gli stati finali restano intatti.
+            _hash = email_record.get('attachment_hash', '')
+            if _hash:
+                cur.execute(
+                    "DELETE FROM EMAIL_ACQUISIZIONI WHERE attachment_hash = %s AND stato NOT IN ('PROCESSATA','SCARTATO','DUPLICATO')",
+                    (_hash,)
+                )
             cur.execute("""
                 INSERT INTO EMAIL_ACQUISIZIONI
                 (message_id, gmail_id, subject, sender_email, sender_name,

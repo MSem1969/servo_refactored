@@ -417,7 +417,7 @@ async def mail_email_retry(id_email: int, background_tasks: BackgroundTasks) -> 
         SET stato = 'DA_PROCESSARE',
             num_retry = num_retry + 1,
             errore_messaggio = NULL,
-            updated_at = datetime('now')
+            updated_at = CURRENT_TIMESTAMP
         WHERE id_email = ?
     """, (id_email,))
     db.commit()
@@ -448,13 +448,13 @@ async def mail_stats() -> Dict[str, Any]:
     # Per giorno (ultimi 7 giorni)
     per_giorno = db.execute("""
         SELECT
-            date(received_date) as giorno,
+            received_date::date as giorno,
             COUNT(*) as count,
             SUM(CASE WHEN stato = 'PROCESSATA' THEN 1 ELSE 0 END) as processate,
             SUM(CASE WHEN stato = 'ERRORE' THEN 1 ELSE 0 END) as errori
         FROM EMAIL_ACQUISIZIONI
-        WHERE received_date >= date('now', '-7 days')
-        GROUP BY date(received_date)
+        WHERE received_date >= CURRENT_DATE - INTERVAL '7 days'
+        GROUP BY received_date::date
         ORDER BY giorno DESC
     """).fetchall()
 
