@@ -86,10 +86,16 @@ def detect_vendor(text: str, filename: str = "") -> Tuple[str, float]:
         return "PERRIGO", 0.95
 
     # ZENTIVA - Transfer Order Zentiva
-    # Pattern distintivi: "ZENTIVA" + "Codice SAP" + "Tipo Ordine" / email @zentiva.com
+    # Primario: stringa "ZENTIVA" / email @zentiva.com (presente quando il
+    # contatto dell'ordine e' una mail zentiva.com).
     if "ZENTIVA" in t or "@ZENTIVA.COM" in t:
         return "ZENTIVA", 0.95
-    if "CODICE SAP" in t and "TIPO ORDINE" in t and "RIEPILOGO CONSEGNA" in t:
+    # Fallback strutturale: alcuni T.O. Zentiva hanno il contatto @iqvia.com
+    # (gestione ordini affidata a IQVIA) e NON contengono mai la stringa
+    # "ZENTIVA". Si riconoscono dai marcatori del template, robusti a spazi/
+    # a-capo dell'estrazione testo (es. "Tipo\nOrdine"): normalizzo gli spazi.
+    _tn = re.sub(r"\s+", " ", t)
+    if "RIEPILOGO CONSEGNA" in _tn and "REFERIMENTO" in _tn and "TRANSFER" in _tn:
         return "ZENTIVA", 0.90
 
     # OPELLA
