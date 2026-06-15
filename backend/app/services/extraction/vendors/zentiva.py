@@ -172,10 +172,13 @@ def extract_zentiva(text: str, lines: List[str], pdf_path: str = None) -> List[D
     #             (es. MONCUCCO: "SIMVASTATINA 10/10MG 30 ")
     #   group 2 = AIC (esattamente 9 cifre, primo gruppo dopo la fascia)
     #   group 3 = resto della riga con prezzi/quantita/sconti
-    # Fascia: "Rx" oppure "Class1"/"Class2"/... (farmaci di classe).
+    # Fascia: "Rx" / "Class1"/"Class2"/... (farmaci) OPPURE assente per i
+    # prodotti non-farmaco (es. "Food Supplement"), dove la riga dati inizia
+    # direttamente col codice 9 cifre. Il prefisso fascia e' quindi OPZIONALE,
+    # altrimenti si perdevano le righe integratori (es. O-851256: 3 righe su 5).
     # Tra AIC e prezzo possono esserci 0 o piu' spazi (pdfplumber a volte
     # li attacca: "Rx 0417853181.83 €"; a volte li separa: "Rx 044103024 4.70 €").
-    data_re = re.compile(r'^(.*?)\b(?:Rx|Class\d+)\s+(\d{9})\s*(.*€)\s*$')
+    data_re = re.compile(r'^(.*?)(?:(?:Rx|Class\d+)\s+)?(\d{9})\s*(.*€)\s*$')
 
     for i in range(n):
         stripped = lines[i].strip()
