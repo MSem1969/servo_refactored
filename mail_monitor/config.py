@@ -54,6 +54,9 @@ class Config:
     BACKEND_URL: str = os.getenv('BACKEND_URL', 'http://localhost:8000')
     UPLOAD_ENDPOINT: str = '/api/v1/upload'
     UPLOAD_TIMEOUT: int = int(os.getenv('UPLOAD_TIMEOUT', '120'))
+    # Token condiviso col backend (WriteGuard) per autorizzare il POST /upload
+    # senza JWT. Deve combaciare con INTERNAL_API_TOKEN del backend.
+    INTERNAL_API_TOKEN: str = os.getenv('INTERNAL_API_TOKEN', '')
 
     # ========== COMPORTAMENTO ==========
     MARK_AS_READ: bool = os.getenv('MARK_AS_READ', 'true').lower() == 'true'

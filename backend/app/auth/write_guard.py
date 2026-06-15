@@ -44,6 +44,13 @@ PUBLIC_WRITE_PATHS = {
     f"{API_PREFIX}/auth/reset-password",
 }
 
+# Header e prefisso path su cui un servizio interno fidato (es. mail_monitor)
+# puo' scrivere usando il token condiviso INTERNAL_API_TOKEN. Scoped al solo
+# upload per principio di minimo privilegio: un token trapelato non potrebbe
+# eliminare/modificare ordini.
+INTERNAL_TOKEN_HEADER = "X-Internal-Token"
+INTERNAL_TOKEN_ALLOWED_PREFIX = f"{API_PREFIX}/upload"
+
 # Self-service consentito anche a 'readonly' (richiede comunque token valido).
 # Nota: cambio-password e' ulteriormente protetto dall'endpoint stesso, che
 # consente a un non-admin di cambiare solo la PROPRIA password (is_self).
@@ -85,6 +92,9 @@ class WriteGuardMiddleware(BaseHTTPMiddleware):
     def __init__(self, app):
         super().__init__(app)
         self.enabled = os.getenv("WRITE_GUARD_ENABLED", "true").lower() not in ("false", "0", "no")
+        # Token condiviso per servizi interni fidati (es. mail_monitor che fa
+        # POST /upload senza JWT). Vuoto = bypass disabilitato.
+        self.internal_token = os.getenv("INTERNAL_API_TOKEN", "")
 
     async def dispatch(self, request: Request, call_next):
         if not self.enabled:
@@ -100,6 +110,14 @@ class WriteGuardMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         if path in PUBLIC_WRITE_PATHS:
+            return await call_next(request)
+
+        # Servizio interno fidato (es. mail_monitor) verso l'upload: bypass via
+        # token condiviso. Attivo solo se INTERNAL_API_TOKEN e' configurato e
+        # combacia, e solo sul prefisso upload.
+        if (self.internal_token
+                and path.startswith(INTERNAL_TOKEN_ALLOWED_PREFIX)
+                and request.headers.get(INTERNAL_TOKEN_HEADER) == self.internal_token):
             return await call_next(request)
 
         payload = _extract_payload(request)

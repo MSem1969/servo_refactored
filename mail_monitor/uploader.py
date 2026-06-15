@@ -24,6 +24,10 @@ class PDFUploader:
         self.timeout = Config.UPLOAD_TIMEOUT
         self.max_retries = Config.MAX_RETRIES
         self.retry_delay = Config.RETRY_DELAY_SECONDS
+        # Header per autorizzare il POST /upload contro il WriteGuard del backend
+        self.headers = {}
+        if Config.INTERNAL_API_TOKEN:
+            self.headers['X-Internal-Token'] = Config.INTERNAL_API_TOKEN
 
     def verifica_backend(self) -> bool:
         """
@@ -106,6 +110,7 @@ class PDFUploader:
                         self.upload_endpoint,
                         files=files,
                         data=data if data else None,
+                        headers=self.headers or None,
                         timeout=self.timeout
                     )
 
