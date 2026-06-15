@@ -70,9 +70,16 @@ def extract_zentiva(text: str, lines: List[str], pdf_path: str = None) -> List[D
             # Mantiene prefisso "O-" come da comunicazione vendor
             data['numero_ordine'] = f"O-{m.group(1)}"
 
-    # Fallback: prova ad estrarre da SAP Nr. Ordine se mai popolato
+    # Fallback: prova ad estrarre da SAP Nr. Ordine se mai popolato.
+    # Vincoli per evitare di pescare l'etichetta del campo successivo quando
+    # SAP Nr. Ordine e' vuoto (es. "SAP Nr. Ordine:\nCliente:" -> "Cliente"):
+    # - resta sulla STESSA riga (whitespace orizzontale, non \n)
+    # - il valore deve contenere almeno una cifra
     if not data.get('numero_ordine'):
-        m = re.search(r'SAP\s+Nr\.?\s*Ordine\s*:?\s*([A-Z0-9\-]+)', text, re.I)
+        m = re.search(
+            r'SAP\s+Nr\.?\s*Ordine\s*:?[^\S\n]*([A-Z0-9\-]*\d[A-Z0-9\-]*)',
+            text, re.I
+        )
         if m and m.group(1).strip():
             data['numero_ordine'] = m.group(1).strip()
 

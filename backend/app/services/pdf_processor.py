@@ -417,7 +417,11 @@ def process_pdf(
         # 7. ESTRAI DATI CON ESTRATTORE SPECIFICO
         # =====================================================================
         extractor = get_extractor(vendor)
-        orders_data = extractor(text, lines, pdf_path)
+        # Passa il nome file come fallback quando il PDF non e' su disco (es.
+        # reprocess con save_to_disk=False -> pdf_path=None): serve agli
+        # estrattori che ricavano il numero ordine dal nome file (es. ZENTIVA
+        # "O-NNNNNN"). os.path.basename gestisce sia un path sia un nome nudo.
+        orders_data = extractor(text, lines, pdf_path or filename)
         
         # =====================================================================
         # 7.5 ARRICCHIMENTO LISTINO (v10.0 - Generale per tutti i vendor)
