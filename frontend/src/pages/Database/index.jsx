@@ -110,6 +110,9 @@ export default function DatabasePage({ currentUser, onOpenOrdine, restoreScrollY
     loading,
     filters,
     setFilters,
+    page,
+    setPage,
+    pagination,
     selected,
     validatingBatch,
     downloadingPdf,
@@ -362,6 +365,10 @@ export default function DatabasePage({ currentUser, onOpenOrdine, restoreScrollY
             onClearFilters={clearFilters}
             viewedOrders={viewedOrders}
             onToggleDifarm={handleToggleDifarm}
+            page={page}
+            pages={pagination.pages}
+            totale={pagination.totale}
+            onPageChange={setPage}
           />
         )}
 
