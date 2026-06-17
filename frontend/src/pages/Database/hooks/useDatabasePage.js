@@ -19,11 +19,15 @@ export function useDatabasePage(currentUser, onOpenOrdine, { savedFilters = null
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState(savedFilters || {
     vendor: '',
-    stato: ['ESTRATTO', 'PARZ_ESPORTATO', 'ANOMALIA'],
+    stato: ['ESTRATTO', 'ANOMALIA'],
     q: '',
     data_da: '',
     data_a: ''
   });
+  // Paginazione server-side: 50 per pagina, nessun limite totale
+  const PAGE_SIZE = 50;
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ totale: 0, pages: 1 });
   const [selected, setSelected] = useState([]);
   const [validatingBatch, setValidatingBatch] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
@@ -126,10 +130,16 @@ export function useDatabasePage(currentUser, onOpenOrdine, { savedFilters = null
   // LOAD ORDINI
   // =============================================================================
 
+  // Al cambio filtri si torna alla prima pagina
+  useEffect(() => {
+    setPage(1);
+  }, [filters]);
+
   const loadOrdini = useCallback(async () => {
     try {
       setLoading(true);
-      const queryParams = { ...filters, limit: 100 };
+      const offset = (page - 1) * PAGE_SIZE;
+      const queryParams = { ...filters, limit: PAGE_SIZE, offset };
 
       Object.keys(queryParams).forEach(key => {
         if (!queryParams[key]) delete queryParams[key];
@@ -138,15 +148,20 @@ export function useDatabasePage(currentUser, onOpenOrdine, { savedFilters = null
       const res = await ordiniApi.getList(queryParams);
 
       if (res.success) {
-        const ordiniData = res.data || [];
-        setOrdini(ordiniData);
+        setOrdini(res.data || []);
+        if (res.pagination) {
+          setPagination({
+            totale: res.pagination.totale || 0,
+            pages: res.pagination.pages || 1
+          });
+        }
       }
     } catch (err) {
       console.error('Errore caricamento ordini:', err);
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, [filters, page]);
 
   useEffect(() => {
     loadOrdini();
@@ -558,6 +573,9 @@ export function useDatabasePage(currentUser, onOpenOrdine, { savedFilters = null
     loading,
     filters,
     setFilters,
+    page,
+    setPage,
+    pagination,
     selected,
     validatingBatch,
     downloadingPdf,

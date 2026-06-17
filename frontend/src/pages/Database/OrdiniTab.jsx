@@ -38,7 +38,12 @@ export default function OrdiniTab({
   onClearFilters,
   onRegistraEvasione,
   viewedOrders = new Set(),  // v11.3: Set di ID ordini già visualizzati
-  onToggleDifarm
+  onToggleDifarm,
+  // Paginazione server-side
+  page = 1,
+  pages = 1,
+  totale = 0,
+  onPageChange
 }) {
   // Stato ordinamento
   // Default: SEMPRE per data di consegna (la stessa mostrata nel badge, con
@@ -310,6 +315,35 @@ export default function OrdiniTab({
           })}
         </tbody>
       </table>
+
+      {/* Paginazione server-side (50/pagina) */}
+      {totale > 0 && (
+        <div className="flex items-center justify-between px-4 py-3 border-t border-slate-200 text-sm text-slate-600">
+          <span>{totale} ordini · pagina {page} di {pages}</span>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => onPageChange?.(1)}
+              disabled={page <= 1}
+              className="px-2 py-1 rounded border border-slate-300 disabled:opacity-40 hover:bg-slate-100"
+            >« Prima</button>
+            <button
+              onClick={() => onPageChange?.(page - 1)}
+              disabled={page <= 1}
+              className="px-2 py-1 rounded border border-slate-300 disabled:opacity-40 hover:bg-slate-100"
+            >‹ Prec</button>
+            <button
+              onClick={() => onPageChange?.(page + 1)}
+              disabled={page >= pages}
+              className="px-2 py-1 rounded border border-slate-300 disabled:opacity-40 hover:bg-slate-100"
+            >Succ ›</button>
+            <button
+              onClick={() => onPageChange?.(pages)}
+              disabled={page >= pages}
+              className="px-2 py-1 rounded border border-slate-300 disabled:opacity-40 hover:bg-slate-100"
+            >Ultima »</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
