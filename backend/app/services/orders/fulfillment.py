@@ -979,39 +979,42 @@ def _copia_supervisione_pending(
 # =============================================================================
 
 def _calcola_stato_ordine(stato_attuale: str, stats: Dict[str, int],
-                          righe_con_da_evadere: int) -> str:
-    """Calcola stato testata canonico basato su statistiche righe.
+                          righe_con_da_evadere: int,
+                          ha_evasione: bool = False) -> str:
+    """Calcola stato testata canonico basato su statistiche righe e bolla.
 
     Regole (ordine di precedenza):
     1. righe_attive == 0:
-       - se ci sono righe EVASO → EVASO (archiviazione post-evasione)
+       - se l'ordine ha un'evasione registrata (bolla) → EVASO
        - altrimenti → ARCHIVIATO
-    2. tutte righe attive EVASO → EVASO
-    3. almeno una EVASO o PARZIALE → PARZ_EVASO
-    4. stato_attuale post-tracciato (VALIDATO/ESPORTATO/PARZ_ESPORTATO):
+    2. evasione registrata (bolla con data_evasione != NULL):
+       - se l'ordine era PARZ_ESPORTATO (o gia' PARZ_EVASO) → PARZ_EVASO
+       - altrimenti (ESPORTATO o qualunque altro stato) → EVASO
+       NB: PARZ_EVASO esiste SOLO come transizione PARZ_ESPORTATO → PARZ_EVASO.
+    3. stato_attuale post-tracciato (VALIDATO/ESPORTATO/PARZ_ESPORTATO):
        - se l'operatore ha riportato righe a CONFERMATO con q_da_evadere > 0
          → retrocede a CONFERMATO (mutabilita' ESPORTATO)
        - altrimenti mantiene lo stato post-tracciato
-    5. righe confermate o con q_da_evadere > 0 → CONFERMATO
-    6. default → ESTRATTO
+    4. righe confermate o con q_da_evadere > 0 → CONFERMATO
+    5. default → ESTRATTO
     """
     totale = stats.get('totale', 0)
-    evaso = stats.get('evaso', 0)
     archiviato = stats.get('archiviato', 0)
-    parziale = stats.get('parziale', 0)
     confermato = stats.get('confermato', 0)
     esportato = stats.get('esportato', 0)
 
     righe_attive = totale - archiviato
 
     if righe_attive == 0:
-        return 'EVASO' if evaso > 0 else 'ARCHIVIATO'
+        return 'EVASO' if ha_evasione else 'ARCHIVIATO'
 
-    if evaso == righe_attive:
+    # Evasione registrata: l'ordine passa a EVASO da qualunque stato, tranne
+    # se era trasmesso solo in parte (PARZ_ESPORTATO) -> PARZ_EVASO.
+    # Idempotente: PARZ_EVASO resta PARZ_EVASO nei ricalcoli successivi.
+    if ha_evasione:
+        if stato_attuale in ('PARZ_ESPORTATO', 'PARZ_EVASO'):
+            return 'PARZ_EVASO'
         return 'EVASO'
-
-    if evaso > 0 or parziale > 0:
-        return 'PARZ_EVASO'
 
     stati_post_tracciato = ('VALIDATO', 'ESPORTATO', 'PARZ_ESPORTATO')
     if stato_attuale in stati_post_tracciato:
@@ -1060,7 +1063,16 @@ def _aggiorna_contatori_ordine(id_testata: int):
     """, (id_testata,)).fetchone()
     stato_attuale = stato_attuale_row['stato'] if stato_attuale_row else None
 
-    nuovo_stato = _calcola_stato_ordine(stato_attuale, stats, righe_con_da_evadere)
+    # L'ordine ha un'evasione registrata se almeno una sua esportazione ha la
+    # bolla compilata (data_evasione != NULL).
+    ha_evasione = db.execute("""
+        SELECT EXISTS(
+            SELECT 1 FROM esportazioni_dettaglio
+            WHERE id_testata = ? AND data_evasione IS NOT NULL
+        )
+    """, (id_testata,)).fetchone()[0]
+
+    nuovo_stato = _calcola_stato_ordine(stato_attuale, stats, righe_con_da_evadere, ha_evasione)
 
     db.execute("""
         UPDATE ORDINI_TESTATA
