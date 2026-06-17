@@ -167,7 +167,25 @@ HAL_FARVI 271952954                      10905              00407890672     PATR
 
 ### Stati Ordine (ORDINI_TESTATA.stato)
 
-`ARCHIVIATO` | `EVASO` | `PARZ_EVASO` | `CONFERMATO` | `ANOMALIA` | `ESTRATTO`
+`ARCHIVIATO` | `EVASO` | `PARZ_EVASO` | `CONFERMATO` | `ANOMALIA` | `ESTRATTO` | `VALIDATO` | `ESPORTATO` | `PARZ_ESPORTATO`
+
+### EVASO / PARZ_EVASO da bolla (2026-06)
+
+Lo stato `EVASO`/`PARZ_EVASO` è guidato dalla **registrazione della bolla**
+(`esportazioni_dettaglio.data_evasione` o `numero_bolla` ≠ NULL), NON dal
+conteggio righe evase. Regola (in `_calcola_stato_ordine`, fulfillment.py):
+
+| Stato prima della bolla | → dopo bolla |
+|-------------------------|--------------|
+| `PARZ_ESPORTATO` | **PARZ_EVASO** |
+| `ESPORTATO` o qualunque altro stato (incl. `ARCHIVIATO`) | **EVASO** |
+| `PARZ_EVASO` / `EVASO` | invariati (idempotente) |
+
+→ **`PARZ_EVASO` esiste solo** come transizione `PARZ_ESPORTATO → PARZ_EVASO`.
+L'unico meccanismo di evasione è la bolla (l'endpoint `righe/{id}/evasione`
+imposta solo `q_da_evadere`, non evade). Lo stato è ricalcolato in modo
+centralizzato da `_aggiorna_contatori_ordine` (`ha_evasione` via EXISTS su
+`esportazioni_dettaglio`).
 
 ### Operazioni Protette
 
