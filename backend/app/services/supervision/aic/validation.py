@@ -24,13 +24,16 @@ def valida_codice_aic(codice_aic: str) -> Tuple[bool, str]:
     if not codice_aic:
         return False, "Codice AIC mancante"
 
-    codice = str(codice_aic).strip()
+    # Normalizza in maiuscolo (la 1a posizione puo essere alfabetica)
+    codice = str(codice_aic).strip().upper()
 
-    if not codice.isdigit():
-        return False, "Codice AIC deve contenere solo cifre"
-
-    if len(codice) != 9:
-        return False, f"Codice AIC deve essere di 9 cifre (ricevuto: {len(codice)})"
+    # Formato valido: 9 caratteri, 1a posizione alfanumerica, le altre 8 numeriche
+    # (es. 900234567 oppure A00345891)
+    if not re.match(r'^[A-Z0-9][0-9]{8}$', codice):
+        return False, (
+            "Codice AIC deve essere di 9 caratteri "
+            "(1a posizione alfanumerica, le altre 8 numeriche)"
+        )
 
     return True, codice
 

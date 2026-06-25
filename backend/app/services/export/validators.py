@@ -4,6 +4,7 @@
 # Validazione campi obbligatori per tracciati EDI
 # =============================================================================
 
+import re
 from typing import Dict, Any, List
 
 
@@ -82,13 +83,14 @@ def valida_campi_tracciato(ordine: Dict[str, Any], dettagli: List[Dict]) -> Dict
         det_dict = dict(det) if hasattr(det, 'keys') else det
         n_riga = det_dict.get('n_riga') or idx
 
-        # Codice AIC - deve essere esattamente 9 cifre numeriche
+        # Codice AIC - 9 caratteri: 1a posizione alfanumerica, le altre 8 numeriche
+        # (es. 900234567 oppure A00345891)
         codice_aic = det_dict.get('codice_aic') or det_dict.get('codice_prodotto') or ''
-        codice_aic = codice_aic.strip()
+        codice_aic = codice_aic.strip().upper()
         if not codice_aic:
             righe_senza_aic.append(str(n_riga))
-        elif not (len(codice_aic) == 9 and codice_aic.isdigit()):
-            # AIC presente ma non valido (non 9 cifre numeriche)
+        elif not re.match(r'^[A-Z0-9][0-9]{8}$', codice_aic):
+            # AIC presente ma non valido
             righe_aic_invalido.append(f"{n_riga}({codice_aic})")
 
         # Prezzo (obbligatorio > 0, eccetto omaggio/sconto merce)

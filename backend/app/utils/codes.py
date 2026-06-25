@@ -125,8 +125,12 @@ def is_valid_piva(piva: str) -> bool:
 
 
 def is_valid_aic(aic: str) -> bool:
-    """Verifica se codice AIC ha formato valido (9 cifre)."""
+    """Verifica se codice AIC ha formato valido.
+
+    9 caratteri: 1a posizione alfanumerica, le altre 8 numeriche
+    (es. 900234567 oppure A00345891).
+    """
     if not aic:
         return False
-    aic_clean = re.sub(r'[^\d]', '', str(aic))
-    return len(aic_clean) == 9
+    aic_clean = str(aic).strip().upper()
+    return bool(re.match(r'^[A-Z0-9][0-9]{8}$', aic_clean))

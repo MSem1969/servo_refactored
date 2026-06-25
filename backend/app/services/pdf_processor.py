@@ -1014,14 +1014,14 @@ def _insert_order(
     # =========================================================================
     # CHECK AIC-A01: PRODOTTI SENZA CODICE AIC VALIDO (v9.1)
     # =========================================================================
-    # Cerca righe senza codice AIC valido (esattamente 9 CIFRE NUMERICHE)
-    # IMPORTANTE: regex ^\d{9}$ verifica che sia ESATTAMENTE 9 cifre numeriche
+    # Cerca righe senza codice AIC valido (9 caratteri: 1a alfanumerica, 8 numeriche)
+    # IMPORTANTE: regex ^[A-Z0-9][0-9]{8}$ accetta sia 900234567 sia A00345891
     # Esclude child espositori che possono non avere AIC
     righe_senza_aic = db.execute("""
         SELECT id_dettaglio, n_riga, codice_aic, codice_originale, descrizione
         FROM ordini_dettaglio
         WHERE id_testata = %s
-          AND (codice_aic IS NULL OR codice_aic = '' OR codice_aic !~ '^[0-9]{9}$')
+          AND (codice_aic IS NULL OR codice_aic = '' OR codice_aic !~* '^[A-Z0-9][0-9]{8}$')
           AND COALESCE(is_child, FALSE) = FALSE
         ORDER BY n_riga
     """, (id_testata,)).fetchall()
