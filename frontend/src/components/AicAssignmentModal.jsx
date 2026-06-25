@@ -216,8 +216,9 @@ const AicAssignmentModal = ({
   // ==========================================================================
 
   // Validazione AIC
+  // 9 caratteri: 1a posizione alfanumerica, le altre 8 numeriche (es. 900234567 o A00345891)
   const isValidAic = useCallback((code) => {
-    return code && code.length === 9 && /^\d{9}$/.test(code);
+    return code && /^[A-Z0-9][0-9]{8}$/.test(code);
   }, []);
 
   // Cerca suggerimenti AIC
@@ -754,16 +755,18 @@ function AicInputSection({ codiceAic, setCodiceAic, isValidAic }) {
   return (
     <div>
       <label className="block text-sm font-medium text-slate-700 mb-2">
-        Codice AIC (9 cifre) *
+        Codice AIC (9 caratteri) *
       </label>
       <input
         type="text"
         value={codiceAic}
         onChange={(e) => {
-          const val = e.target.value.replace(/\D/g, '').slice(0, 9);
+          // 1a posizione: lettera o cifra; posizioni 2-9: solo cifre
+          const raw = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
+          const val = (raw.slice(0, 1) + raw.slice(1).replace(/[^0-9]/g, '')).slice(0, 9);
           setCodiceAic(val);
         }}
-        placeholder="Es: 012345678"
+        placeholder="Es: 012345678 o A00345891"
         maxLength={9}
         className={`w-full px-4 py-3 border rounded-lg font-mono text-lg tracking-wider ${
           codiceAic.length === 9
@@ -773,7 +776,7 @@ function AicInputSection({ codiceAic, setCodiceAic, isValidAic }) {
       />
       <div className="mt-1 flex items-center justify-between text-xs">
         <span className={codiceAic.length === 9 ? 'text-emerald-600' : 'text-slate-500'}>
-          {codiceAic.length}/9 cifre
+          {codiceAic.length}/9 caratteri
         </span>
         {isValidAic(codiceAic) && (
           <span className="text-emerald-600 flex items-center gap-1">

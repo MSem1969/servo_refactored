@@ -272,7 +272,7 @@ def valuta_anomalia_aic(id_testata: int, anomalia: Dict) -> Tuple[bool, str]:
             db.execute("""
                 UPDATE ordini_dettaglio
                 SET codice_aic = %s
-                WHERE id_dettaglio = %s AND (codice_aic IS NULL OR codice_aic = '' OR codice_aic !~ '^[0-9]{9}$')
+                WHERE id_dettaglio = %s AND (codice_aic IS NULL OR codice_aic = '' OR codice_aic !~* '^[A-Z0-9][0-9]{8}$')
             """, (codice_aic, id_dettaglio))
             db.commit()
 
