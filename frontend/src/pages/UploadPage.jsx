@@ -863,7 +863,7 @@ const UploadPage = () => {
 
         {/* Vendor badges supportati - v11.3 + VIATRIS */}
         <div className="flex flex-wrap justify-center gap-2">
-          {["DOC_GENERICI", "CODIFI", "COOPER", "MENARINI", "CHIESI", "ANGELINI", "RECKITT", "VIATRIS", "PERRIGO", "DOMPE", "ZENTIVA"].map(
+          {["DOC_GENERICI", "CODIFI", "COOPER", "MENARINI", "CHIESI", "ANGELINI", "AVAS", "RECKITT", "VIATRIS", "PERRIGO", "DOMPE", "ZENTIVA"].map(
             (vendor) => (
               <VendorBadge key={vendor} vendor={vendor} size="xs" />
             )

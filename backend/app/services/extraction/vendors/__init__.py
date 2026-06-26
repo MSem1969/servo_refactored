@@ -5,6 +5,7 @@
 # =============================================================================
 
 from .angelini import extract_angelini
+from .avas import extract_avas
 from .bayer import extract_bayer
 from .chiesi import extract_chiesi
 from .dompe import extract_dompe
@@ -21,6 +22,7 @@ from .generic import extract_generic
 
 __all__ = [
     'extract_angelini',
+    'extract_avas',
     'extract_bayer',
     'extract_chiesi',
     'extract_dompe',

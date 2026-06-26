@@ -48,6 +48,7 @@ const TracciatiPage = ({ currentUser }) => {
   // Lista vendor disponibili con nomi leggibili
   const vendorOptions = [
     { value: 'ANGELINI', label: 'Angelini' },
+    { value: 'AVAS', label: 'Avas' },
     { value: 'CHIESI', label: 'Chiesi' },
     { value: 'CODIFI', label: 'Codifi' },
     { value: 'COOPER', label: 'Cooper' },

@@ -98,6 +98,12 @@ def detect_vendor(text: str, filename: str = "") -> Tuple[str, float]:
     if "RIEPILOGO CONSEGNA" in _tn and "REFERIMENTO" in _tn and "TRANSFER" in _tn:
         return "ZENTIVA", 0.90
 
+    # AVAS - Transfer Order Avas Pharmaceuticals S.r.l.
+    if "AVAS PHARMACEUTICALS" in t or "AVASPHARMA" in t.replace(" ", ""):
+        return "AVAS", 0.95
+    if "09190500968" in t:  # P.IVA Avas Pharmaceuticals
+        return "AVAS", 0.90
+
     # OPELLA
     if "INFORMAZIONI SULL'ORDINE" in t or "OPELLA" in t:
         return "OPELLA", 0.95
@@ -207,6 +213,7 @@ def _detect_doc_generici(text: str) -> float:
 
 SUPPORTED_VENDORS = [
     'ANGELINI',
+    'AVAS',
     'BAYER',
     'CHIESI',
     'CODIFI',

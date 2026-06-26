@@ -132,7 +132,7 @@ export default function EndpointForm({ endpoint, vendors, depositi, onSave, onCa
                   >
                     <option value="">Seleziona vendor...</option>
                     {vendors.map(v => {
-                      const labels = { ANGELINI: 'Angelini', CHIESI: 'Chiesi', CODIFI: 'Codifi', COOPER: 'Cooper', DOC_GENERICI: 'DOC Generici', DOMPE: 'Dompé', MENARINI: 'Menarini', PERRIGO: 'Perrigo', RECKITT: 'Reckitt', VIATRIS: 'Viatris', ZENTIVA: 'Zentiva' };
+                      const labels = { ANGELINI: 'Angelini', AVAS: 'Avas', CHIESI: 'Chiesi', CODIFI: 'Codifi', COOPER: 'Cooper', DOC_GENERICI: 'DOC Generici', DOMPE: 'Dompé', MENARINI: 'Menarini', PERRIGO: 'Perrigo', RECKITT: 'Reckitt', VIATRIS: 'Viatris', ZENTIVA: 'Zentiva' };
                       return <option key={v} value={v}>{labels[v] || v}</option>;
                     })}
                   </select>

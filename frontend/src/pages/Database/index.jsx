@@ -293,6 +293,7 @@ export default function DatabasePage({ currentUser, onOpenOrdine, restoreScrollY
               <option value="">Tutti i Vendor</option>
               {[
                 { value: 'ANGELINI', label: 'Angelini' },
+                { value: 'AVAS', label: 'Avas' },
                 { value: 'CHIESI', label: 'Chiesi' },
                 { value: 'CODIFI', label: 'Codifi' },
                 { value: 'COOPER', label: 'Cooper' },

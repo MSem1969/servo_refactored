@@ -247,6 +247,7 @@ Il bottone RIPRISTINA su singola riga effettua un **HARD RESET**:
 | Vendor | Stato | Note |
 |--------|-------|------|
 | **ANGELINI** | Attivo | MIN_ID diretto, sconti cascata, espositore 6 cifre |
+| **AVAS** | Attivo | Transfer Order Avas Pharmaceuticals, prefix EDI `AVA`. Detection: `AVAS PHARMACEUTICALS`/`@avaspharma.com`/P.IVA `09190500968`. P.netto unitario già scontato → sconti a 0 (come ZENTIVA); P.IVA cliente dopo label `P.Iva Cliente` (evita P.IVA vendor); dati testata da `Sede Dest.` |
 | **CODIFI** | Attivo | Multi-cliente (N ordini/PDF) |
 | **MENARINI** | Attivo | Espositore `--`, chiusura su somma netto |
 | **DOC_GENERICI** | Attivo | Transfer Order, NO prezzi |

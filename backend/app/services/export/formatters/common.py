@@ -19,6 +19,7 @@ DEFAULT_VENDOR_CODE = "HAL_FARVI"
 # =============================================================================
 VENDOR_PREFIX_MAP = {
     'ANGELINI': 'ANG',
+    'AVAS': 'AVA',
     'BAYER': 'BAY',
     'CHIESI': 'CHI',
     'CODIFI': 'COD',
