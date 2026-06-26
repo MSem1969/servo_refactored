@@ -12,6 +12,7 @@ from typing import Callable, Dict, List
 from .detector import detect_vendor, get_supported_vendors
 from .vendors import (
     extract_angelini,
+    extract_avas,
     extract_bayer,
     extract_chiesi,
     extract_dompe,
@@ -34,6 +35,7 @@ from .vendors import (
 
 EXTRACTORS: Dict[str, Callable] = {
     'ANGELINI': extract_angelini,
+    'AVAS': extract_avas,
     'BAYER': extract_bayer,
     'CHIESI': extract_chiesi,
     'DOMPE': extract_dompe,
@@ -94,6 +96,7 @@ __all__ = [
 
     # Estrattori (per import diretto se necessario)
     'extract_angelini',
+    'extract_avas',
     'extract_bayer',
     'extract_chiesi',
     'extract_dompe',

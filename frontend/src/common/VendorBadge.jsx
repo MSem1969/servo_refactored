@@ -43,6 +43,14 @@ const VendorBadge = ({
       acronym: 'ANG',
       icon: '🏥'
     },
+    AVAS: {
+      bg: 'bg-amber-100',
+      text: 'text-amber-700',
+      border: 'border-amber-200',
+      name: 'Avas',
+      acronym: 'AVA',
+      icon: '🧬'
+    },
     CODIFI: {
       bg: 'bg-emerald-100',
       text: 'text-emerald-700',
@@ -180,12 +188,12 @@ const VendorBadge = ({
 // Utility per ottenere lista vendor supportati
 // v11.2: Lista aggiornata vendor abilitati + COOPER + RECKITT
 VendorBadge.getSupportedVendors = () => {
-  return ['DOC_GENERICI', 'CODIFI', 'COOPER', 'MENARINI', 'CHIESI', 'ANGELINI', 'RECKITT', 'VIATRIS', 'PERRIGO', 'DOMPE', 'ZENTIVA'];
+  return ['DOC_GENERICI', 'CODIFI', 'COOPER', 'MENARINI', 'CHIESI', 'ANGELINI', 'AVAS', 'RECKITT', 'VIATRIS', 'PERRIGO', 'DOMPE', 'ZENTIVA'];
 };
 
 // Utility per verificare se vendor è supportato
 VendorBadge.isSupported = (vendor) => {
-  const supported = ['DOC_GENERICI', 'CODIFI', 'COOPER', 'MENARINI', 'CHIESI', 'ANGELINI', 'RECKITT', 'VIATRIS', 'PERRIGO', 'DOMPE', 'ZENTIVA'];
+  const supported = ['DOC_GENERICI', 'CODIFI', 'COOPER', 'MENARINI', 'CHIESI', 'ANGELINI', 'AVAS', 'RECKITT', 'VIATRIS', 'PERRIGO', 'DOMPE', 'ZENTIVA'];
   return supported.includes(vendor?.toUpperCase());
 };
 
