@@ -91,7 +91,8 @@ class Espositore:
     quantita_parent: int
     aliquota_iva: float = 10.0
     n_riga: int = 0
-    
+    prezzo_netto_dichiarato: float = 0.0  # MENARINI: Totale Netto dichiarato dal parent ("prezzo dell'espositore")
+
     righe_child: List[RigaChild] = field(default_factory=list)
     pezzi_accumulati: int = 0
     valore_netto_accumulato: float = 0.0
@@ -130,7 +131,33 @@ class Espositore:
             return 'ALTO', scostamento_pct
         else:
             return 'CRITICO', scostamento_pct
-    
+
+    def verifica_scostamento_valore(self) -> Tuple[str, float]:
+        """
+        MENARINI: scostamento tra somma Totale Netto dei child e il Totale Netto
+        dichiarato dal parent. E' il criterio di correttezza reale dell'estrazione
+        (i "pezzi" non sono significativi per MENARINI).
+
+        Entro il 2% (arrotondamenti) -> ZERO (estrazione corretta, nessuna anomalia).
+        """
+        if self.prezzo_netto_dichiarato <= 0:
+            return 'ZERO', 0.0
+
+        scostamento_pct = ((self.valore_netto_accumulato - self.prezzo_netto_dichiarato)
+                           / self.prezzo_netto_dichiarato) * 100
+        scost_abs = abs(scostamento_pct)
+
+        if scost_abs < 2:      # tolleranza arrotondamenti al centesimo
+            return 'ZERO', scostamento_pct
+        elif scost_abs <= 10:
+            return 'BASSO', scostamento_pct
+        elif scost_abs <= 20:
+            return 'MEDIO', scostamento_pct
+        elif scost_abs <= 50:
+            return 'ALTO', scostamento_pct
+        else:
+            return 'CRITICO', scostamento_pct
+
     def genera_metadata_json(self, chiusura: str = 'NORMALE', motivo: str = '') -> str:
         """
         Genera metadata JSON per espositore.
@@ -206,9 +233,12 @@ def identifica_tipo_riga(codice: str, descrizione: str, tipo_posizione: str = ''
     if 'P.O.P' in tipo_posizione or 'POP' in tipo_posizione:
         return 'MATERIALE_POP'
 
-    # v3.2: MENARINI - parent ha codice "--" + keywords
+    # MENARINI - il parent espositore e' identificato dal SOLO Cod. Min. "--".
+    # Le keyword descrittive non sono affidabili (molti espositori non le
+    # contengono): usarle applicava erroneamente il criterio ANGELINI e faceva
+    # perdere gli espositori senza keyword (AVANCASSA, CESTONE, ...).
     if vendor == 'MENARINI':
-        if codice == '--' and re.search(r'BANCO|DBOX|FSTAND|EXPO|DISPLAY|ESPOSITORE|CESTA', descrizione, re.I):
+        if codice == '--':
             return 'PARENT_ESPOSITORE'
         # Qualsiasi altra riga MENARINI è prodotto standard (child gestiti da state machine)
         return 'PRODOTTO_STANDARD'
@@ -363,6 +393,7 @@ def elabora_righe_ordine(righe_raw: List[Dict], vendor: str = 'ANGELINI') -> Con
                 quantita_parent=riga.get('quantita', 0) or riga.get('q_venduta', 0) or 1,
                 aliquota_iva=riga.get('aliquota_iva', 10),
                 n_riga=ctx.contatore_righe + 1,
+                prezzo_netto_dichiarato=menarini_netto_parent if vendor.upper() == 'MENARINI' else 0.0,
             )
             ctx.espositori_elaborati += 1
             continue
@@ -429,45 +460,23 @@ def elabora_righe_ordine(righe_raw: List[Dict], vendor: str = 'ANGELINI') -> Con
                 )
                 ctx.espositore_attivo.aggiungi_child(child)
 
-                # v9.0: Logica chiusura differenziata per vendor
-                # IMPORTANTE: Il valore è usato come VERIFICA, non criterio esclusivo
+                # Logica chiusura differenziata per vendor
                 should_close = False
 
-                # v10.3: Verifica se abbiamo già un espositore vuoto tra i child
-                has_espositore_vuoto = any(c.is_espositore_vuoto for c in ctx.espositore_attivo.righe_child)
-
                 if vendor.upper() == 'MENARINI':
-                    # v10.3: MENARINI chiude SOLO se:
-                    # 1. Valore raggiunto E abbiamo già l'espositore vuoto (con codice materiale)
-                    # 2. Oppure se la riga corrente È l'espositore vuoto (chiudi dopo averlo aggiunto)
-                    value_reached = False
+                    # MENARINI: chiusura guidata dal CONFRONTO VALORE.
+                    # Il parent dichiara il "prezzo dell'espositore" (Totale Netto);
+                    # i child (prodotti componenti) si accumulano finche' la somma
+                    # dei loro Totale Netto raggiunge quella del parent. Il
+                    # contenitore vuoto (netto 0) non altera la somma. Nessuna
+                    # dipendenza da keyword/pezzi (criterio ANGELINI) ne' dalla
+                    # presenza dell'espositore vuoto tra i child.
+                    # La somma non puo' raggiungere il totale prima dell'ultimo
+                    # child a valore, quindi non c'e' rischio di chiusura anticipata.
                     if menarini_netto_parent > 0:
-                        diff = ctx.espositore_attivo.valore_netto_accumulato - menarini_netto_parent
-                        tolleranza = menarini_netto_parent * 0.05  # 5% di tolleranza
-                        if diff >= -tolleranza:
-                            value_reached = True
-
-                    # La riga corrente è un espositore vuoto?
-                    current_is_espositore_vuoto = child.is_espositore_vuoto
-
-                    # Chiudi se: valore raggiunto E (abbiamo espositore vuoto O la riga corrente lo è)
-                    if value_reached and (has_espositore_vuoto or current_is_espositore_vuoto):
-                        should_close = True
-
-                    # v9.0: Fallback - se abbiamo pezzi_per_unita e li abbiamo raggiunti
-                    if not should_close and ctx.espositore_attivo.pezzi_per_unita:
-                        pezzi_attesi = ctx.espositore_attivo.pezzi_per_unita * ctx.espositore_attivo.quantita_parent
-                        if ctx.espositore_attivo.pezzi_accumulati >= pezzi_attesi:
-                            # Anche qui, aspetta l'espositore vuoto se non l'abbiamo ancora
-                            if has_espositore_vuoto or current_is_espositore_vuoto:
-                                should_close = True
-
-                    # v9.0: Safety - se abbiamo già molti child (>20) e il valore è vicino (entro 20%)
-                    if not should_close and len(ctx.espositore_attivo.righe_child) > 20:
-                        if menarini_netto_parent > 0:
-                            ratio = ctx.espositore_attivo.valore_netto_accumulato / menarini_netto_parent
-                            if ratio >= 0.80:  # Almeno 80% del valore
-                                should_close = True
+                        tolleranza = menarini_netto_parent * 0.02  # 2%
+                        if ctx.espositore_attivo.valore_netto_accumulato >= menarini_netto_parent - tolleranza:
+                            should_close = True
                 else:
                     # ANGELINI e altri: chiudi quando pezzi accumulati >= pezzi attesi
                     if ctx.espositore_attivo.pezzi_accumulati >= ctx.espositore_attivo.pezzi_attesi_totali:
@@ -541,7 +550,12 @@ def _chiudi_espositore(
         Tuple[riga_parent, righe_child, anomalia]
     """
     prezzo_calcolato = esp.calcola_prezzo_netto_parent()
-    fascia, scostamento_pct = esp.verifica_scostamento()
+    # MENARINI: la verifica di correttezza e' basata sul VALORE (somma netto child
+    # vs netto dichiarato dal parent), non sui pezzi.
+    if vendor.upper() == 'MENARINI':
+        fascia, scostamento_pct = esp.verifica_scostamento_valore()
+    else:
+        fascia, scostamento_pct = esp.verifica_scostamento()
 
     # Richiede supervisione: sempre se forzato, altrimenti solo per fasce critiche
     richiede_supervisione = True if forzato or fascia in FASCE_SUPERVISIONE_OBBLIGATORIA else False
@@ -693,6 +707,17 @@ def _genera_anomalia_espositore(
         livello = 'ERRORE'
         pattern_suffix = motivo
         desc_extra = ''
+    elif vendor.upper() == 'MENARINI':
+        # MENARINI: correttezza basata sul VALORE. Se la somma dei netto child
+        # coincide col netto dichiarato dal parent (fascia ZERO entro tolleranza)
+        # l'estrazione e' corretta -> nessuna anomalia. Altrimenti ESP-A01/A02
+        # in chiave di valore (non di pezzi).
+        if fascia == 'ZERO':
+            return None
+        codice_anom = 'ESP-A01' if esp.valore_netto_accumulato < esp.prezzo_netto_dichiarato else 'ESP-A02'
+        livello = 'ERRORE' if fascia in FASCE_SUPERVISIONE_OBBLIGATORIA else 'ATTENZIONE'
+        pattern_suffix = fascia
+        desc_extra = f' ({scostamento_pct:+.1f}%)'
     elif esp.pezzi_accumulati != esp.pezzi_attesi_totali:
         codice_anom = 'ESP-A01' if esp.pezzi_accumulati < esp.pezzi_attesi_totali else 'ESP-A02'
         livello = 'ERRORE' if fascia in FASCE_SUPERVISIONE_OBBLIGATORIA else 'ATTENZIONE'
@@ -710,8 +735,16 @@ def _genera_anomalia_espositore(
     if len(esp.righe_child) > 5:
         child_desc += f" (+{len(esp.righe_child) - 5} altri)"
 
-    # v3.2: Descrizione arricchita con child
-    descrizione_base = f"{CODICI_ANOMALIA[codice_anom]}: attesi {esp.pezzi_attesi_totali}, trovati {esp.pezzi_accumulati}{desc_extra}"
+    # v3.2: Descrizione arricchita con child.
+    # MENARINI ragiona per VALORE (netto), gli altri vendor per PEZZI.
+    if vendor.upper() == 'MENARINI':
+        descrizione_base = (
+            f"{CODICI_ANOMALIA[codice_anom]}: valore espositore atteso "
+            f"{esp.prezzo_netto_dichiarato:.2f}, somma componenti "
+            f"{esp.valore_netto_accumulato:.2f}{desc_extra}"
+        )
+    else:
+        descrizione_base = f"{CODICI_ANOMALIA[codice_anom]}: attesi {esp.pezzi_attesi_totali}, trovati {esp.pezzi_accumulati}{desc_extra}"
     if child_desc:
         descrizione_completa = f"{descrizione_base}\nChild: {child_desc}"
     else:

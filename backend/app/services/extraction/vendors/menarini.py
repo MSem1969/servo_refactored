@@ -104,15 +104,19 @@ def _is_espositore_candidate(cod_min: str, descrizione: str) -> Tuple[bool, Opti
       - Prima occorrenza di una descrizione = PARENT
       - Occorrenze successive stessa descrizione = CHILD (espositore vuoto)
     """
-    # MENARINI: espositore ha codice "--"
+    # MENARINI: l'UNICO elemento distintivo del parent espositore e' il
+    # Cod. Min. "--". Le keyword descrittive (BANCO/EXPO/CESTA/...) NON sono
+    # affidabili: molti espositori reali (es. AVANCASSA, CESTONE) non le
+    # contengono e venivano persi. Basare il riconoscimento sulle keyword era
+    # il criterio ANGELINI applicato erroneamente a MENARINI.
     if cod_min != '--':
         return False, None
 
     desc_upper = descrizione.upper() if descrizione else ''
-    if not re.search(ESPOSITORE_KEYWORDS, desc_upper, re.I):
-        return False, None
 
-    # Estrai pezzi da pattern XXPZ o X+Y (dentro la descrizione)
+    # Estrai pezzi da pattern XXPZ o X+Y (dentro la descrizione), se presenti.
+    # Non e' piu' usato come criterio di chiusura (che avviene per valore),
+    # ma resta come metadato informativo.
     pezzi_per_unita = None
 
     # Pattern X+Y (es. "3+3")
