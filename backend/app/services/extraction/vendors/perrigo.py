@@ -105,9 +105,6 @@ def extract_perrigo(text: str, lines: List[str], pdf_path: str = None) -> List[D
     # Troviamo tutte le posizioni di "Linea XX" dove XX è multiplo di 10
     linea_positions = list(re.finditer(r'^\s*(\d{2,3})\s+(\d{7,10})\s+(.+?)$', text, re.M))
 
-    # Separatore di sezione
-    separator = '____'
-
     n_riga = 0
     for i, lm in enumerate(linea_positions):
         linea_num = int(lm.group(1))
@@ -119,15 +116,26 @@ def extract_perrigo(text: str, lines: List[str], pdf_path: str = None) -> List[D
         if i + 1 < len(linea_positions):
             end = linea_positions[i + 1].start()
         else:
-            # Fino alla fine del testo o prossimo separatore
-            sep_after = text.find(separator, start)
-            end = sep_after if sep_after > 0 else len(text)
+            # Ultima linea: il blocco arriva fino al riepilogo importi
+            # ("Importo totale IVA esclusa"), che segue sempre l'ultima
+            # "Data di consegna". Usare i separatori "____" tagliava il blocco
+            # PRIMA della data (che vive proprio sulla riga separatore).
+            m_end = re.search(r'Importo\s+totale\s+IVA\s+esclusa', text[start:])
+            end = start + m_end.start() if m_end else len(text)
 
         block = text[start:end]
 
-        # Data consegna dalla sezione
+        # La riga "Data di consegna" cade su una riga separatore del PDF:
+        # pdfplumber intercala i caratteri del testo con gli underscore del
+        # separatore (es. "Da_ta_ d_i c_on_s_eg_n_a :_ 2_2._04_.2_02_6").
+        # Rimuovendo gli underscore si recupera "Data di consegna : 22.04.2026".
+        block_clean = block.replace('_', '')
+
+        # Data di consegna della SINGOLA referenza (in fondo al blocco linea).
+        # PERRIGO prevede una data di consegna per prodotto, diversa dalla data
+        # di emissione dell'ordine.
         data_consegna = ''
-        dc_match = re.search(r'Data\s+di\s+consegna\s*:\s*(\d{2}\.\d{2}\.\d{4})', block)
+        dc_match = re.search(r'Data\s+di\s+consegna\s*:\s*(\d{2}\.\d{2}\.\d{4})', block_clean)
         if dc_match:
             data_consegna = parse_date(dc_match.group(1))
 
