@@ -28,6 +28,18 @@ def detect_vendor(text: str, filename: str = "") -> Tuple[str, float]:
     t = text.upper()[:5000] if text else ""
     # NOTA: filename NON viene più usato per detection (v6.2)
 
+    # DOC_GENERICI - Transfer Order via Grossisti (deve precedere i check per NOME)
+    # I check basati sul nome nudo del vendor (ANGELINI, MENARINI, PERRIGO, ...)
+    # cercano una sottostringa in TUTTO il testo, inclusa la riga "Farmacia ..." del
+    # cliente: una farmacia che si chiama come un vendor (es. "FARMACIA ANGELINI ...")
+    # verrebbe erroneamente classificata come quel vendor. La firma strutturale
+    # DOC_GENERICI (Grossista + Ind.Fiscale + Ind.Consegna Merce + COD. A.I.C. +
+    # Agente numerico) è invece specifica e non collide con i template degli altri
+    # vendor, quindi la valutiamo per prima.
+    doc_generici_score = _detect_doc_generici(t)
+    if doc_generici_score >= 0.70:
+        return "DOC_GENERICI", doc_generici_score
+
     # ANGELINI (ACRAF) - v6.2: Aggiunto pattern "Tipo ZT01 TransferOrder" + "Area vendite"
     if "ANGELINI" in t or "ACRAF" in t:
         return "ANGELINI", 0.95
@@ -111,12 +123,6 @@ def detect_vendor(text: str, filename: str = "") -> Tuple[str, float]:
     # MENARINI
     if "MENARINI" in t or "A. MENARINI" in t:
         return "MENARINI", 0.95
-
-    # DOC_GENERICI - Transfer Order via Grossisti (v6.2)
-    # Deve essere testato PRIMA di BAYER perché entrambi usano "TRANSFER ORDER"
-    doc_generici_score = _detect_doc_generici(t)
-    if doc_generici_score >= 0.70:
-        return "DOC_GENERICI", doc_generici_score
 
     # BAYER - v6.2: Detection basata su contenuto specifico
     # Pattern 1: Parola "BAYER" esplicita
