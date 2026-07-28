@@ -7,8 +7,9 @@ Sistema estrazione ordini farmaceutici da PDF → tracciati ministeriali TO_T/TO
 **Stack:** FastAPI + PostgreSQL + React + Vite + TailwindCSS + React Query
 
 **Documentazione correlata:**
-- [SCHEMA_DB_SERVO.md](./SCHEMA_DB_SERVO.md) - Schema completo database (53 tabelle, 19 viste)
+- [SCHEMA_DB_SERVO.md](./SCHEMA_DB_SERVO.md) - Schema completo database (55 tabelle, 8 viste)
 - [RECOVERY.md](./RECOVERY.md) - Guida disaster recovery e backup
+- [MD_Files/storico/](./MD_Files/storico/) - Piani e changelog storici (archivio)
 
 ---
 
@@ -20,7 +21,15 @@ cd backend && source venv/bin/activate && uvicorn app.main:app --reload --port 8
 
 # Frontend
 cd frontend && npm run dev
+
+# Test (rete di sicurezza per refactoring - eseguirli PRIMA e DOPO ogni modifica)
+cd backend && source venv/bin/activate && TEST_ADMIN_PASSWORD=<pwd-admin> pytest
+cd frontend && npm run test:run
 ```
+
+> **`TEST_ADMIN_PASSWORD` è necessaria**: senza, i ~25 test di integrazione si
+> auto-skippano silenziosamente, perché il default storico `admin123` non
+> corrisponde più alla password dell'utente admin. Vale anche `TEST_ADMIN_USER`.
 
 ---
 
@@ -40,11 +49,21 @@ backend/app/
 
 frontend/src/
 ├── api/           # Client API
+├── common/        # Componenti UI riusabili (Table, FormField, StatusBadge...)
 ├── components/    # Componenti feature
-├── hooks/         # React Query hooks
-├── pages/         # Pagine (OrdineDetail/, Database/)
-└── context/       # Auth, UI state
+├── hooks/         # Hook GLOBALI: solo useCrm, useEmail, useSessionTracking, utils/
+├── layout/        # Header, Sidebar, Layout
+└── pages/         # Pagine + i loro hook locali (pages/*/hooks/)
 ```
+
+> **Dove stanno davvero gli hook React Query.** In `pages/*/hooks/`
+> (`useDatabasePage`, `useOrdineDetail`, `useSupervisione`), non in `hooks/`.
+> Il barrel globale `hooks/` conteneva 9 moduli duplicati e orfani, rimossi nel
+> refactoring 2026-07. Non c'è un `context/`: l'autenticazione è gestita con
+> `useState` in `App.jsx`, non via React Context.
+
+**Migrazioni DB:** unico meccanismo è `backend/migrations/*.sql`, applicate a mano
+con `psql -f`. Alembic è stato rimosso (mai applicato).
 
 ---
 
@@ -304,6 +323,48 @@ Effetti: aggiorna righe → chiude anomalie → approva supervisioni → increme
 
 ---
 
+## Supervisione Prezzo — INCOMPIUTA (congelata)
+
+**Non estendere né rimuovere** finché il perimetro del modulo DDT non è definito.
+Decisione presa nel refactoring del 2026-07-28.
+
+Stato di fatto rilevato:
+
+| Elemento | Situazione |
+|---|---|
+| Tabella `supervisione_prezzo` | **0 righe** in dev e in prod, pur avendo 28 riferimenti SQL nel backend |
+| `routers/supervisione/prezzo.py` | 631 righe, **7 endpoint** |
+| Consumo dal frontend | **1 solo** endpoint: `POST /supervisione/prezzo/riapplica-listino` (`api/supervisione.js`) |
+
+Gli altri 6 endpoint (`pending`, `{id}`, `{id}/righe`, `{id}/upload-listino`,
+`{id}/approve`, `{id}/reject`) non hanno alcun consumatore. La feature è stata
+costruita a metà e mai esercitata: il codice resta in repo perché rimuoverlo
+sarebbe una perdita irreversibile, ma **non va considerato funzionante**.
+
+---
+
+## Endpoint di sola manutenzione (nessun consumatore frontend)
+
+Questi 13 endpoint non sono chiamati da nessuna pagina: sono **strumenti admin
+legittimi**, da invocare a mano. Sono elencati qui perché ogni audit del codice
+li ri-segnala come "morti" — non lo sono.
+
+| Endpoint | Uso |
+|---|---|
+| `GET dashboard/upload-stats` | Statistiche upload |
+| `POST listini/calcola-prezzi` | Ricalcolo prezzi da listino |
+| `POST admin/sync/scheduler/run-now` | Forza sync anagrafica ministero |
+| `POST anagrafica/clienti/revisiona-depositi` | Revisione massiva depositi |
+| `POST ordini/{id}/sblocca-supervisioni` | Sblocco manuale supervisioni |
+| `POST ordini/{id}/fix-stati`, `POST ordini/fix-stati-tutti` | Ricalcolo stati righe/ordine |
+| `GET tracciati/ftp/health-check` | Diagnostica FTP |
+| `POST upload/detect-vendor` | Test detection vendor su PDF |
+| `POST upload/reprocess/{id}` | Ri-elaborazione acquisizione |
+| `GET supervisione/espositore/{id}` | Dettaglio supervisione espositore |
+| `POST supervisione/prezzo/{id}/{upload-listino,approve,reject}` | Vedi sezione precedente |
+
+---
+
 ## Modifica Header Manuale (v11.3)
 
 `PATCH /api/v10/ordini/{id_testata}/header`
@@ -461,6 +522,26 @@ track_from_user(current_user, Sezione.DATABASE, Azione.CONFIRM,
 2. Pattern si ripeterà? → Generalizza
 3. Caso isolato? → Documenta eccezione
 4. Uniforma: error handling, response format, componenti UI
+
+### ⚠️ Trappola: `modulo.py` e `modulo/` nella stessa directory
+
+Se in una directory coesistono `x.py` e il package `x/`, **Python carica sempre il
+package**: `x.py` diventa irraggiungibile, ma continua a sembrare vivo a chi legge
+il repo e a `grep`. Durante il refactoring 2026-07 questo aveva prodotto **1.414
+righe di codice fantasma** in due punti (`services/listini.py` e
+`services/supervision/aic.py`), entrambi ombreggiati e mai eseguiti.
+
+Verifica in un secondo, invece di dedurlo dagli import:
+
+```bash
+python -c "import app.services.listini as m; print(m.__file__)"
+```
+
+**Corollario:** anche i test possono puntare al modulo sbagliato.
+`tests/test_espositori.py` testava il package inattivo `services/espositori/`
+mentre in produzione girava `espositore.py` — 21 test verdi su codice mai
+eseguito. Quando si sposta o si duplica un modulo, controllare **da dove
+importano i test**, non solo l'applicazione.
 
 ---
 

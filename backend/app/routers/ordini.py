@@ -17,7 +17,7 @@ from ..database_pg import get_db
 from ..config import config
 from ..auth import get_current_user, get_current_user_optional, UtenteResponse
 
-from ..services.ordini import (
+from ..services.orders import (
     get_ordini,
     get_ordine_detail,
     get_ordine_righe,
@@ -34,7 +34,7 @@ from ..services.ordini import (
     ripristina_ordine,
     fix_stati_righe,
 )
-from ..services.tracciati import valida_e_genera_tracciato
+from ..services.export import valida_e_genera_tracciato
 # v11.0: Archiviazione centralizzata
 from ..services.orders.commands import (
     archivia_ordine as service_archivia_ordine,

@@ -5,6 +5,8 @@ __pycache__/
 *.so
 .Python
 venv/
+# cattura anche la dir spuria "venv\r" (nome con CR, creata da uno script CRLF)
+/venv*/
 ENV/
 .env
 *.egg-info/
@@ -68,6 +70,7 @@ secrets*.json
 # Output tracciati (file generati)
 backend/outputs/*.TXT
 backend/outputs/*.txt
+backend/outputs/archive/
 
 # Server output
 nohup.out

@@ -47,7 +47,6 @@ requests==2.31.0            # HTTP client per API calls
 APScheduler==3.10.4         # Job scheduling (mail monitor)
 
 # ===== Database Migrations =====
-alembic==1.13.1             # Database migration tool
 SQLAlchemy==2.0.25          # Required by Alembic (schema reflection only)
 
 # ===== Testing =====

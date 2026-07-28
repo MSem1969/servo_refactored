@@ -128,9 +128,12 @@ class TestScorporoIva:
         """Standard 10% VAT extraction."""
         from app.services.listini.parsing import scorporo_iva
 
-        # 135.90 / 1.10 = 123.545... = 123.55 (rounded)
-        result = scorporo_iva(135.90, 10)
-        assert result == 123.55
+        # 135.90 / 1.10 = 123.545454...
+        # Il default e' decimali=5 (precisione per i calcoli interni: e' cosi'
+        # che lo invoca import_csv.py), non 2. L'arrotondamento commerciale a
+        # 2 decimali va chiesto esplicitamente.
+        assert scorporo_iva(135.90, 10) == 123.54545
+        assert scorporo_iva(135.90, 10, decimali=2) == 123.55
 
     def test_scorporo_22_percent(self):
         """22% VAT extraction."""

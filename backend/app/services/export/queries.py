@@ -101,15 +101,20 @@ def get_esportazioni_storico(limit: int = 20) -> List[Dict]:
     Ritorna storico esportazioni con flag 'oggi'.
     """
     db = get_db()
+    # La colonna e' data_generazione: 'data_esportazione' non e' mai esistita
+    # su PostgreSQL (e date('now') era sintassi SQLite), quindi la query
+    # falliva sempre. Altrove e' esposta con l'alias data_esportazione, che
+    # qui viene mantenuto per non cambiare la forma della risposta.
     rows = db.execute("""
         SELECT
             e.*,
+            e.data_generazione AS data_esportazione,
             CASE
-                WHEN date(e.data_esportazione) = date('now') THEN 1
+                WHEN e.data_generazione::date = CURRENT_DATE THEN 1
                 ELSE 0
             END AS oggi
         FROM ESPORTAZIONI e
-        ORDER BY e.data_esportazione DESC
+        ORDER BY e.data_generazione DESC
         LIMIT ?
     """, (limit,)).fetchall()
     return [dict(row) for row in rows]

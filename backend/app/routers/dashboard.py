@@ -7,7 +7,7 @@
 from fastapi import APIRouter, HTTPException
 from typing import Dict, Any
 
-from ..services.ordini import (
+from ..services.orders import (
     get_dashboard_stats,
     get_ordini_recenti,
     get_anomalie_critiche,

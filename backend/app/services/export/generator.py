@@ -12,7 +12,7 @@ from datetime import datetime
 
 from ...config import config
 from ...database_pg import get_db, log_operation
-from ..supervisione import può_emettere_tracciato
+from ..supervision import può_emettere_tracciato
 from .formatters import generate_to_t_line, generate_to_d_line
 from .validators import valida_campi_tracciato
 
