@@ -17,9 +17,12 @@ class TestExportTracciati:
         client: TestClient,
         auth_headers: dict
     ):
-        """Export ordine non esistente."""
+        """Preview tracciato di un ordine non esistente."""
+        # NB: la rotta e' /tracciati/preview/{id}. Il test puntava a
+        # /tracciati/export/{id}, che non esiste: il 404 atteso arrivava dal
+        # router (rotta assente), non dall'handler, quindi non verificava nulla.
         response = client.get(
-            "/api/v1/tracciati/export/999999999",
+            "/api/v1/tracciati/preview/999999999",
             headers=auth_headers
         )
 
@@ -31,7 +34,7 @@ class TestExportTracciati:
         client: TestClient,
         auth_headers: dict
     ):
-        """Export ordine in stato confermato."""
+        """Preview tracciato di un ordine in stato confermato."""
         # Trova ordine confermato
         list_response = client.get(
             "/api/v1/ordini",
@@ -48,14 +51,29 @@ class TestExportTracciati:
 
         ordine_id = data[0]["id_testata"]
 
-        # Tenta export
+        # Preview: sola lettura, non genera file ne' modifica lo stato.
+        #
+        # ATTENZIONE - questo NON e' il percorso di generazione in esercizio.
+        # La generazione reale e' POST /ordini/{id}/valida -> valida_e_genera_tracciato,
+        # che legge da ORDINI_DETTAGLIO. La preview passa invece per
+        # get_tracciato_preview, che legge dalla vista v_dettagli_completi:
+        # una vista che in produzione NON esiste, perche' nessuno chiama mai
+        # questo endpoint (tracciatiApi.getPreview non e' invocato da alcun
+        # componente). Il test verifica quindi i formatter TO_T/TO_D
+        # end-to-end, non il percorso di produzione.
         response = client.get(
-            f"/api/v1/tracciati/export/{ordine_id}",
+            f"/api/v1/tracciati/preview/{ordine_id}",
             headers=auth_headers
         )
 
-        # Potrebbe essere 200 o 422 se mancano dati
-        assert response.status_code in [200, 422]
+        if response.status_code == 500 and 'v_dettagli_completi' in response.text:
+            pytest.skip(
+                "vista v_dettagli_completi assente su questo DB: la preview "
+                "non e' esercitabile (percorso non usato in produzione)"
+            )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["success"] is True
 
 
 class TestFormatoTracciati:
@@ -130,9 +148,18 @@ class TestFormatoTracciati:
 class TestExportValidation:
     """Test validazione campi tracciato."""
 
-    def test_valida_campi_tracciato_valid(self):
+    def test_valida_campi_tracciato_valid(self, monkeypatch):
         """Validazione con dati completi."""
+        from app.services.export import validators
         from app.services.export.validators import valida_campi_tracciato
+
+        # La v12.0 ha aggiunto il controllo di coerenza ERP, che interroga
+        # anagrafica_clienti: con un MIN_ID di fantasia il test fallirebbe
+        # sempre. Qui si verificano i CAMPI OBBLIGATORI, non l'aggancio ERP
+        # (coperto a parte), quindi il controllo viene neutralizzato.
+        monkeypatch.setattr(
+            validators, '_valida_coerenza_erp_export', lambda min_id, piva: None
+        )
 
         ordine = {
             "vendor": "ANGELINI",
