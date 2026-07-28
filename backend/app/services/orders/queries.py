@@ -556,8 +556,11 @@ def get_dashboard_stats() -> Dict[str, Any]:
             'anomalie_aperte': db.execute(
                 "SELECT COUNT(*) FROM ANOMALIE WHERE stato IN ('APERTA', 'IN_GESTIONE') AND data_rilevazione::date = CURRENT_DATE"
             ).fetchone()[0],
+            # La colonna e' data_elaborazione (valorizzata a NOW() dal
+            # pdf_processor al passaggio in ELABORATO): 'data_acquisizione'
+            # non e' mai esistita su PostgreSQL e faceva fallire l'endpoint.
             'pdf_elaborati': db.execute(
-                "SELECT COUNT(*) FROM ACQUISIZIONI WHERE stato = 'ELABORATO' AND data_acquisizione::date = CURRENT_DATE"
+                "SELECT COUNT(*) FROM ACQUISIZIONI WHERE stato = 'ELABORATO' AND data_elaborazione::date = CURRENT_DATE"
             ).fetchone()[0],
             'per_stato': oggi_per_stato,
         },
