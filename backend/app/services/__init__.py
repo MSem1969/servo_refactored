@@ -73,7 +73,6 @@ from .registry import (
 
 # v10.1: Modular service packages
 from . import anomalies
-from . import espositori
 from . import listini
 
 __all__ = [

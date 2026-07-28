@@ -12,28 +12,28 @@ class TestIdentificaTipoRiga:
 
     def test_sconto_merce(self):
         """SC.MERCE should be identified."""
-        from app.services.espositori.detection import identifica_tipo_riga
+        from app.services.espositore import identifica_tipo_riga
 
         assert identifica_tipo_riga('123456789', 'Prodotto', 'SC.MERCE') == 'SCONTO_MERCE'
         assert identifica_tipo_riga('123456789', 'Prodotto', 'SCMERCE') == 'SCONTO_MERCE'
 
     def test_materiale_pop(self):
         """P.O.P should be identified."""
-        from app.services.espositori.detection import identifica_tipo_riga
+        from app.services.espositore import identifica_tipo_riga
 
         assert identifica_tipo_riga('123456789', 'Materiale', 'P.O.P') == 'MATERIALE_POP'
         assert identifica_tipo_riga('123456789', 'Materiale', 'POP') == 'MATERIALE_POP'
 
     def test_angelini_parent_espositore_6_cifre(self):
         """ANGELINI: 6-digit code with XXPZ should be PARENT_ESPOSITORE."""
-        from app.services.espositori.detection import identifica_tipo_riga
+        from app.services.espositore import identifica_tipo_riga
 
         result = identifica_tipo_riga('415734', 'FSTAND 24PZ PRODOTTO', '', 'ANGELINI')
         assert result == 'PARENT_ESPOSITORE'
 
     def test_angelini_parent_espositore_keywords(self):
         """ANGELINI: 6-digit code with keywords should be PARENT_ESPOSITORE."""
-        from app.services.espositori.detection import identifica_tipo_riga
+        from app.services.espositore import identifica_tipo_riga
 
         keywords = ['BANCO', 'DBOX', 'FSTAND', 'EXPO', 'DISPLAY', 'ESPOSITORE', 'CESTA']
         for keyword in keywords:
@@ -42,28 +42,28 @@ class TestIdentificaTipoRiga:
 
     def test_angelini_promo_autonoma(self):
         """ANGELINI: 6-digit code without keywords should be PROMO_AUTONOMA."""
-        from app.services.espositori.detection import identifica_tipo_riga
+        from app.services.espositore import identifica_tipo_riga
 
         result = identifica_tipo_riga('123456', 'PRODOTTO NORMALE', '', 'ANGELINI')
         assert result == 'PROMO_AUTONOMA'
 
     def test_menarini_parent_espositore(self):
         """MENARINI: -- code with keywords should be PARENT_ESPOSITORE."""
-        from app.services.espositori.detection import identifica_tipo_riga
+        from app.services.espositore import identifica_tipo_riga
 
         result = identifica_tipo_riga('--', 'EXPO BANCO 3+3', '', 'MENARINI')
         assert result == 'PARENT_ESPOSITORE'
 
     def test_menarini_standard_product(self):
         """MENARINI: non-espositore should be PRODOTTO_STANDARD."""
-        from app.services.espositori.detection import identifica_tipo_riga
+        from app.services.espositore import identifica_tipo_riga
 
         result = identifica_tipo_riga('943303507', 'AFTAMED GEL 10ML', '', 'MENARINI')
         assert result == 'PRODOTTO_STANDARD'
 
     def test_standard_product_9_digit_aic(self):
         """Standard 9-digit AIC should be PRODOTTO_STANDARD."""
-        from app.services.espositori.detection import identifica_tipo_riga
+        from app.services.espositore import identifica_tipo_riga
 
         result = identifica_tipo_riga('012345678', 'PRODOTTO NORMALE', '')
         assert result == 'PRODOTTO_STANDARD'
@@ -74,7 +74,7 @@ class TestEstraiPezziEspositore:
 
     def test_fstand_pattern(self):
         """FSTAND XXPZ pattern."""
-        from app.services.espositori.detection import estrai_pezzi_espositore
+        from app.services.espositore import estrai_pezzi_espositore
 
         pezzi, totale = estrai_pezzi_espositore('FSTAND 24PZ PRODOTTO', 2)
         assert pezzi == 24
@@ -82,7 +82,7 @@ class TestEstraiPezziEspositore:
 
     def test_dbox_pattern(self):
         """DBOX XXPZ pattern."""
-        from app.services.espositori.detection import estrai_pezzi_espositore
+        from app.services.espositore import estrai_pezzi_espositore
 
         pezzi, totale = estrai_pezzi_espositore('DBOX 12PZ', 1)
         assert pezzi == 12
@@ -90,7 +90,7 @@ class TestEstraiPezziEspositore:
 
     def test_generic_pz_pattern(self):
         """Generic XXPZ pattern."""
-        from app.services.espositori.detection import estrai_pezzi_espositore
+        from app.services.espositore import estrai_pezzi_espositore
 
         pezzi, totale = estrai_pezzi_espositore('ESPOSITORE 36 PZ', 1)
         assert pezzi == 36
@@ -98,7 +98,7 @@ class TestEstraiPezziEspositore:
 
     def test_menarini_sum_pattern(self):
         """MENARINI X+Y pattern (e.g., 3+3)."""
-        from app.services.espositori.detection import estrai_pezzi_espositore
+        from app.services.espositore import estrai_pezzi_espositore
 
         pezzi, totale = estrai_pezzi_espositore('EXPO BANCO 3+3', 1)
         assert pezzi == 6
@@ -106,7 +106,7 @@ class TestEstraiPezziEspositore:
 
     def test_no_pattern_returns_none(self):
         """No pattern should return (None, None)."""
-        from app.services.espositori.detection import estrai_pezzi_espositore
+        from app.services.espositore import estrai_pezzi_espositore
 
         pezzi, totale = estrai_pezzi_espositore('PRODOTTO NORMALE', 1)
         assert pezzi is None
@@ -114,7 +114,7 @@ class TestEstraiPezziEspositore:
 
     def test_empty_description(self):
         """Empty description should return (None, None)."""
-        from app.services.espositori.detection import estrai_pezzi_espositore
+        from app.services.espositore import estrai_pezzi_espositore
 
         pezzi, totale = estrai_pezzi_espositore('', 1)
         assert pezzi is None
@@ -126,7 +126,7 @@ class TestEspositoreModel:
 
     def test_pezzi_attesi_totali(self):
         """Test pezzi_attesi_totali calculation."""
-        from app.services.espositori.models import Espositore
+        from app.services.espositore import Espositore
 
         esp = Espositore(
             codice_aic='',
@@ -141,7 +141,7 @@ class TestEspositoreModel:
 
     def test_aggiungi_child(self):
         """Test adding child rows."""
-        from app.services.espositori.models import Espositore, RigaChild
+        from app.services.espositore import Espositore, RigaChild
 
         esp = Espositore(
             codice_aic='',
@@ -170,7 +170,7 @@ class TestEspositoreModel:
 
     def test_espositore_vuoto_non_conta_pezzi(self):
         """Empty espositore (omaggio) should not count pieces."""
-        from app.services.espositori.models import Espositore, RigaChild
+        from app.services.espositore import Espositore, RigaChild
 
         esp = Espositore(
             codice_aic='',
@@ -199,7 +199,7 @@ class TestEspositoreModel:
 
     def test_verifica_scostamento_zero(self):
         """Zero deviation."""
-        from app.services.espositori.models import Espositore, RigaChild
+        from app.services.espositore import Espositore, RigaChild
 
         esp = Espositore(
             codice_aic='',
@@ -227,7 +227,7 @@ class TestEspositoreModel:
 
     def test_verifica_scostamento_alto(self):
         """High deviation (>20%)."""
-        from app.services.espositori.models import Espositore, RigaChild
+        from app.services.espositore import Espositore, RigaChild
 
         esp = Espositore(
             codice_aic='',
@@ -260,7 +260,7 @@ class TestContestoElaborazione:
 
     def test_default_values(self):
         """Test default initialization."""
-        from app.services.espositori.models import ContestoElaborazione
+        from app.services.espositore import ContestoElaborazione
 
         ctx = ContestoElaborazione()
 
@@ -275,7 +275,7 @@ class TestContestoElaborazione:
 
     def test_custom_vendor(self):
         """Test custom vendor initialization."""
-        from app.services.espositori.models import ContestoElaborazione
+        from app.services.espositore import ContestoElaborazione
 
         ctx = ContestoElaborazione(vendor='MENARINI')
         assert ctx.vendor == 'MENARINI'

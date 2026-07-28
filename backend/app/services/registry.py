@@ -237,8 +237,11 @@ def _register_default_services():
 
     # Espositori service
     def espositori_factory():
-        from . import espositori
-        return espositori
+        # Il package espositori/ (mai agganciato, logica divergente) e' stato
+        # rimosso: il modulo in esercizio e' espositore.py.
+        # Vedi MD_Files/storico/espositori_package_divergenze.md
+        from . import espositore
+        return espositore
 
     registry.register('espositori', espositori_factory)
 
