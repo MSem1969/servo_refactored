@@ -12,7 +12,7 @@ from typing import Dict, Any, List, Optional
 
 from ..config import config
 from ..auth import get_current_user
-from ..services.tracciati import (
+from ..services.export import (
     generate_tracciati_per_ordine,
     get_tracciato_preview,
     get_ordini_pronti_export,

@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from ...database_pg import get_db
 from ...services.supervision.requests import _calcola_pattern_signature_listino
-from ...services.supervisione import sblocca_ordine_se_completo
+from ...services.supervision import sblocca_ordine_se_completo
 from .schemas import CorrezioneListinoRequest, ArchiviazioneListinoRequest
 
 

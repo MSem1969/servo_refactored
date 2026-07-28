@@ -13,7 +13,7 @@ from enum import Enum
 from ..auth.dependencies import get_current_user
 from ..auth.models import UtenteResponse
 
-from ..services.ordini import (
+from ..services.orders import (
     get_anomalie,
     get_anomalie_by_ordine,
     create_anomalia,

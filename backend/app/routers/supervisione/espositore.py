@@ -9,7 +9,7 @@ from typing import Optional
 from fastapi import APIRouter, HTTPException, Query
 
 from ...database_pg import get_db
-from ...services.supervisione import (
+from ...services.supervision import (
     approva_supervisione,
     rifiuta_supervisione,
     modifica_supervisione,

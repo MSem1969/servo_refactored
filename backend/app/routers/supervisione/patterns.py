@@ -13,7 +13,7 @@ from ...database_pg import (
     get_criteri_ordinari,
     get_criteri_stats,
 )
-from ...services.supervisione import (
+from ...services.supervision import (
     approva_supervisione,
     modifica_supervisione,
     get_storico_criteri_applicati,

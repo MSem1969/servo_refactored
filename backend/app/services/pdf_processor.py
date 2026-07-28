@@ -71,7 +71,7 @@ from ..database_pg import get_db, get_vendor_id, log_operation
 from ..utils import compute_file_hash, generate_order_key, calcola_q_totale, parse_date
 from .extraction import get_extractor, detect_vendor
 from .lookup import lookup_farmacia, lookup_cliente_by_piva
-from .supervisione import (
+from .supervision import (
     valuta_anomalia_con_apprendimento,
     crea_richiesta_supervisione,
     blocca_ordine_per_supervisione,
@@ -914,7 +914,7 @@ def _insert_order(
         result['righe'] += 1
 
     # Aggiorna contatori righe nella testata
-    from .ordini import _aggiorna_contatori_ordine
+    from .orders.fulfillment import _aggiorna_contatori_ordine
     _aggiorna_contatori_ordine(id_testata)
 
     # =========================================================================
