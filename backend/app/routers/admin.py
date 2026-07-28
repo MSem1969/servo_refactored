@@ -135,7 +135,7 @@ async def reset_sistema(
 
         # v10.5: Tabelle da svuotare (ordine per foreign key - prima le dipendenti)
         # PRESERVATE: operatori, anagrafica_*, listini_vendor, vendor, permessi_ruolo,
-        #             app_sezioni, backup_*, sync_state, alembic_version
+        #             app_sezioni, backup_*, sync_state
         tables_to_clear = [
             # 1. Log e audit (prima perché possono avere FK verso altre tabelle)
             "log_operazioni",
@@ -145,15 +145,14 @@ async def reset_sistema(
             "ftp_log",  # Ha FK verso esportazioni
             "esportazioni_dettaglio",
             "esportazioni",
-            "tracciati_dettaglio",
-            "tracciati",
+            # v15: tracciati / tracciati_dettaglio rimosse (tabelle mai usate)
             # 3. CRM
             "crm_allegati",
             "crm_messaggi",
             "crm_tickets",
             # 4. Supervisione (tutte le tipologie - ordine per FK)
             "supervisione_anagrafica",  # Ha FK verso anomalie e ordini_testata
-            "supervisione_unificata",   # Ha FK verso ordini_testata
+            # v15: supervisione_unificata rimossa (tabella mai usata)
             "supervisione_espositore",
             "supervisione_listino",
             "supervisione_lookup",
@@ -226,8 +225,6 @@ async def reset_sistema(
             # Esportazioni e Tracciati
             "esportazioni_dettaglio_id_seq",
             "esportazioni_id_esportazione_seq",
-            "tracciati_dettaglio_id_seq",
-            "tracciati_id_tracciato_seq",
             # Ordini
             "ordini_dettaglio_id_dettaglio_seq",
             "ordini_testata_id_testata_seq",
@@ -240,7 +237,6 @@ async def reset_sistema(
             "supervisione_listino_id_supervisione_seq",
             "supervisione_lookup_id_supervisione_seq",
             "supervisione_prezzo_id_supervisione_seq",
-            "supervisione_unificata_id_supervisione_seq",
         ]
 
         sequences_reset = 0

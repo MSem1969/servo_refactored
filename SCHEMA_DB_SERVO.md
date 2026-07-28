@@ -23,7 +23,7 @@
 
 ## Panoramica
 
-Il database SERV.O contiene **53 tabelle** e **19 viste** organizzate nei seguenti domini funzionali:
+Il database SERV.O contiene **50 tabelle** e **5 viste** organizzate nei seguenti domini funzionali:
 
 | Dominio | Tabelle | Descrizione |
 |---------|---------|-------------|
@@ -38,6 +38,28 @@ Il database SERV.O contiene **53 tabelle** e **19 viste** organizzate nei seguen
 | Audit | 5 | Log operazioni, tracking operatore, modifiche |
 | CRM | 3 | Ticket, messaggi, allegati |
 | Backup | 5 | Moduli, storage, history, schedule |
+
+## Oggetti rimossi (v15 — allineamento produzione, 2026-07-28)
+
+La migration `backend/migrations/v15_cleanup_dead_objects_prod.sql` ha rimosso 5 tabelle e
+3 viste: tutte **vuote**, **mai referenziate** dal backend e **senza FK né viste dipendenti**.
+La migration verifica queste condizioni da sé e abortisce se non sono soddisfatte. Rollback in
+`v15_cleanup_dead_objects_prod_rollback.sql`, round-trip verificato su una copia dello schema
+di produzione.
+
+**Tabelle:** `tracciati`, `tracciati_dettaglio` (i tracciati EDI sono tracciati da
+`esportazioni`/`esportazioni_dettaglio`), `supervisione_unificata` (refactoring mai completato),
+`backup_schedules`, `alembic_version`.
+
+**Viste:** `v_backup_dashboard`, `v_backup_history_detail`, `v_sync_status`.
+
+Lo scopo è riallineare produzione e sviluppo: gli scostamenti di schema tra i due ambienti
+producono diagnosi sbagliate.
+
+**Non rimosse** le tabelle vuote ma *scritte* dal codice — `otp_tokens`, `otp_audit_log`,
+`password_reset_tokens`, `backup_history`, `backup_operations_log`, `backup_storage`,
+`crm_allegati`, `email_acquisizioni`, `log_criteri_applicati`, `supervisione_anagrafica`,
+`supervisione_prezzo`, `sync_state`: sono feature mai esercitate, non codice morto.
 
 ---
 
@@ -295,26 +317,6 @@ Anagrafica clienti interna (import da gestionale).
 ---
 
 ## Tabelle Supervisione
-
-### supervisione_unificata
-Tabella unificata per tutte le supervisioni (nuova architettura).
-
-| Colonna | Tipo | Null | Default | Descrizione |
-|---------|------|------|---------|-------------|
-| id_supervisione | integer | NO | serial | PK |
-| tipo_supervisione | varchar(20) | NO | | AIC/LOOKUP/LISTINO/ESPOSITORE/PREZZO |
-| id_testata | integer | NO | | FK ordini_testata |
-| id_anomalia | integer | YES | | FK anomalie |
-| id_dettaglio | integer | YES | | FK ordini_dettaglio |
-| codice_anomalia | varchar(20) | YES | | |
-| vendor | varchar(50) | YES | | |
-| pattern_signature | text | YES | | |
-| stato | varchar(20) | YES | 'PENDING' | PENDING/APPROVED/REJECTED |
-| operatore | varchar(100) | YES | | |
-| timestamp_creazione | timestamp | YES | CURRENT_TIMESTAMP | |
-| timestamp_decisione | timestamp | YES | | |
-| note | text | YES | | |
-| payload | jsonb | YES | '{}' | Dati specifici per tipo |
 
 ### supervisione_aic
 Supervisione per anomalie codice AIC.
@@ -634,29 +636,6 @@ Dettaglio ordini inclusi in esportazione.
 | id | integer | NO | serial | PK |
 | id_esportazione | integer | NO | | FK esportazioni |
 | id_testata | integer | YES | | FK ordini_testata |
-
-### tracciati
-Storico tracciati generati (CSV, altri formati).
-
-| Colonna | Tipo | Null | Default | Descrizione |
-|---------|------|------|---------|-------------|
-| id_tracciato | integer | NO | serial | PK |
-| nome_file | varchar(255) | NO | | |
-| tipo | varchar(20) | YES | 'CSV' | |
-| num_righe | integer | YES | 0 | |
-| id_operatore | integer | YES | | FK operatori |
-| note | text | YES | | |
-| data_generazione | timestamp | YES | CURRENT_TIMESTAMP | |
-
-### tracciati_dettaglio
-Dettaglio righe incluse in tracciato.
-
-| Colonna | Tipo | Null | Default | Descrizione |
-|---------|------|------|---------|-------------|
-| id | integer | NO | serial | PK |
-| id_tracciato | integer | NO | | FK tracciati |
-| id_testata | integer | YES | | FK ordini_testata |
-| id_dettaglio | integer | YES | | FK ordini_dettaglio |
 
 ### listini_vendor
 Listini prezzi vendor.
@@ -1161,22 +1140,6 @@ Storico backup eseguiti.
 | triggered_by | varchar(50) | YES | 'scheduled' | scheduled/manual |
 | operator_id | integer | YES | | |
 
-### backup_schedules
-Schedulazioni backup.
-
-| Colonna | Tipo | Null | Default | Descrizione |
-|---------|------|------|---------|-------------|
-| id_schedule | integer | NO | serial | PK |
-| id_module | integer | NO | | FK backup_modules |
-| cron_expression | varchar(50) | NO | | |
-| active | boolean | YES | true | |
-| next_run | timestamp | YES | | |
-| last_run | timestamp | YES | | |
-| last_status | varchar(20) | YES | | |
-| options | jsonb | YES | '{}' | |
-| created_at | timestamp | YES | CURRENT_TIMESTAMP | |
-| updated_at | timestamp | YES | | |
-
 ### backup_operations_log
 Log operazioni backup.
 
@@ -1208,13 +1171,6 @@ Stato sincronizzazione anagrafiche.
 | last_url | text | YES | | URL sincronizzazione |
 | records_count | integer | YES | 0 | Record sincronizzati |
 | extra_data | jsonb | YES | '{}' | |
-
-### alembic_version
-Versione migrazioni database.
-
-| Colonna | Tipo | Null | Default | Descrizione |
-|---------|------|------|---------|-------------|
-| version_num | varchar(32) | NO | | Versione corrente |
 
 ---
 
@@ -1261,43 +1217,21 @@ LEFT JOIN criteri_ordinari_espositore coe ON se.pattern_signature = coe.pattern_
 WHERE se.stato = 'PENDING';
 ```
 
-### v_sync_status
-Stato sincronizzazione anagrafiche.
-
-```sql
-SELECT
-    key,
-    last_sync,
-    records_count,
-    CASE
-        WHEN last_sync IS NULL THEN 'MAI_SINCRONIZZATO'
-        WHEN last_sync < CURRENT_TIMESTAMP - INTERVAL '7 days' THEN 'OBSOLETO'
-        WHEN last_sync < CURRENT_TIMESTAMP - INTERVAL '1 day' THEN 'DA_AGGIORNARE'
-        ELSE 'AGGIORNATO'
-    END AS stato
-FROM sync_state;
-```
-
 ### Altre viste disponibili
 
-| Vista | Descrizione |
-|-------|-------------|
-| v_supervisione_aic_compat | Compatibilità supervisione AIC |
-| v_supervisione_lookup_compat | Compatibilità supervisione lookup |
-| v_supervisione_listino_compat | Compatibilità supervisione listino |
-| v_supervisione_espositore_compat | Compatibilità supervisione espositore |
-| v_supervisione_prezzo_compat | Compatibilità supervisione prezzo |
-| v_supervisione_grouped_pending | Supervisioni raggruppate pending |
-| v_supervisione_listino_pending | Supervisioni listino pending |
-| v_supervisione_lookup_pending | Supervisioni lookup pending |
-| v_supervisioni_pending | Tutte le supervisioni pending |
-| v_tracking_daily_stats | Statistiche tracking giornaliere |
-| v_tracking_hourly_pattern | Pattern orario tracking |
-| v_tracking_operator_summary | Riepilogo per operatore |
-| v_tracking_report_filters | Filtri per report |
-| v_tracking_sequences | Sequenze azioni |
-| v_backup_dashboard | Dashboard backup |
-| v_backup_history_detail | Dettaglio storico backup |
+Dopo la pulizia v15 il database espone **5 viste in tutto**, tutte referenziate dal backend:
+
+| Vista | Descrizione | Rif. backend |
+|-------|-------------|--------------|
+| v_ordini_completi | Ordini con lookup anagrafica | 19 |
+| v_supervisione_pending | Supervisioni pending | 1 |
+| v_supervisione_grouped_pending | Supervisioni raggruppate pending | 1 |
+| v_supervisione_listino_pending | Supervisioni listino pending | 1 |
+| v_supervisione_lookup_pending | Supervisioni lookup pending | 1 |
+
+> ⚠️ **Trappola di naming.** Esistevano sia `v_supervisione_pending` (usata) sia
+> `v_supervisioni_pending` (con la "i", mai usata). In produzione la seconda non è mai
+> esistita; in sviluppo è stata rimossa. Attenzione a non confonderle.
 
 ---
 
@@ -1309,10 +1243,6 @@ operatore_azioni_log.azione_precedente_id → operatore_azioni_log.id_azione (se
 
 supervisione_anagrafica.id_anomalia → anomalie.id_anomalia
 supervisione_anagrafica.id_testata → ordini_testata.id_testata
-
-supervisione_unificata.id_anomalia → anomalie.id_anomalia
-supervisione_unificata.id_dettaglio → ordini_dettaglio.id_dettaglio
-supervisione_unificata.id_testata → ordini_testata.id_testata
 ```
 
 ### Relazioni implicite (non FK)
