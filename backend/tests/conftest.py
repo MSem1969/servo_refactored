@@ -35,13 +35,15 @@ def client() -> Generator[TestClient, None, None]:
 def auth_headers(client: TestClient) -> Dict[str, str]:
     """
     Headers con token JWT per endpoint protetti.
-    Usa credenziali di test (admin/admin123).
+    Credenziali configurabili via env (TEST_ADMIN_USER/TEST_ADMIN_PASSWORD):
+    servono per far girare i test di integrazione su ambienti con password
+    diversa da quella storica admin/admin123 (es. servo_dev usa admin1234).
     """
     response = client.post(
         "/api/v1/auth/login",
         json={
-            "username": "admin",
-            "password": "admin123"  # >= 6 chars required
+            "username": os.getenv("TEST_ADMIN_USER", "admin"),
+            "password": os.getenv("TEST_ADMIN_PASSWORD", "admin123")  # >= 6 chars
         }
     )
     if response.status_code != 200:
