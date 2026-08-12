@@ -1,7 +1,13 @@
 # =============================================================================
 # SERV.O v6.0 - TRACCIATI ROUTER
 # =============================================================================
-# Endpoint per generazione e download tracciati TO_T/TO_D
+# Endpoint per consultazione, download e riemissione tracciati TO_T/TO_D.
+#
+# La GENERAZIONE non sta qui: avviene in POST /ordini/{id}/valida
+# (services/export/generator.py::valida_e_genera_tracciato), unico percorso in
+# esercizio. Gli endpoint POST /genera, POST /genera/{id} e GET /preview/{id}
+# sono stati rimossi nel 2026-08: leggevano una vista inesistente e la loro
+# contabilita' export divergeva da quella reale.
 # =============================================================================
 
 import os
@@ -13,8 +19,6 @@ from typing import Dict, Any, List, Optional
 from ..config import config
 from ..auth import get_current_user
 from ..services.export import (
-    generate_tracciati_per_ordine,
-    get_tracciato_preview,
     get_ordini_pronti_export,
     get_esportazioni_storico,
     get_file_tracciato,
@@ -40,135 +44,6 @@ class RiemissionePayload(BaseModel):
     to_t_content: str = Field(..., min_length=1)
     to_d_content: str = Field(..., min_length=1)
     note: Optional[str] = None
-
-
-# =============================================================================
-# GENERAZIONE TRACCIATI
-# =============================================================================
-
-@router.post("/genera")
-async def genera_tracciati(
-    ordini_ids: Optional[List[int]] = None
-) -> Dict[str, Any]:
-    """
-    Genera tracciati TO_T e TO_D per gli ordini.
-    
-    Args:
-        ordini_ids: Lista ID ordini da esportare (opzionale, default: tutti pronti)
-        
-    Returns:
-        Lista file generati con path per download
-    """
-    try:
-        results = generate_tracciati_per_ordine(
-            output_dir=config.OUTPUT_DIR,
-            ordini_ids=ordini_ids
-        )
-        
-        if not results:
-            return {
-                "success": False,
-                "message": "Nessun ordine pronto per esportazione",
-                "data": []
-            }
-        
-        # Prepara response con URL download
-        files_info = []
-        for r in results:
-            files_info.append({
-                "id_testata": r['id_testata'],
-                "numero_ordine": r['numero_ordine'],
-                "vendor": r['vendor'],
-                "files": {
-                    "to_t": {
-                        "filename": r['file_to_t'],
-                        "download_url": f"/api/v1/tracciati/download/{r['file_to_t']}"
-                    },
-                    "to_d": {
-                        "filename": r['file_to_d'],
-                        "download_url": f"/api/v1/tracciati/download/{r['file_to_d']}"
-                    }
-                },
-                "num_righe": r['num_righe']
-            })
-        
-        return {
-            "success": True,
-            "data": files_info,
-            "totale_ordini": len(results),
-            "totale_righe": sum(r['num_righe'] for r in results),
-            "message": f"Generati {len(results)} tracciati"
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/genera/{id_testata}")
-async def genera_tracciato_singolo(id_testata: int) -> Dict[str, Any]:
-    """
-    Genera tracciato per un singolo ordine.
-    """
-    try:
-        results = generate_tracciati_per_ordine(
-            output_dir=config.OUTPUT_DIR,
-            ordini_ids=[id_testata]
-        )
-        
-        if not results:
-            raise HTTPException(
-                status_code=404, 
-                detail="Ordine non trovato o non pronto per esportazione"
-            )
-        
-        r = results[0]
-        return {
-            "success": True,
-            "data": {
-                "id_testata": r['id_testata'],
-                "numero_ordine": r['numero_ordine'],
-                "vendor": r['vendor'],
-                "to_t": {
-                    "filename": r['file_to_t'],
-                    "download_url": f"/api/v1/tracciati/download/{r['file_to_t']}"
-                },
-                "to_d": {
-                    "filename": r['file_to_d'],
-                    "download_url": f"/api/v1/tracciati/download/{r['file_to_d']}"
-                },
-                "num_righe": r['num_righe']
-            }
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-# =============================================================================
-# PREVIEW
-# =============================================================================
-
-@router.get("/preview/{id_testata}")
-async def preview_tracciato(id_testata: int) -> Dict[str, Any]:
-    """
-    Preview tracciato senza generare file.
-    
-    Utile per verificare contenuto prima dell'export.
-    """
-    try:
-        preview = get_tracciato_preview(id_testata)
-        
-        if 'error' in preview:
-            raise HTTPException(status_code=404, detail=preview['error'])
-        
-        return {
-            "success": True,
-            "data": preview
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 
 # =============================================================================

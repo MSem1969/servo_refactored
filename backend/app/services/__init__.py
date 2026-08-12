@@ -22,8 +22,6 @@ from .lookup import (
 )
 
 from .export import (
-    generate_tracciati_per_ordine,
-    get_tracciato_preview,
     get_ordini_pronti_export,
     get_esportazioni_storico,
     get_file_tracciato,
@@ -92,8 +90,6 @@ __all__ = [
     'fuzzy_match_full',
 
     # Tracciati
-    'generate_tracciati_per_ordine',
-    'get_tracciato_preview',
     'get_ordini_pronti_export',
     'get_esportazioni_storico',
     'get_file_tracciato',

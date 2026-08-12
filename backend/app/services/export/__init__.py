@@ -31,13 +31,11 @@ from .validators import valida_campi_tracciato
 
 # Generazione
 from .generator import (
-    generate_tracciati_per_ordine,
     valida_e_genera_tracciato,
 )
 
 # Query
 from .queries import (
-    get_tracciato_preview,
     get_ordini_pronti_export,
     get_esportazioni_storico,
     get_file_tracciato,
@@ -58,10 +56,8 @@ __all__ = [
     # Validazione
     'valida_campi_tracciato',
     # Generazione
-    'generate_tracciati_per_ordine',
     'valida_e_genera_tracciato',
     # Query
-    'get_tracciato_preview',
     'get_ordini_pronti_export',
     'get_esportazioni_storico',
     'get_file_tracciato',
