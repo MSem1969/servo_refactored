@@ -181,6 +181,8 @@ def generate_tracciati_per_ordine(
             det_dict['numero_ordine'] = numero_ordine_tracciato
             det_dict['min_id'] = ordine_dict.get('min_id') or ''
             det_dict['codice_sito'] = ordine_dict.get('anag_codice_sito')
+            # Base per la stima data consegna quando la riga non ce l'ha
+            det_dict['data_ordine'] = ordine_dict.get('data_ordine')
 
             # v11.5: VALIDAZIONE RIGIDA QUANTITÀ TRACCIATO
             # Verifica che il totale nel tracciato non superi q_da_evadere
@@ -489,6 +491,8 @@ def valida_e_genera_tracciato(
         det_dict['numero_ordine'] = numero_ordine_tracciato
         det_dict['min_id'] = ordine_dict.get('min_id') or ''
         det_dict['codice_sito'] = ordine_dict.get('anag_codice_sito')
+        # Base per la stima data consegna quando la riga non ce l'ha
+        det_dict['data_ordine'] = ordine_dict.get('data_ordine')
 
         # v11.5: VALIDAZIONE RIGIDA QUANTITÀ TRACCIATO
         # I valori nel tracciato devono corrispondere ESATTAMENTE ai valori originali

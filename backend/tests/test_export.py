@@ -336,3 +336,46 @@ class TestDataConsegnaStimata:
 
         line = generate_to_t_line({"vendor": "ANGELINI", "numero_ordine": "1"})
         assert line[299:309] == date.today().strftime("%d/%m/%Y")
+    def test_to_d_ext_delivery_date_legge_data_consegna_riga(self):
+        """
+        Regressione: il formatter leggeva solo 'data_consegna', mentre
+        ORDINI_DETTAGLIO fornisce 'data_consegna_riga' -> pos 75-84 usciva vuota
+        anche con il dato presente a DB.
+        """
+        from app.services.export.formatters.to_d import generate_to_d_line
+
+        line = generate_to_d_line({
+            "numero_ordine": "123456",
+            "n_riga": 1,
+            "codice_aic": "012345678",
+            "q_venduta": 10,
+            "data_consegna_riga": "2026-08-20",
+        })
+        assert line[74:84] == "20/08/2026"
+
+    def test_to_d_ext_delivery_date_stimata(self):
+        """Senza data riga: stessa stima del TO_T, a partire da data_ordine."""
+        from app.config import config
+        from app.services.export.formatters.to_d import generate_to_d_line
+        from app.utils.dates import add_business_days
+
+        line = generate_to_d_line({
+            "numero_ordine": "123456",
+            "n_riga": 1,
+            "codice_aic": "012345678",
+            "q_venduta": 10,
+            "data_ordine": "2026-08-12",
+        })
+        attesa = add_business_days("2026-08-12", config.GG_CONSEGNA_LAVORATIVI_DEFAULT)
+        assert line[74:84] == attesa.strftime("%d/%m/%Y")
+
+    def test_to_t_e_to_d_concordano(self):
+        """TO_T e TO_D devono stimare la stessa data per lo stesso ordine."""
+        from app.services.export.formatters.to_t import generate_to_t_line
+        from app.services.export.formatters.to_d import generate_to_d_line
+
+        testata = {"vendor": "DOC_GENERICI", "numero_ordine": "1", "data_ordine": "2026-08-12"}
+        riga = {"numero_ordine": "1", "n_riga": 1, "codice_aic": "012345678",
+                "q_venduta": 1, "data_ordine": "2026-08-12"}
+
+        assert generate_to_t_line(testata)[299:309] == generate_to_d_line(riga)[74:84]

@@ -51,6 +51,8 @@ def get_tracciato_preview(id_testata: int) -> Dict[str, Any]:
             continue
         det_dict['numero_ordine'] = ordine_dict['numero_ordine']
         det_dict['min_id'] = ordine_dict.get('min_id') or ''
+        # Base per la stima data consegna quando la riga non ce l'ha
+        det_dict['data_ordine'] = ordine_dict.get('data_ordine')
         lines_d.append(generate_to_d_line(det_dict))
 
     return {

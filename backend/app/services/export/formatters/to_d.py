@@ -4,8 +4,11 @@
 # Generazione riga TO_D (dettaglio) secondo formato EDI
 # =============================================================================
 
+from datetime import date
 from typing import Dict, Any
 
+from ....config import config
+from ....utils.dates import add_business_days
 from .common import (
     TO_D_LENGTH,
     format_date_edi,
@@ -83,8 +86,20 @@ def generate_to_d_line(data: Dict[str, Any]) -> str:
                 f"Possibile duplicazione quantità."
             )
 
-    # Data consegna
-    data_consegna = format_date_edi(data.get('data_consegna') or '')
+    # Data consegna riga.
+    # La colonna DB si chiama data_consegna_riga (ORDINI_DETTAGLIO); 'data_consegna'
+    # e' il nome usato dal router verso il frontend. Si accettano entrambi.
+    data_consegna = format_date_edi(
+        data.get('data_consegna_riga') or data.get('data_consegna') or ''
+    )
+
+    # Se vuota, stessa stima del TO_T: data_ordine + N giorni lavorativi.
+    # data_ordine viene iniettata nel dict riga dal generator.
+    if not data_consegna or data_consegna.strip() == '':
+        stimata = add_business_days(
+            data.get('data_ordine'), config.GG_CONSEGNA_LAVORATIVI_DEFAULT
+        )
+        data_consegna = (stimata or date.today()).strftime('%d/%m/%Y')
 
     # Sconti (formato 3+2 decimali = 6 caratteri)
     sconto_1 = float(data.get('sconto_1') or 0)
