@@ -9,6 +9,7 @@ import json
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
+from ...config import config
 from ...database_pg import get_db
 
 
@@ -84,15 +85,14 @@ def get_ordini(
     count_query = f"SELECT COUNT(*) FROM V_ORDINI_COMPLETI WHERE {where_clause}"
     totale = db.execute(count_query, params).fetchone()[0]
 
-    # Ordina SEMPRE per data di consegna effettiva, coerente col valore
-    # mostrato nel frontend: data_consegna se presente, altrimenti
-    # data_ordine + ~10 giorni lavorativi (~14 giorni solari, approssimazione
-    # lato DB; il frontend riordina poi il set caricato con il calcolo esatto
-    # dei giorni lavorativi). Gli ordini senza data finiscono in fondo.
+    # Ordina SEMPRE per data di consegna effettiva, con lo stesso identico
+    # calcolo usato dal frontend e dal tracciato: data_consegna se presente,
+    # altrimenti data_ordine + N giorni lavorativi (funzione SQL
+    # add_business_days, migration v16). Gli ordini senza data finiscono in fondo.
     query = f"""
         SELECT * FROM V_ORDINI_COMPLETI
         WHERE {where_clause}
-        ORDER BY COALESCE(data_consegna, data_ordine + INTERVAL '14 days') ASC NULLS LAST,
+        ORDER BY COALESCE(data_consegna, add_business_days(data_ordine, {config.GG_CONSEGNA_LAVORATIVI_DEFAULT})) ASC NULLS LAST,
                  id_testata DESC
         LIMIT ? OFFSET ?
     """

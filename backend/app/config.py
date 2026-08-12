@@ -42,6 +42,13 @@ class Settings:
     GG_DILAZIONE_DEFAULT: int = 90
     FUZZY_THRESHOLD: int = 60  # Soglia minima per match fuzzy
 
+    # Data consegna stimata quando il PDF non la contiene:
+    # data_ordine + N giorni lavorativi (sabato/domenica esclusi, festivi NON gestiti).
+    # ATTENZIONE: questo valore e' replicato in tre punti che devono restare allineati:
+    #   - frontend/src/pages/Database/utils.js  -> GG_CONSEGNA_LAVORATIVI
+    #   - funzione SQL add_business_days()      -> chiamata in orders/queries.py
+    GG_CONSEGNA_LAVORATIVI_DEFAULT: int = 3
+
     # Tracciati
     TO_T_LENGTH: int = 477  # Lunghezza riga TO_T (testata)
     TO_D_LENGTH: int = 405  # Lunghezza riga TO_D (dettaglio)
