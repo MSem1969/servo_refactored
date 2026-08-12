@@ -23,6 +23,76 @@ router = APIRouter(
 
 
 # =============================================================================
+# FILTRO PERIODO
+# =============================================================================
+
+def _condizioni_periodo(tipo_data, data_inizio, data_fine, riga_in_scope=True):
+    """
+    Costruisce il filtro periodo dei report.
+
+    Per tipo_data='consegna' si filtra sulla data della SINGOLA RIGA
+    (ordini_dettaglio.data_consegna_riga), NON su v_ordini_completi.data_consegna.
+
+    Quest'ultima e' il MIN delle righe ancora aperte, quindi:
+      - attribuirebbe tutte le righe di un ordine multi-data al periodo piu'
+        imminente (DOMPE e BAYER producono ordini con date diverse per riga);
+      - cambierebbe valore man mano che le righe vengono evase, rendendo lo
+        stesso report non riproducibile nel tempo.
+
+    La data di riga e' invece immutabile e gia' propagata dalla testata in
+    acquisizione (pdf_processor._propaga_data_consegna), quindi non si perde
+    nessun ordine che il filtro precedente includeva.
+
+    riga_in_scope=False per le query che non joinano ordini_dettaglio: si usa
+    un EXISTS, cioe' "l'ordine ha almeno una consegna nel periodo".
+
+    Returns:
+        (conditions, params) da concatenare al WHERE
+    """
+    conditions, params = [], []
+
+    if tipo_data != "consegna":
+        if data_inizio:
+            conditions.append("t.data_ordine >= %s")
+            params.append(data_inizio)
+        if data_fine:
+            conditions.append("t.data_ordine <= %s")
+            params.append(data_fine)
+        return conditions, params
+
+    if riga_in_scope:
+        if data_inizio:
+            conditions.append("d.data_consegna_riga >= %s")
+            params.append(data_inizio)
+        if data_fine:
+            conditions.append("d.data_consegna_riga <= %s")
+            params.append(data_fine)
+        return conditions, params
+
+    # Un solo EXISTS con entrambi i limiti: due EXISTS separati accetterebbero
+    # un ordine con una riga prima del periodo e una dopo, ma nessuna dentro.
+    bounds, bound_params = [], []
+    if data_inizio:
+        bounds.append("od_dc.data_consegna_riga >= %s")
+        bound_params.append(data_inizio)
+    if data_fine:
+        bounds.append("od_dc.data_consegna_riga <= %s")
+        bound_params.append(data_fine)
+
+    if bounds:
+        conditions.append(f"""
+            EXISTS (
+                SELECT 1 FROM ordini_dettaglio od_dc
+                WHERE od_dc.id_testata = t.id_testata
+                  AND {' AND '.join(bounds)}
+            )
+        """)
+        params.extend(bound_params)
+
+    return conditions, params
+
+
+# =============================================================================
 # ENDPOINT DATI REPORT
 # =============================================================================
 
@@ -89,20 +159,14 @@ async def get_report_data(
                 COALESCE(d.q_omaggio, 0) +
                 COALESCE(d.q_sconto_merce, 0)"""
 
-    # Determina colonna data in base a tipo_data
-    date_column = "t.data_consegna" if tipo_data == "consegna" else "t.data_ordine"
-
     # Costruzione query dinamica
     conditions = []
     params = []
 
-    # Filtro periodo
-    if data_inizio:
-        conditions.append(f"{date_column} >= %s")
-        params.append(data_inizio)
-    if data_fine:
-        conditions.append(f"{date_column} <= %s")
-        params.append(data_fine)
+    # Filtro periodo (per 'consegna' usa la data della singola riga)
+    periodo_conds, periodo_params = _condizioni_periodo(tipo_data, data_inizio, data_fine)
+    conditions.extend(periodo_conds)
+    params.extend(periodo_params)
 
     # Filtro vendor
     if vendor_list:
@@ -317,18 +381,14 @@ async def download_excel(
                 COALESCE(d.q_omaggio, 0) +
                 COALESCE(d.q_sconto_merce, 0)"""
 
-    # Determina colonna data in base a tipo_data
-    date_column = "t.data_consegna" if tipo_data == "consegna" else "t.data_ordine"
-
     conditions = []
     params = []
 
-    if data_inizio:
-        conditions.append(f"{date_column} >= %s")
-        params.append(data_inizio)
-    if data_fine:
-        conditions.append(f"{date_column} <= %s")
-        params.append(data_fine)
+    # Filtro periodo (per 'consegna' usa la data della singola riga)
+    periodo_conds, periodo_params = _condizioni_periodo(tipo_data, data_inizio, data_fine)
+    conditions.extend(periodo_conds)
+    params.extend(periodo_params)
+
     if vendor_list:
         placeholders = ','.join(['%s'] * len(vendor_list))
         conditions.append(f"t.vendor IN ({placeholders})")
@@ -545,20 +605,25 @@ async def download_excel(
 # ENDPOINT FILTRI DISPONIBILI (con filtri a cascata)
 # =============================================================================
 
-def build_cascade_conditions(data_inizio, data_fine, vendors, stati, clienti, aic, tipo_data="ordine", depositi=None):
-    """Costruisce condizioni WHERE per filtri a cascata."""
+def build_cascade_conditions(data_inizio, data_fine, vendors, stati, clienti, aic,
+                             tipo_data="ordine", depositi=None, riga_in_scope=False):
+    """
+    Costruisce condizioni WHERE per filtri a cascata.
+
+    riga_in_scope: la maggior parte di queste query joina ordini_dettaglio solo
+    se c'e' il filtro AIC, quindi di default il periodo si esprime con un EXISTS
+    ("l'ordine ha almeno una consegna nel periodo"). Chi ha sempre il dettaglio
+    in scope puo' passare True e filtrare direttamente sulla data di riga.
+    """
     conditions = []
     params = []
 
-    # Determina colonna data in base a tipo_data
-    date_column = "t.data_consegna" if tipo_data == "consegna" else "t.data_ordine"
+    periodo_conds, periodo_params = _condizioni_periodo(
+        tipo_data, data_inizio, data_fine, riga_in_scope=riga_in_scope
+    )
+    conditions.extend(periodo_conds)
+    params.extend(periodo_params)
 
-    if data_inizio:
-        conditions.append(f"{date_column} >= %s")
-        params.append(data_inizio)
-    if data_fine:
-        conditions.append(f"{date_column} <= %s")
-        params.append(data_fine)
     if vendors:
         vendor_list = [v.strip() for v in vendors.split(',')]
         placeholders = ','.join(['%s'] * len(vendor_list))
@@ -788,8 +853,12 @@ async def search_prodotti(
     """Ricerca prodotti filtrati in base alle selezioni correnti."""
     db = get_db()
 
+    # Qui ordini_dettaglio e' sempre joinato quando ci sono condizioni, quindi
+    # si filtra sulla data della singola riga: la tendina mostra solo i prodotti
+    # realmente consegnati nel periodo.
     conditions, params = build_cascade_conditions(
-        data_inizio, data_fine, vendors, stati, clienti, None, tipo_data, depositi
+        data_inizio, data_fine, vendors, stati, clienti, None, tipo_data, depositi,
+        riga_in_scope=True
     )
 
     # Aggiungi condizione ricerca testo

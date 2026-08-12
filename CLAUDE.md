@@ -165,6 +165,25 @@ sono verificate equivalenti su 2800 combinazioni data×N.
 > sarebbe sbagliato, tanto più che **la data di consegna non è modificabile da UI**
 > (non è in `CAMPI_MODIFICABILI` né in `PATCH /header`).
 
+#### Ordini multi-data e filtro dei report (2026-08)
+
+Un ordine **può avere date di consegna diverse riga per riga**: DOMPE e BAYER le
+espongono negli header di colonna e gli estrattori creano righe separate (regola
+`BAYER-DC02`). Non esiste alcuno split in più ordini.
+
+`v_ordini_completi.data_consegna` è `MIN(data_consegna_riga)` sulle righe **non**
+`EVASO`/`ARCHIVIATO`: giusto per il badge di urgenza (mostra la prossima scadenza),
+sbagliato per i report, che attribuivano tutte le righe al periodo più imminente e
+cambiavano risultato a ogni evasione.
+
+→ I report filtrano quindi su **`ordini_dettaglio.data_consegna_riga`**
+(`routers/report.py::_condizioni_periodo`), mai su `t.data_consegna`. Dove
+`ordini_dettaglio` non è in scope (tendine dei filtri) si usa un **unico** `EXISTS`
+con entrambi gli estremi — due `EXISTS` separati accetterebbero un ordine con una
+riga prima e una dopo il periodo, ma nessuna dentro.
+
+Gli ordini **senza alcuna data** restano esclusi dai report per consegna, come prima.
+
 ### VALIDAZIONE QUANTITÀ (v11.5 - CRITICA)
 
 **REGOLE VINCOLANTI:**
