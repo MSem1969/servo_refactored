@@ -22,6 +22,7 @@
 from .dates import (
     parse_date,
     format_date_for_tracciato,
+    add_business_days,
 )
 
 # Conversion functions
@@ -116,6 +117,7 @@ __all__ = [
     # Dates
     'parse_date',
     'format_date_for_tracciato',
+    'add_business_days',
     # Conversions
     'parse_decimal',
     'parse_int',

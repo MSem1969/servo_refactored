@@ -4,6 +4,12 @@
 // Helper functions per componenti database
 // =============================================================================
 
+// Data consegna stimata quando l'ordine non ne ha una: data_ordine + N giorni
+// lavorativi. ATTENZIONE: valore replicato in tre punti che devono restare
+// allineati (vedi backend/app/config.py -> GG_CONSEGNA_LAVORATIVI_DEFAULT
+// e la funzione SQL add_business_days usata in orders/queries.py).
+export const GG_CONSEGNA_LAVORATIVI = 3;
+
 // Aggiunge giorni lavorativi ad una data
 export const addBusinessDays = (date, days) => {
   const result = new Date(date);
@@ -31,7 +37,7 @@ export const parseDataConsegna = (dataStr, dataOrdineStr) => {
       } else {
         dataOrdine = new Date(dataOrdineStr);
       }
-      return addBusinessDays(dataOrdine, 10);
+      return addBusinessDays(dataOrdine, GG_CONSEGNA_LAVORATIVI);
     }
     return new Date();
   }

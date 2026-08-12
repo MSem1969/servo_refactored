@@ -5,6 +5,50 @@
 # =============================================================================
 
 import re
+from datetime import date, datetime, timedelta
+from typing import Optional
+
+
+def add_business_days(start, n: int) -> Optional[date]:
+    """
+    Aggiunge N giorni lavorativi a una data, saltando sabato e domenica.
+
+    Semantica identica a addBusinessDays() in frontend/src/pages/Database/utils.js
+    e alla funzione SQL add_business_days(): avanza un giorno alla volta e conta
+    solo i giorni feriali. Le festivita' NON sono gestite (nessun calendario).
+
+    Args:
+        start: data di partenza (date, datetime o stringa DD/MM/YYYY o ISO)
+        n: numero di giorni lavorativi da aggiungere
+
+    Returns:
+        datetime.date risultante, oppure None se start non e' parsabile
+    """
+    if not start:
+        return None
+
+    if isinstance(start, datetime):
+        result = start.date()
+    elif isinstance(start, date):
+        result = start
+    else:
+        # Stringa: normalizza a DD/MM/YYYY tramite parse_date
+        normalized = parse_date(str(start))
+        m = re.match(r'^(\d{2})/(\d{2})/(\d{4})$', normalized)
+        if not m:
+            return None
+        try:
+            result = date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+        except ValueError:
+            return None
+
+    added = 0
+    while added < n:
+        result += timedelta(days=1)
+        if result.weekday() < 5:  # 0=lunedi ... 4=venerdi
+            added += 1
+
+    return result
 
 
 def parse_date(date_str: str) -> str:

@@ -6,6 +6,7 @@
 
 import React, { useMemo } from 'react';
 import { calculateRigaQuantities, getStatoRigaColor, getStatoRigaLabel } from './utils';
+import { parseDataConsegna } from '../Database/utils';
 
 // Componente intestazione colonna ordinabile
 function SortableHeader({ label, field, sortField, sortDirection, onSort, className = '' }) {
@@ -257,10 +258,20 @@ export default function RigheTable({
                       {riga.prezzo_netto ? `€ ${parseFloat(riga.prezzo_netto).toFixed(2)}` : '-'}
                     </td>
                     <td className="px-3 py-3 text-center text-xs">
-                      {/* Data consegna: usa riga.data_consegna se presente, altrimenti fallback su ordine.data_consegna */}
+                      {/* Data consegna: riga, altrimenti testata, altrimenti stima
+                          data_ordine + N giorni lavorativi (stessa regola della lista
+                          ordini e del tracciato). La stima e' marcata con "~". */}
                       {(() => {
-                        const dataConsegna = riga.data_consegna || ordine?.data_consegna;
-                        if (!dataConsegna) return '-';
+                        let dataConsegna = riga.data_consegna || ordine?.data_consegna;
+                        if (!dataConsegna) {
+                          if (!ordine?.data_ordine) return '-';
+                          // Costruzione locale: toISOString() sposterebbe di un giorno
+                          // (mezzanotte locale -> giorno precedente in UTC).
+                          const s = parseDataConsegna(null, ordine.data_ordine);
+                          const gg = String(s.getDate()).padStart(2, '0');
+                          const mm = String(s.getMonth() + 1).padStart(2, '0');
+                          return `~${gg}/${mm}/${String(s.getFullYear()).slice(2)}`;
+                        }
                         try {
                           // Parsing diretto per formato ISO YYYY-MM-DD (evita shift timezone)
                           if (/^\d{4}-\d{2}-\d{2}$/.test(dataConsegna)) {

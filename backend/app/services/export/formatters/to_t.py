@@ -9,6 +9,8 @@ import re
 from datetime import date
 from typing import Dict, Any
 
+from ....config import config
+from ....utils.dates import add_business_days
 from .common import (
     TO_T_LENGTH,
     DEFAULT_VENDOR_CODE,
@@ -105,9 +107,13 @@ def generate_to_t_line(data: Dict[str, Any]) -> str:
     data_ordine = format_date_edi(data.get('data_ordine', ''))
     data_consegna = format_date_edi(data.get('data_consegna', ''))
 
-    # Se data consegna vuota, usa data odierna
+    # Se data consegna vuota, stima: data_ordine + N giorni lavorativi.
+    # Ultima rete (manca anche data_ordine): data odierna.
     if not data_consegna or data_consegna.strip() == '':
-        data_consegna = date.today().strftime('%d/%m/%Y')
+        stimata = add_business_days(
+            data.get('data_ordine'), config.GG_CONSEGNA_LAVORATIVI_DEFAULT
+        )
+        data_consegna = (stimata or date.today()).strftime('%d/%m/%Y')
 
     # Dilazione pagamento (default 90 gg)
     dilazione = data.get('gg_dilazione_1') or data.get('condizioni_pagamento') or 90

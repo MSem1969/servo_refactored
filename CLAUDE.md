@@ -89,7 +89,7 @@ con `psql -f`. Alembic è stato rimosso (mai applicato).
 | 237-286 | City | 50 | N | String | Città, **UPPERCASE** |
 | 287-289 | Province | 3 | N | String | Provincia, **UPPERCASE** |
 | 290-299 | OrderDate | 10 | Y | Date | GG/MM/AAAA |
-| 300-309 | EstDeliveryDate | 10 | Y | Date | GG/MM/AAAA (**se vuota: data odierna**) |
+| 300-309 | EstDeliveryDate | 10 | Y | Date | GG/MM/AAAA (**se vuota: data stimata**, vedi sotto) |
 | 310-359 | AgentName | 50 | N | String | Nome agente, **UPPERCASE** |
 | 360-369 | DataPagamento1 | 10 | N | Date | GG/MM/AAAA o spazi |
 | 370-379 | ImportoPagamento1 | 10 | N | Float 7.2 | **`0000000.00`** (7 int + "." + 2 dec) |
@@ -123,7 +123,7 @@ HAL_FARVI 271952954                      10905              00407890672     PATR
 | 57-62 | SalesQuantity | 6 | Y | q_venduta |
 | 63-68 | QuantityDiscountPieces | 6 | N | **sempre 0** |
 | 69-74 | QuantityFreePieces | 6 | N | **q_sconto_merce + q_omaggio** |
-| 75-84 | ExtDeliveryDate | 10 | N | data_consegna |
+| 75-84 | ExtDeliveryDate | 10 | N | data_consegna_riga (se vuota: **data stimata**) |
 | 85-108 | Discount1-4 | 24 | Y | sconto_1/2/3/4 (3+2 dec) |
 | 109-118 | NetVendorPrice | 10 | Y | prezzo_netto (7+2 dec) |
 | 119-128 | PriceToDiscount | 10 | Y | prezzo_scontare |
@@ -133,6 +133,37 @@ HAL_FARVI 271952954                      10905              00407890672     PATR
 | 145-344 | NoteAllestimento | 200 | Y | note_allestimento |
 
 **REGOLA OMAGGIO:** `QuantityFreePieces = q_sconto_merce + q_omaggio` (QuantityDiscountPieces sempre 0)
+
+### Data di consegna stimata (2026-08)
+
+Circa il **36% degli ordini** non ha data di consegna nel PDF (DOC_GENERICI e AVAS non
+la espongono mai; VIATRIS la omette sulla consegna "Immediata"). In quel caso la data
+**non viene scritta in DB** — `data_consegna` resta `NULL` — ma viene stimata in lettura:
+
+```
+data consegna stimata = data_ordine + 3 giorni lavorativi
+```
+
+Sabato e domenica sono esclusi; **le festività non sono gestite**. Se manca anche
+`data_ordine`, ultima rete = data odierna.
+
+**Una sola regola, tre implementazioni che devono restare allineate:**
+
+| Dove | Cosa |
+|---|---|
+| `config.GG_CONSEGNA_LAVORATIVI_DEFAULT` | il numero (3) |
+| `utils/dates.py::add_business_days` | tracciati TO_T e TO_D |
+| `add_business_days(date,int)` SQL (migration `v16`) | `ORDER BY` lista ordini |
+| `pages/Database/utils.js::GG_CONSEGNA_LAVORATIVI` | badge urgenza + ri-sort client |
+
+Cambiando il numero vanno aggiornati `config.py` **e** `utils.js`. Le tre implementazioni
+sono verificate equivalenti su 2800 combinazioni data×N.
+
+> **La soglia `MAX_GIORNI_CONSEGNA = 30` non usa la stima.** `_verifica_data_consegna`
+> (`orders/fulfillment.py`) legge `data_consegna_riga` grezza da DB: se è `NULL` la riga
+> resta confermabile. È voluto — bloccare una conferma per una data inventata da noi
+> sarebbe sbagliato, tanto più che **la data di consegna non è modificabile da UI**
+> (non è in `CAMPI_MODIFICABILI` né in `PATCH /header`).
 
 ### VALIDAZIONE QUANTITÀ (v11.5 - CRITICA)
 
