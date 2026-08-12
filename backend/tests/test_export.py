@@ -8,72 +8,43 @@ import pytest
 from fastapi.testclient import TestClient
 
 
-class TestExportTracciati:
-    """Test export tracciati via API."""
+class TestGenerazioneRimossa:
+    """
+    Gli endpoint POST /tracciati/genera, POST /tracciati/genera/{id} e
+    GET /tracciati/preview/{id} sono stati rimossi nel 2026-08: leggevano la
+    vista v_dettagli_completi, inesistente in DB, e la loro contabilita' export
+    divergeva da quella reale (stato ESPORTATO senza passare da VALIDATO/FTP,
+    una riga esportazioni per N ordini con nomi file fittizi, q_esportata mai
+    valorizzata). Nessun componente frontend li invocava.
+
+    L'unico percorso di generazione e' POST /ordini/{id}/valida.
+    """
 
     @pytest.mark.integration
-    def test_export_ordine_not_found(
+    def test_endpoint_generazione_non_esistono(
         self,
         client: TestClient,
         auth_headers: dict
     ):
-        """Preview tracciato di un ordine non esistente."""
-        # NB: la rotta e' /tracciati/preview/{id}. Il test puntava a
-        # /tracciati/export/{id}, che non esiste: il 404 atteso arrivava dal
-        # router (rotta assente), non dall'handler, quindi non verificava nulla.
-        response = client.get(
-            "/api/v1/tracciati/preview/999999999",
-            headers=auth_headers
-        )
+        for metodo, url in (
+            ("post", "/api/v1/tracciati/genera"),
+            ("post", "/api/v1/tracciati/genera/1"),
+            ("get", "/api/v1/tracciati/preview/1"),
+        ):
+            response = getattr(client, metodo)(url, headers=auth_headers)
+            assert response.status_code == 404, f"{metodo.upper()} {url} -> {response.status_code}"
 
-        assert response.status_code == 404
+    def test_nessun_riferimento_alla_vista_inesistente(self):
+        """La vista v_dettagli_completi non esiste: nessuno deve interrogarla."""
+        from pathlib import Path
 
-    @pytest.mark.integration
-    def test_export_ordine_confermato(
-        self,
-        client: TestClient,
-        auth_headers: dict
-    ):
-        """Preview tracciato di un ordine in stato confermato."""
-        # Trova ordine confermato
-        list_response = client.get(
-            "/api/v1/ordini",
-            params={"stato": "CONFERMATO", "limit": 1},
-            headers=auth_headers
-        )
-
-        if list_response.status_code != 200:
-            pytest.skip("Cannot list orders")
-
-        data = list_response.json().get("data", [])
-        if not data:
-            pytest.skip("No confirmed orders available")
-
-        ordine_id = data[0]["id_testata"]
-
-        # Preview: sola lettura, non genera file ne' modifica lo stato.
-        #
-        # ATTENZIONE - questo NON e' il percorso di generazione in esercizio.
-        # La generazione reale e' POST /ordini/{id}/valida -> valida_e_genera_tracciato,
-        # che legge da ORDINI_DETTAGLIO. La preview passa invece per
-        # get_tracciato_preview, che legge dalla vista v_dettagli_completi:
-        # una vista che in produzione NON esiste, perche' nessuno chiama mai
-        # questo endpoint (tracciatiApi.getPreview non e' invocato da alcun
-        # componente). Il test verifica quindi i formatter TO_T/TO_D
-        # end-to-end, non il percorso di produzione.
-        response = client.get(
-            f"/api/v1/tracciati/preview/{ordine_id}",
-            headers=auth_headers
-        )
-
-        if response.status_code == 500 and 'v_dettagli_completi' in response.text:
-            pytest.skip(
-                "vista v_dettagli_completi assente su questo DB: la preview "
-                "non e' esercitabile (percorso non usato in produzione)"
-            )
-
-        assert response.status_code == 200, response.text
-        assert response.json()["success"] is True
+        sorgenti = Path(__file__).resolve().parent.parent / "app"
+        colpevoli = [
+            str(f.relative_to(sorgenti))
+            for f in sorgenti.rglob("*.py")
+            if "v_dettagli_completi" in f.read_text(encoding="utf-8").lower()
+        ]
+        assert not colpevoli, f"riferimenti residui alla vista: {colpevoli}"
 
 
 class TestFormatoTracciati:

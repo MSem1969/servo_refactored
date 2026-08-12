@@ -413,6 +413,33 @@ li ri-segnala come "morti" — non lo sono.
 | `GET supervisione/espositore/{id}` | Dettaglio supervisione espositore |
 | `POST supervisione/prezzo/{id}/{upload-listino,approve,reject}` | Vedi sezione precedente |
 
+### Generazione tracciato: un solo percorso (2026-08)
+
+La generazione avviene **solo** in `POST /ordini/{id}/valida` →
+`services/export/generator.py::valida_e_genera_tracciato`, che legge da
+`ORDINI_DETTAGLIO`.
+
+Esisteva un secondo percorso — `generate_tracciati_per_ordine`, dietro
+`POST /tracciati/genera`, `POST /tracciati/genera/{id}` e
+`GET /tracciati/preview/{id}` — **rimosso**. Non era codice morto innocuo:
+interrogava la vista `v_dettagli_completi`, che **non esiste in nessun DB**, e la
+sua contabilità export divergeva da quella reale:
+
+| | Percorso reale | Percorso rimosso |
+|---|---|---|
+| Stato ordine | `VALIDATO`, poi `ESPORTATO` dopo FTP | `ESPORTATO` subito, saltando l'FTP |
+| Righe `esportazioni` | una per ordine, nomi file veri | una per N ordini, nomi fittizi (`"3 file TO_T"`) |
+| `q_esportata` / `q_da_evadere` | valorizzati e azzerati | mai toccati |
+| Anomalie INFO/ATTENZIONE | chiuse | no |
+| Clone parziale | creato | no |
+
+Poiché `esportazioni.stato_ftp` ha `DEFAULT 'PENDING'`, quelle righe sarebbero
+entrate nella coda FTP con nomi file inesistenti. Era raggiungibile via API da
+qualunque utente autenticato: a proteggerlo c'era solo l'assenza della vista.
+
+> **Non ricreare `v_dettagli_completi`.** Un test lo impedisce
+> (`tests/test_export.py::test_nessun_riferimento_alla_vista_inesistente`).
+
 ---
 
 ## Modifica Header Manuale (v11.3)

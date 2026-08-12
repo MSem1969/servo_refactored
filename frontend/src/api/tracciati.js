@@ -4,10 +4,9 @@
 
 import api, { API_URL } from './client';
 
+// La generazione del tracciato non passa da qui: avviene validando l'ordine
+// (ordiniApi.valida -> POST /ordini/{id}/valida).
 export const tracciatiApi = {
-  genera: (ordiniIds) => api.post('/tracciati/genera', ordiniIds ? { ordini_ids: ordiniIds } : {}).then(r => r.data),
-  generaSingolo: (id) => api.post(`/tracciati/genera/${id}`).then(r => r.data),
-  getPreview: (id) => api.get(`/tracciati/preview/${id}`).then(r => r.data),
   getPronti: () => api.get('/tracciati/pronti').then(r => r.data),
   getStorico: (limit = 20) => api.get(`/tracciati/storico?limit=${limit}`).then(r => r.data),
   getFiles: () => api.get('/tracciati/files').then(r => r.data),
