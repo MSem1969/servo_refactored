@@ -203,3 +203,39 @@ class TestSupervisioneBulk:
 
         # Potrebbe restituire 200 con 0 approvate o 404
         assert response.status_code in [200, 404, 422]
+
+
+class TestChiusuraSupervisioniLookup:
+    """
+    Guardie statiche sulla chiusura delle supervisioni lookup.
+
+    Le supervisioni si chiudono solo con UPDATE su colonne che esistono davvero
+    (stato/operatore/timestamp_decisione/note): un refuso lasciava l'ordine
+    bloccato in supervisione senza piu' anomalie aperte.
+    """
+
+    COLONNE_INESISTENTI = ('resolved_by', 'resolved_at', 'note_admin')
+
+    def test_nessuna_colonna_supervisione_inesistente(self):
+        """Nessun UPDATE deve usare colonne assenti dalle tabelle supervisione."""
+        from pathlib import Path
+
+        sorgenti = Path(__file__).resolve().parent.parent / "app"
+        colpevoli = [
+            f"{f.relative_to(sorgenti)}:{colonna}"
+            for f in sorgenti.rglob("*.py")
+            for colonna in self.COLONNE_INESISTENTI
+            if colonna in f.read_text(encoding="utf-8")
+        ]
+        assert not colpevoli, f"colonne supervisione inesistenti: {colpevoli}"
+
+    def test_lookup_batch_chiude_le_supervisioni(self):
+        """run_lookup_batch risolve le anomalie LOOKUP: deve chiudere anche le supervisioni."""
+        import inspect
+        from app.services.lookup.queries import run_lookup_batch
+
+        sorgente = inspect.getsource(run_lookup_batch)
+        assert "UPDATE ANOMALIE" in sorgente.upper()
+        assert "supervisione_lookup" in sorgente, (
+            "run_lookup_batch chiude le anomalie LOOKUP ma lascia la supervisione PENDING"
+        )
