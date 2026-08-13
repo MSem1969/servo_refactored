@@ -19,6 +19,14 @@
 
 BEGIN;
 
+-- 0. PREREQUISITO: supervisione_aic e' l'unica tabella supervisione con un CHECK
+-- sullo stato, e non ammetteva 'ARCHIVED'. Per questo archivia_ordine falliva su
+-- AIC fin da gennaio 2026 (l'errore era nascosto da un except: pass) e le sue
+-- supervisioni restavano PENDING sugli ordini archiviati.
+ALTER TABLE supervisione_aic DROP CONSTRAINT IF EXISTS supervisione_aic_stato_check;
+ALTER TABLE supervisione_aic ADD CONSTRAINT supervisione_aic_stato_check
+    CHECK (stato IN ('PENDING', 'APPROVED', 'REJECTED', 'ARCHIVED'));
+
 -- Prima/dopo: conteggio di controllo
 \echo '--- PRIMA ---'
 SELECT count(*) AS supervisioni_pending_su_ordini_archiviati

@@ -278,6 +278,11 @@ attive. Quel percorso non archiviava nulla → 74 supervisioni LOOKUP rimaste
 > sovrascrive. È il motivo per cui la chiusura di anomalie/supervisioni non può
 > dipendere dallo stato della testata.
 
+> **`supervisione_aic` è l'unica tabella supervisione con un CHECK sullo stato.**
+> Non ammetteva `ARCHIVED`: `archivia_ordine` falliva lì da gennaio 2026, con
+> l'errore nascosto da un `except: pass`. Vincolo esteso nella migration `v17`.
+> Aggiungendo stati nuovi, ricordarsi di quel CHECK.
+
 ### RIPRISTINA Singola Riga (v11.5 - HARD RESET)
 
 Il bottone RIPRISTINA su singola riga effettua un **HARD RESET**:
