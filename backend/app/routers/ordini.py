@@ -1243,7 +1243,7 @@ async def sblocca_supervisioni_ordine(
     try:
         # Verifica esistenza ordine
         ordine = db.execute(
-            "SELECT numero_ordine, stato FROM ordini_testata WHERE id_testata = %s",
+            "SELECT numero_ordine_vendor, stato FROM ordini_testata WHERE id_testata = %s",
             (id_testata,)
         ).fetchone()
 
@@ -1255,20 +1255,17 @@ async def sblocca_supervisioni_ordine(
         nota_sup = f"[SBLOCCO MANUALE] Approvato da {operatore}"
 
         for sup_table in ['supervisione_lookup', 'supervisione_prezzo', 'supervisione_listino',
-                          'supervisione_espositore', 'supervisione_aic']:
-            try:
-                res = db.execute(f"""
-                    UPDATE {sup_table}
-                    SET stato = 'APPROVED',
-                        resolved_by = %s,
-                        resolved_at = CURRENT_TIMESTAMP,
-                        note_admin = %s
-                    WHERE id_testata = %s AND stato = 'PENDING'
-                """, (operatore, nota_sup, id_testata))
-                if hasattr(res, 'rowcount'):
-                    supervisioni_approvate += res.rowcount
-            except Exception:
-                pass  # Tabella potrebbe non esistere
+                          'supervisione_espositore', 'supervisione_aic', 'supervisione_erp']:
+            res = db.execute(f"""
+                UPDATE {sup_table}
+                SET stato = 'APPROVED',
+                    operatore = %s,
+                    timestamp_decisione = CURRENT_TIMESTAMP,
+                    note = COALESCE(note || ' - ', '') || %s
+                WHERE id_testata = %s AND stato = 'PENDING'
+            """, (operatore, nota_sup, id_testata))
+            if hasattr(res, 'rowcount'):
+                supervisioni_approvate += res.rowcount
 
         log_operation(
             'SBLOCCO_SUPERVISIONI',
@@ -1282,10 +1279,10 @@ async def sblocca_supervisioni_ordine(
 
         return {
             "success": True,
-            "message": f"Approvate {supervisioni_approvate} supervisioni per ordine {ordine['numero_ordine']}",
+            "message": f"Approvate {supervisioni_approvate} supervisioni per ordine {ordine['numero_ordine_vendor']}",
             "data": {
                 "id_testata": id_testata,
-                "numero_ordine": ordine['numero_ordine'],
+                "numero_ordine": ordine['numero_ordine_vendor'],
                 "supervisioni_approvate": supervisioni_approvate
             }
         }

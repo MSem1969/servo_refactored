@@ -294,6 +294,46 @@ class ArchiviazioneResult:
         }
 
 
+def archivia_anomalie_e_supervisioni(id_testata: int, operatore: str, motivo: str) -> int:
+    """
+    Archivia anomalie aperte e supervisioni pending di un ordine archiviato.
+
+    Un ordine archiviato non verra' mai esportato: lasciare aperte le sue
+    anomalie e le sue supervisioni le fa restare in coda per sempre. Va quindi
+    chiamata da OGNI percorso che porta l'ordine ad ARCHIVIATO, non solo da
+    archivia_ordine (vedi _aggiorna_contatori_ordine e archivia_riga: un ordine
+    diventa ARCHIVIATO anche archiviando le righe una per una).
+
+    Returns:
+        Numero di anomalie archiviate
+    """
+    db = get_db()
+    now = datetime.now().isoformat()
+
+    anomalie = db.execute("""
+        UPDATE anomalie
+        SET stato = 'ARCHIVIATA',
+            data_risoluzione = %s,
+            note_risoluzione = COALESCE(note_risoluzione || ' | ', '') || %s
+        WHERE id_testata = %s
+          AND stato IN ('APERTA', 'IN_GESTIONE')
+        RETURNING id_anomalia
+    """, (now, f'{motivo} (operatore: {operatore})', id_testata)).fetchall()
+
+    for table in ['supervisione_espositore', 'supervisione_listino', 'supervisione_lookup',
+                  'supervisione_aic', 'supervisione_prezzo', 'supervisione_erp']:
+        db.execute(f"""
+            UPDATE {table}
+            SET stato = 'ARCHIVED',
+                operatore = %s,
+                timestamp_decisione = CURRENT_TIMESTAMP,
+                note = COALESCE(note || ' | ', '') || %s
+            WHERE id_testata = %s AND stato = 'PENDING'
+        """, (operatore, motivo, id_testata))
+
+    return len(anomalie) if anomalie else 0
+
+
 def archivia_ordine(id_testata: int, operatore: str) -> ArchiviazioneResult:
     """
     Archivia un ordine impostando stato ARCHIVIATO.
@@ -370,36 +410,14 @@ def archivia_ordine(id_testata: int, operatore: str) -> ArchiviazioneResult:
           AND stato_riga NOT IN ('EVASO', 'ARCHIVIATO')
     """, (now, operatore, id_testata))
 
-    # v11.0: Archivia tutte le anomalie aperte dell'ordine
-    anomalie_archiviate = db.execute("""
-        UPDATE anomalie
-        SET stato = 'ARCHIVIATA',
-            data_risoluzione = %s,
-            note_risoluzione = COALESCE(note_risoluzione || ' | ', '') || %s
-        WHERE id_testata = %s
-          AND stato IN ('APERTA', 'IN_GESTIONE')
-        RETURNING id_anomalia
-    """, (now, f'Archiviata con ordine (operatore: {operatore})', id_testata)).fetchall()
-
-    # v11.0: Archivia tutte le supervisioni pending dell'ordine
-    for table in ['supervisione_espositore', 'supervisione_listino', 'supervisione_lookup',
-                  'supervisione_aic', 'supervisione_prezzo']:
-        try:
-            db.execute(f"""
-                UPDATE {table}
-                SET stato = 'ARCHIVED',
-                    operatore = %s,
-                    timestamp_decisione = CURRENT_TIMESTAMP,
-                    note = COALESCE(note || ' | ', '') || 'Archiviata con ordine'
-                WHERE id_testata = %s AND stato = 'PENDING'
-            """, (operatore, id_testata))
-        except Exception:
-            pass  # Tabella potrebbe non esistere
+    # v11.0: Archivia anomalie aperte e supervisioni pending dell'ordine
+    num_anomalie = archivia_anomalie_e_supervisioni(
+        id_testata, operatore, 'Archiviata con ordine'
+    )
 
     db.commit()
 
     # Log operazione
-    num_anomalie = len(anomalie_archiviate) if anomalie_archiviate else 0
     log_operation(
         'ARCHIVIA_ORDINE',
         'ORDINI_TESTATA',
@@ -516,6 +534,12 @@ def archivia_riga(id_testata: int, id_dettaglio: int, operatore: str) -> Archivi
                 username_operatore=operatore
             )
             ordine_completato = True
+
+        # L'ordine non ha piu' righe attive: le sue anomalie e supervisioni non
+        # verranno mai piu' lavorate, vanno archiviate come in archivia_ordine.
+        archivia_anomalie_e_supervisioni(
+            id_testata, operatore, 'Archiviata: ordine senza righe attive'
+        )
 
     db.commit()
 

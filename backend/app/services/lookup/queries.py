@@ -405,6 +405,18 @@ def run_lookup_batch(limit: int = 100) -> Dict[str, Any]:
                 WHERE id_testata = %s AND tipo_anomalia = 'LOOKUP' AND stato = 'APERTA'
             """, (ordine['id_testata'],))
 
+            # Chiudi anche la supervisione lookup collegata: senza questo l'ordine
+            # resta bloccato in supervisione (e in generazione tracciato) pur non
+            # avendo piu' anomalie aperte.
+            db.execute("""
+                UPDATE supervisione_lookup
+                SET stato = 'APPROVED',
+                    operatore = 'SISTEMA',
+                    timestamp_decisione = CURRENT_TIMESTAMP,
+                    note = COALESCE(note || ' - ', '') || '[AUTO] Risolto da lookup batch'
+                WHERE id_testata = %s AND stato = 'PENDING'
+            """, (ordine['id_testata'],))
+
             stats['successi'] += 1
         else:
             stats['falliti'] += 1

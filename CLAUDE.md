@@ -262,6 +262,22 @@ centralizzato da `_aggiorna_contatori_ordine` (`ha_evasione` via EXISTS su
 - **EVASO**: bloccato da CONFERMA singola
 - **Generazione tracciato**: esclude ARCHIVIATO/EVASO
 
+### Archiviazione: anomalie e supervisioni seguono l'ordine (2026-08)
+
+Un ordine archiviato non sarà mai esportato: le sue **anomalie aperte diventano
+`ARCHIVIATA`** e le sue **supervisioni pending diventano `ARCHIVED`**
+(`orders/commands.py::archivia_anomalie_e_supervisioni`).
+
+Vale su **tutti** i percorsi che portano ad `ARCHIVIATO`, non solo
+`archivia_ordine`: un ordine ci arriva anche archiviando le righe una per una,
+perché `_calcola_stato_ordine` ritorna `ARCHIVIATO` quando non restano righe
+attive. Quel percorso non archiviava nulla → 74 supervisioni LOOKUP rimaste
+`PENDING` in produzione su ordini archiviati (bonifica: migration `v17`).
+
+> `_calcola_stato_ordine` **non conosce lo stato `ANOMALIA`**: ogni ricalcolo lo
+> sovrascrive. È il motivo per cui la chiusura di anomalie/supervisioni non può
+> dipendere dallo stato della testata.
+
 ### RIPRISTINA Singola Riga (v11.5 - HARD RESET)
 
 Il bottone RIPRISTINA su singola riga effettua un **HARD RESET**:

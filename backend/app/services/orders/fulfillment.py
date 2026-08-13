@@ -1074,6 +1074,15 @@ def _aggiorna_contatori_ordine(id_testata: int):
 
     nuovo_stato = _calcola_stato_ordine(stato_attuale, stats, righe_con_da_evadere, ha_evasione)
 
+    # Il ricalcolo puo' portare ad ARCHIVIATO (nessuna riga attiva) un ordine
+    # che era in ANOMALIA: senza questo, anomalie e supervisioni restano
+    # rispettivamente APERTA e PENDING su un ordine che non sara' mai esportato.
+    if nuovo_stato == 'ARCHIVIATO' and stato_attuale != 'ARCHIVIATO':
+        from .commands import archivia_anomalie_e_supervisioni
+        archivia_anomalie_e_supervisioni(
+            id_testata, 'SISTEMA', 'Archiviata: ordine senza righe attive'
+        )
+
     db.execute("""
         UPDATE ORDINI_TESTATA
         SET righe_totali = ?,
