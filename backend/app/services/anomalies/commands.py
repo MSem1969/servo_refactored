@@ -251,6 +251,17 @@ def update_anomalia_stato(
             WHERE id_anomalia = %s AND stato = 'PENDING'
         """, (sup_stato, operatore, nota_sup, id_anomalia))
 
+        # v12.0: supervisione_erp - senza questa, risolvere un'anomalia ERP
+        # dall'ordine lascia la supervisione PENDING e blocca il tracciato.
+        db.execute("""
+            UPDATE supervisione_erp
+            SET stato = %s,
+                operatore = %s,
+                timestamp_decisione = CURRENT_TIMESTAMP,
+                note = COALESCE(note || ' - ', '') || %s
+            WHERE id_anomalia = %s AND stato = 'PENDING'
+        """, (sup_stato, operatore, nota_sup, id_anomalia))
+
         db.commit()
 
         # Registra approvazioni pattern ML (solo se RISOLTA)
@@ -403,6 +414,14 @@ def resolve_anomalia(
 
     db.execute("""
         UPDATE supervisione_prezzo
+        SET stato = 'APPROVED', operatore = %s, timestamp_decisione = CURRENT_TIMESTAMP,
+            note = COALESCE(note || ' - ', '') || %s
+        WHERE id_anomalia = %s AND stato = 'PENDING'
+    """, (operatore, nota_sup, id_anomalia))
+
+    # v12.0: supervisione_erp (vedi update_anomalia_stato)
+    db.execute("""
+        UPDATE supervisione_erp
         SET stato = 'APPROVED', operatore = %s, timestamp_decisione = CURRENT_TIMESTAMP,
             note = COALESCE(note || ' - ', '') || %s
         WHERE id_anomalia = %s AND stato = 'PENDING'
