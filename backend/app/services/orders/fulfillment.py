@@ -980,7 +980,8 @@ def _copia_supervisione_pending(
 
 def _calcola_stato_ordine(stato_attuale: str, stats: Dict[str, int],
                           righe_con_da_evadere: int,
-                          ha_evasione: bool = False) -> str:
+                          ha_evasione: bool = False,
+                          ha_blocchi_aperti: bool = False) -> str:
     """Calcola stato testata canonico basato su statistiche righe e bolla.
 
     Regole (ordine di precedenza):
@@ -997,6 +998,12 @@ def _calcola_stato_ordine(stato_attuale: str, stats: Dict[str, int],
        - altrimenti mantiene lo stato post-tracciato
     4. righe confermate o con q_da_evadere > 0 → CONFERMATO
     5. default → ESTRATTO
+    6. ha_blocchi_aperti (anomalie ERRORE/CRITICO aperte o supervisioni PENDING):
+       se il risultato e' uno stato PRE-tracciato (ESTRATTO/CONFERMATO) →
+       ANOMALIA. Senza questa regola il ricalcolo cancellava lo stato ANOMALIA
+       a ogni conferma di riga, lasciando ordini che sembravano a posto e non
+       generavano il tracciato. Gli stati post-tracciato non sono toccati: per
+       arrivarci l'ordine era gia' privo di blocchi.
     """
     totale = stats.get('totale', 0)
     archiviato = stats.get('archiviato', 0)
@@ -1025,9 +1032,32 @@ def _calcola_stato_ordine(stato_attuale: str, stats: Dict[str, int],
         return stato_attuale
 
     if confermato > 0 or esportato > 0 or righe_con_da_evadere > 0:
-        return 'CONFERMATO'
+        return 'ANOMALIA' if ha_blocchi_aperti else 'CONFERMATO'
 
-    return 'ESTRATTO'
+    return 'ANOMALIA' if ha_blocchi_aperti else 'ESTRATTO'
+
+
+def _ordine_ha_blocchi_aperti(id_testata: int) -> bool:
+    """
+    True se l'ordine ha anomalie bloccanti aperte o supervisioni pending.
+
+    Un solo round trip: e' chiamata a ogni ricalcolo dei contatori.
+    """
+    db = get_db()
+    row = db.execute("""
+        SELECT
+            EXISTS(SELECT 1 FROM anomalie WHERE id_testata = %s
+                     AND stato IN ('APERTA','IN_GESTIONE')
+                     AND livello IN ('ERRORE','CRITICO'))
+         OR EXISTS(SELECT 1 FROM supervisione_lookup     WHERE id_testata = %s AND stato = 'PENDING')
+         OR EXISTS(SELECT 1 FROM supervisione_espositore WHERE id_testata = %s AND stato = 'PENDING')
+         OR EXISTS(SELECT 1 FROM supervisione_listino    WHERE id_testata = %s AND stato = 'PENDING')
+         OR EXISTS(SELECT 1 FROM supervisione_aic        WHERE id_testata = %s AND stato = 'PENDING')
+         OR EXISTS(SELECT 1 FROM supervisione_prezzo     WHERE id_testata = %s AND stato = 'PENDING')
+         OR EXISTS(SELECT 1 FROM supervisione_erp        WHERE id_testata = %s AND stato = 'PENDING')
+         AS ha_blocchi
+    """, (id_testata,) * 7).fetchone()
+    return bool(row['ha_blocchi']) if row else False
 
 
 def _aggiorna_contatori_ordine(id_testata: int):
@@ -1072,7 +1102,10 @@ def _aggiorna_contatori_ordine(id_testata: int):
         )
     """, (id_testata,)).fetchone()[0]
 
-    nuovo_stato = _calcola_stato_ordine(stato_attuale, stats, righe_con_da_evadere, ha_evasione)
+    nuovo_stato = _calcola_stato_ordine(
+        stato_attuale, stats, righe_con_da_evadere, ha_evasione,
+        ha_blocchi_aperti=_ordine_ha_blocchi_aperti(id_testata),
+    )
 
     # Il ricalcolo puo' portare ad ARCHIVIATO (nessuna riga attiva) un ordine
     # che era in ANOMALIA: senza questo, anomalie e supervisioni restano

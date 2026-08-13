@@ -274,9 +274,18 @@ perché `_calcola_stato_ordine` ritorna `ARCHIVIATO` quando non restano righe
 attive. Quel percorso non archiviava nulla → 74 supervisioni LOOKUP rimaste
 `PENDING` in produzione su ordini archiviati (bonifica: migration `v17`).
 
-> `_calcola_stato_ordine` **non conosce lo stato `ANOMALIA`**: ogni ricalcolo lo
-> sovrascrive. È il motivo per cui la chiusura di anomalie/supervisioni non può
-> dipendere dallo stato della testata.
+### `ANOMALIA` sopravvive al ricalcolo (2026-08)
+
+`_calcola_stato_ordine` non conosceva lo stato `ANOMALIA` e ogni ricalcolo dei
+contatori lo sovrascriveva: bastava confermare una riga perché un ordine con
+anomalia bloccante aperta risultasse `ESTRATTO`/`CONFERMATO` — a posto nella
+lista, ma non generabile (4 casi in produzione, migration `v18`).
+
+Ora `_calcola_stato_ordine` accetta `ha_blocchi_aperti` (anomalie
+`ERRORE`/`CRITICO` aperte **o** supervisioni `PENDING`, una sola query in
+`_ordine_ha_blocchi_aperti`) e ritorna `ANOMALIA` **solo** per gli stati
+pre-tracciato. `ARCHIVIATO`/`EVASO` hanno la precedenza; gli stati
+post-tracciato non retrocedono, perché per arrivarci l'ordine era già pulito.
 
 > **`supervisione_aic` è l'unica tabella supervisione con un CHECK sullo stato.**
 > Non ammetteva `ARCHIVED`: `archivia_ordine` falliva lì da gennaio 2026, con

@@ -228,3 +228,48 @@ class TestOrdineSearch:
         )
 
         assert response.status_code == 200
+
+
+class TestCalcolaStatoOrdine:
+    """
+    Regole di _calcola_stato_ordine (funzione pura).
+
+    Il ricalcolo cancellava lo stato ANOMALIA a ogni conferma di riga: l'ordine
+    sembrava a posto ma non generava il tracciato, perche' anomalie bloccanti e
+    supervisioni pending restavano aperte.
+    """
+
+    def _stats(self, totale=3, archiviato=0, confermato=0, esportato=0):
+        return {'totale': totale, 'archiviato': archiviato,
+                'confermato': confermato, 'esportato': esportato}
+
+    def test_blocchi_aperti_su_stato_pre_tracciato(self):
+        from app.services.orders.fulfillment import _calcola_stato_ordine
+
+        assert _calcola_stato_ordine('ANOMALIA', self._stats(), 0,
+                                     ha_blocchi_aperti=True) == 'ANOMALIA'
+        assert _calcola_stato_ordine('ESTRATTO', self._stats(confermato=2), 0,
+                                     ha_blocchi_aperti=True) == 'ANOMALIA'
+
+    def test_senza_blocchi_comportamento_invariato(self):
+        from app.services.orders.fulfillment import _calcola_stato_ordine
+
+        assert _calcola_stato_ordine('ANOMALIA', self._stats(), 0) == 'ESTRATTO'
+        assert _calcola_stato_ordine('ESTRATTO', self._stats(confermato=2), 0) == 'CONFERMATO'
+
+    def test_stati_post_tracciato_non_toccati(self):
+        """VALIDATO/ESPORTATO non retrocedono ad ANOMALIA: erano gia' privi di blocchi."""
+        from app.services.orders.fulfillment import _calcola_stato_ordine
+
+        for stato in ('VALIDATO', 'ESPORTATO', 'PARZ_ESPORTATO'):
+            assert _calcola_stato_ordine(stato, self._stats(esportato=3), 0,
+                                         ha_blocchi_aperti=True) == stato
+
+    def test_archiviato_ed_evaso_hanno_precedenza(self):
+        from app.services.orders.fulfillment import _calcola_stato_ordine
+
+        tutte_archiviate = self._stats(totale=3, archiviato=3)
+        assert _calcola_stato_ordine('ANOMALIA', tutte_archiviate, 0,
+                                     ha_blocchi_aperti=True) == 'ARCHIVIATO'
+        assert _calcola_stato_ordine('ANOMALIA', self._stats(), 0, ha_evasione=True,
+                                     ha_blocchi_aperti=True) == 'EVASO'
