@@ -273,3 +273,20 @@ class TestCalcolaStatoOrdine:
                                      ha_blocchi_aperti=True) == 'ARCHIVIATO'
         assert _calcola_stato_ordine('ANOMALIA', self._stats(), 0, ha_evasione=True,
                                      ha_blocchi_aperti=True) == 'EVASO'
+
+    def test_ordine_senza_righe_non_e_archiviato(self):
+        """
+        totale == 0 significa estrazione fallita, non "tutte archiviate".
+
+        L'ordine DOC_GENERICI 0698002291 usciva ARCHIVIATO con 0 righe: il
+        ricalcolo lo chiudeva d'ufficio e ne archiviava anomalie e supervisioni,
+        rendendo invisibile il fatto che il PDF non era stato letto.
+        """
+        from app.services.orders.fulfillment import _calcola_stato_ordine
+
+        nessuna_riga = self._stats(totale=0)
+        assert _calcola_stato_ordine('ESTRATTO', nessuna_riga, 0,
+                                     ha_blocchi_aperti=True) == 'ANOMALIA'
+        assert _calcola_stato_ordine('ESTRATTO', nessuna_riga, 0) == 'ESTRATTO'
+        # Archiviazione manuale di un ordine vuoto: resta archiviato
+        assert _calcola_stato_ordine('ARCHIVIATO', nessuna_riga, 0) == 'ARCHIVIATO'

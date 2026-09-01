@@ -985,7 +985,9 @@ def _calcola_stato_ordine(stato_attuale: str, stats: Dict[str, int],
     """Calcola stato testata canonico basato su statistiche righe e bolla.
 
     Regole (ordine di precedenza):
-    1. righe_attive == 0:
+    0. totale == 0 (nessuna riga estratta dal PDF): stato invariato, o ANOMALIA
+       se ci sono blocchi aperti. Non e' un ordine archiviato.
+    1. righe_attive == 0 (righe presenti, tutte archiviate):
        - se l'ordine ha un'evasione registrata (bolla) → EVASO
        - altrimenti → ARCHIVIATO
     2. evasione registrata (bolla con data_evasione != NULL):
@@ -1011,6 +1013,16 @@ def _calcola_stato_ordine(stato_attuale: str, stats: Dict[str, int],
     esportato = stats.get('esportato', 0)
 
     righe_attive = totale - archiviato
+
+    # Ordine senza NESSUNA riga: non e' "tutte archiviate", e' un'estrazione
+    # fallita (nessuna riga riconosciuta nel PDF). Archiviarlo lo rendeva
+    # invisibile e ne archiviava pure le anomalie: l'ordine spariva dai radar
+    # senza che nessuno sapesse perche'. Resta nel suo stato, ANOMALIA se ha
+    # blocchi aperti (EXT-A02 viene aperta in fase di inserimento).
+    if totale == 0:
+        if ha_blocchi_aperti:
+            return 'ANOMALIA'
+        return stato_attuale or 'ESTRATTO'
 
     if righe_attive == 0:
         return 'EVASO' if ha_evasione else 'ARCHIVIATO'
