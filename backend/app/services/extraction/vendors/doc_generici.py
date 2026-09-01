@@ -17,6 +17,10 @@ v1.1 (2026-02-04):
 - Fix gestione ordini multipagina: usa "Pagina n di y" come delimitatore
 - Fine ordine = quando n = y (ultima pagina)
 - Pagine intermedie (n < y) vengono accumulate nello stesso ordine
+
+v1.2 (2026-09-01):
+- Classe e Condizione non vincolano piu' il riconoscimento della riga prodotto:
+  sono testo libero, letto e conservato ma mai usato come filtro.
 """
 
 import re
@@ -223,10 +227,13 @@ def _finalize_order(data: Dict, order_lines: List[str]) -> None:
     order_text = '\n'.join(order_lines)
     data['righe'] = _extract_product_lines(order_text, order_lines)
 
-    # Estrai totale footer per validazione
-    m = re.search(r'Totale:\s*(\d+)', order_text, re.I)
+    # Estrai totale footer per validazione.
+    # Il totale usa il separatore delle migliaia ("Totale: 1.108"): senza
+    # toglierlo il regex leggeva "1" e DOCGEN-A04 sparava su ogni ordine
+    # con piu' di 999 pezzi.
+    m = re.search(r'Totale:\s*([\d.,]+)', order_text, re.I)
     if m:
-        data['totale_pezzi_footer'] = parse_int(m.group(1))
+        data['totale_pezzi_footer'] = parse_int(m.group(1).replace('.', '').replace(',', ''))
 
     # Valida e rileva anomalie
     data['anomalie_estrazione'] = _validate_and_detect_anomalies(data)
@@ -240,8 +247,19 @@ def _extract_product_lines(text: str, lines: List[str]) -> List[Dict]:
     """
     Estrae righe prodotto dalla tabella (DOCGEN-T01..T07).
 
-    Pattern riga:
-    [9 cifre AIC] [descrizione] [qty] [X-X classe] [ACCORDO TO]
+    Colonne: COD. A.I.C. | Prodotto | N.pz | Classe | Condizione
+
+    Solo AIC e N.pz sono strutturali. Classe e Condizione sono testo libero e
+    NON vincolano il riconoscimento della riga: nel corpus reale la classe vale
+    A-A, C-C, I-I, M-M, O-O ma anche 3-3 (integratori), e la condizione vale
+    "ACCORDO TO", "TO MUSCORIL OTC", "TO EMATONIL". Pretendere `[A-Z]-[A-Z]` +
+    "ACCORDO TO" faceva scartare in silenzio l'intera riga.
+
+    La quantita' e' l'ULTIMO intero isolato della riga (la descrizione ne
+    contiene quasi sempre altri: "Ramipril DOC 10 mg 28 cpr"), percio' il
+    gruppo descrizione e' greedy. Se la coda contenesse a sua volta un intero
+    isolato la quantita' verrebbe letta male: la rete e' DOCGEN-A04, che
+    confronta la somma con il "Totale:" di piede.
 
     Args:
         text: Testo completo
@@ -257,24 +275,12 @@ def _extract_product_lines(text: str, lines: List[str]) -> List[Dict]:
     # Pattern per identificare inizio tabella
     pattern_header = re.compile(r'COD\.\s*A\.I\.C\.\s+Prodotto', re.I)
 
-    # Pattern per riga prodotto completa
-    # AIC (9 cifre) + descrizione + qty + classe (X-X) + ACCORDO TO
+    # Riga prodotto: AIC (9 cifre) + descrizione + quantita' + coda libera
     pattern_riga = re.compile(
-        r'^(\d{9})\s+'           # Codice AIC (9 cifre)
-        r'(.+?)\s+'              # Descrizione (greedy ma non troppo)
-        r'(\d{1,4})\s+'          # Quantità (1-4 cifre)
-        r'([A-Z]-[A-Z])\s+'      # Classe farmaco (A-A, C-C, I-I)
-        r'ACCORDO\s+TO\s*$',     # Condizione (costante)
-        re.I
-    )
-
-    # Pattern alternativo più permissivo
-    pattern_riga_alt = re.compile(
-        r'^(\d{9})\s+'           # Codice AIC
-        r'(.+?)\s+'              # Descrizione
-        r'(\d{1,4})\s+'          # Quantità
-        r'([A-Z]-[A-Z])',        # Classe (senza ACCORDO TO obbligatorio)
-        re.I
+        r'^(\d{9})\s+'          # Codice AIC (9 cifre)
+        r'(.+)\s+'              # Descrizione (greedy: la qty e' l'ultimo intero)
+        r'(\d{1,4})'            # Quantita' (N.pz)
+        r'(?:\s+(.*))?$'        # Classe + Condizione: testo libero, non vincolante
     )
 
     for line in lines:
@@ -291,43 +297,48 @@ def _extract_product_lines(text: str, lines: List[str]) -> List[Dict]:
         if 'Totale:' in line or re.match(r'^Pagina\s+\d+\s+di\s+\d+', line, re.I):
             continue
 
-        # Se in tabella, prova a parsare riga prodotto
-        if in_tabella:
-            # Prova pattern completo
-            m = pattern_riga.match(line)
-            if not m:
-                # Prova pattern alternativo
-                m = pattern_riga_alt.match(line)
+        if not in_tabella:
+            continue
 
-            if m:
-                n_riga += 1
-                codice_aic = m.group(1)
-                descrizione = m.group(2).strip()
-                quantita = parse_int(m.group(3))
-                classe_farmaco = m.group(4).upper()
+        m = pattern_riga.match(line)
+        if not m:
+            continue
 
-                # Validazione codice AIC (DOCGEN-A01: accetta anche 9xx)
-                if len(codice_aic) == 9 and codice_aic.isdigit():
-                    righe.append({
-                        'n_riga': n_riga,
-                        'codice_aic': codice_aic,
-                        'codice_originale': codice_aic,
-                        'descrizione': descrizione[:60],
-                        'q_venduta': quantita,
-                        'q_sconto_merce': 0,  # DOC_GENERICI non ha sconto merce
-                        'q_omaggio': 0,       # DOC_GENERICI non ha omaggio
-                        'classe_farmaco': classe_farmaco,
-                        'condizione': 'ACCORDO TO',
-                        # DOC_GENERICI NON ha prezzi (DOCGEN-A03)
-                        'prezzo_netto': None,
-                        'prezzo_pubblico': None,
-                        'sconto1': None,
-                        'sconto2': None,
-                        'sconto3': None,
-                        'sconto4': None,
-                        'valore_netto': None,
-                        'aliquota_iva': 10,  # Default IVA
-                    })
+        codice_aic = m.group(1)
+        descrizione = m.group(2).strip()
+        quantita = parse_int(m.group(3))
+        coda = (m.group(4) or '').strip()
+
+        # Classe e condizione: separate se la coda inizia con "X-Y", altrimenti
+        # e' tutta condizione. Valore informativo, nessun filtro.
+        classe_farmaco = ''
+        condizione = coda
+        m_classe = re.match(r'^(\S+-\S+)(?:\s+(.*))?$', coda)
+        if m_classe:
+            classe_farmaco = m_classe.group(1).upper()
+            condizione = (m_classe.group(2) or '').strip()
+
+        n_riga += 1
+        righe.append({
+            'n_riga': n_riga,
+            'codice_aic': codice_aic,
+            'codice_originale': codice_aic,
+            'descrizione': descrizione[:60],
+            'q_venduta': quantita,
+            'q_sconto_merce': 0,  # DOC_GENERICI non ha sconto merce
+            'q_omaggio': 0,       # DOC_GENERICI non ha omaggio
+            'classe_farmaco': classe_farmaco,
+            'condizione': condizione,
+            # DOC_GENERICI NON ha prezzi (DOCGEN-A03)
+            'prezzo_netto': None,
+            'prezzo_pubblico': None,
+            'sconto1': None,
+            'sconto2': None,
+            'sconto3': None,
+            'sconto4': None,
+            'valore_netto': None,
+            'aliquota_iva': 10,  # Default IVA
+        })
 
     return righe
 

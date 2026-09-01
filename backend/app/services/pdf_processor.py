@@ -913,6 +913,29 @@ def _insert_order(
             current_parent_id = None  # Reset parent se non è child
         result['righe'] += 1
 
+    # =========================================================================
+    # ANOMALIA EXT-A02: NESSUNA RIGA PRODOTTO ESTRATTA
+    # =========================================================================
+    # Un ordine senza righe non e' esportabile e non e' recuperabile in
+    # autonomia: il PDF ha un formato che l'estrattore non riconosce. Va detto,
+    # non archiviato in silenzio (era il caso dell'ordine DOC_GENERICI
+    # 0698002291, riga con classe "3-3" scartata dal parser).
+    if result['righe'] == 0:
+        db.execute("""
+            INSERT INTO ANOMALIE
+            (id_testata, tipo_anomalia, livello, codice_anomalia,
+             descrizione, valore_anomalo, richiede_supervisione)
+            VALUES (%s, 'ESTRAZIONE', 'ERRORE', 'EXT-A02', %s, %s, FALSE)
+        """, (
+            id_testata,
+            CODICI_ANOMALIA['EXT-A02'],
+            f"Vendor {vendor}: 0 righe prodotto riconosciute nel PDF"
+        ))
+        db.commit()
+        result['anomalie'].append(
+            f"Ordine {order_data.get('numero_ordine')}: {CODICI_ANOMALIA['EXT-A02']}"
+        )
+
     # Aggiorna contatori righe nella testata
     from .orders.fulfillment import _aggiorna_contatori_ordine
     _aggiorna_contatori_ordine(id_testata)

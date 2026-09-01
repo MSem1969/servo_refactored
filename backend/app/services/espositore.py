@@ -42,6 +42,7 @@ CODICI_ANOMALIA = {
     'LKP-A05': 'Cliente non trovato in anagrafica clienti - deposito non determinabile',
     # Anomalie Estrazione
     'EXT-A01': 'Vendor non riconosciuto - estrattore generico',
+    'EXT-A02': 'Nessuna riga prodotto estratta dal PDF - verifica obbligatoria',
     # Anomalie Listino (v7.0)
     'LST-A01': 'Codice AIC non trovato nel listino - verifica obbligatoria',
     'LST-A02': 'Prezzo listino mancante - verifica obbligatoria',

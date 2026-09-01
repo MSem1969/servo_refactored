@@ -292,6 +292,19 @@ post-tracciato non retrocedono, perché per arrivarci l'ordine era già pulito.
 > l'errore nascosto da un `except: pass`. Vincolo esteso nella migration `v17`.
 > Aggiungendo stati nuovi, ricordarsi di quel CHECK.
 
+### Ordine senza righe ≠ ordine archiviato (2026-09)
+
+`_calcola_stato_ordine` trattava `righe_attive == 0` come "tutte le righe sono
+state archiviate" → `ARCHIVIATO`. Ma con **zero righe in assoluto** non c'è
+niente da archiviare: è un'estrazione fallita. L'ordine veniva chiuso d'ufficio
+e — dalla regola di archiviazione — anche le sue anomalie e supervisioni:
+spariva dai radar senza che nessuno sapesse perché (caso reale: DOC_GENERICI
+`0698002291`, unica riga scartata dal parser).
+
+Ora `totale == 0` mantiene lo stato corrente (`ANOMALIA` se ci sono blocchi
+aperti) e l'inserimento apre **`EXT-A02`** (`ERRORE`, bloccante) su qualunque
+ordine creato con 0 righe, per qualunque vendor.
+
 ### RIPRISTINA Singola Riga (v11.5 - HARD RESET)
 
 Il bottone RIPRISTINA su singola riga effettua un **HARD RESET**:
@@ -321,6 +334,7 @@ Il bottone RIPRISTINA su singola riga effettua un **HARD RESET**:
 | **LKP-A04** | LOOKUP | P.IVA mismatch (subentro) |
 | **LKP-A05** | LOOKUP | Cliente non in anagrafica_clienti |
 | **EXT-A01** | ESTRAZIONE | Vendor non riconosciuto → **apre ticket CRM automatico** |
+| **EXT-A02** | ESTRAZIONE | Nessuna riga prodotto estratta dal PDF |
 
 ### ORDINARIE (Non Bloccanti)
 
@@ -349,7 +363,7 @@ Il bottone RIPRISTINA su singola riga effettua un **HARD RESET**:
 | **AVAS** | Attivo | Transfer Order Avas Pharmaceuticals, prefix EDI `AVA`. Detection: `AVAS PHARMACEUTICALS`/`@avaspharma.com`/P.IVA `09190500968`. P.netto unitario già scontato → sconti a 0 (come ZENTIVA); P.IVA cliente dopo label `P.Iva Cliente` (evita P.IVA vendor); dati testata da `Sede Dest.` |
 | **CODIFI** | Attivo | Multi-cliente (N ordini/PDF) |
 | **MENARINI** | Attivo | Espositore `--`, chiusura su somma netto |
-| **DOC_GENERICI** | Attivo | Transfer Order, NO prezzi |
+| **DOC_GENERICI** | Attivo | Transfer Order, NO prezzi. Riga prodotto = AIC + N.pz; **classe e condizione sono testo libero** (`A-A`, `3-3`, `ACCORDO TO`, `TO EMATONIL`…), mai usate come filtro |
 | **CHIESI** | In attesa | Escludere P.IVA 02944970348 |
 | **COOPER** | Attivo | — |
 | **RECKITT** | Attivo | — |
