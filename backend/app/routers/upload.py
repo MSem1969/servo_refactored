@@ -284,12 +284,17 @@ async def reprocess_acquisition(id_acquisizione: int) -> Dict[str, Any]:
         if not os.path.exists(pdf_path):
             raise HTTPException(status_code=404, detail=f"File PDF non trovato su disco: {acq['nome_file_storage']}")
 
-    # Cancella dati vecchi (anomalie → dettaglio → testata → acquisizione)
+    # Cancella dati vecchi (supervisioni → anomalie → dettaglio → testata → acquisizione).
+    # Le supervisioni vanno per prime: alcune hanno una FK su anomalie/testata e
+    # tutte, senza FK, resterebbero appese a righe inesistenti.
     testate = db.execute(
         "SELECT id_testata FROM ordini_testata WHERE id_acquisizione = ?", (id_acquisizione,)
     ).fetchall()
 
     for t in testate:
+        for tabella in ('supervisione_aic', 'supervisione_lookup', 'supervisione_espositore',
+                        'supervisione_prezzo', 'supervisione_anagrafica', 'supervisione_erp'):
+            db.execute(f"DELETE FROM {tabella} WHERE id_testata = ?", (t["id_testata"],))
         db.execute("DELETE FROM anomalie WHERE id_testata = ?", (t["id_testata"],))
         db.execute("DELETE FROM ordini_dettaglio WHERE id_testata = ?", (t["id_testata"],))
 
@@ -301,7 +306,12 @@ async def reprocess_acquisition(id_acquisizione: int) -> Dict[str, Any]:
     with open(pdf_path, "rb") as f:
         content = f.read()
 
-    result = process_pdf(acq["nome_file_storage"], content, save_to_disk=False)
+    # pdf_path e' obbligatorio: senza, gli estrattori che leggono le tabelle con
+    # pdfplumber (MENARINI, DOMPE, CODIFI, BAYER) ricadono sul fallback testuale
+    # e il reprocess produce righe diverse da quelle dell'upload originale.
+    result = process_pdf(
+        acq["nome_file_storage"], content, pdf_path=pdf_path, save_to_disk=False
+    )
 
     return {
         "success": result["status"] == "OK",
