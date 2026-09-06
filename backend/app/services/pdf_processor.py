@@ -338,7 +338,7 @@ def process_pdf(
         # =====================================================================
         nome_storage = f"{uuid.uuid4().hex}_{filename}"
         percorso_storage = None
-        
+
         if save_to_disk:
             # Crea directory se non esiste
             os.makedirs(config.UPLOAD_DIR, exist_ok=True)
@@ -348,7 +348,15 @@ def process_pdf(
             # Usa questo path per estrattori che richiedono coordinate
             if not pdf_path:
                 pdf_path = percorso_storage
-        
+        elif pdf_path:
+            # Reprocess: il PDF e' gia' su disco e non lo riscriviamo. La nuova
+            # acquisizione deve puntare a QUEL file: generare un nome storage
+            # nuovo aggiungeva un prefisso UUID a ogni giro e lasciava
+            # percorso_storage a NULL, cioe' un'acquisizione che non sa piu'
+            # dov'e' il suo PDF (niente anteprima, niente reprocess successivo).
+            percorso_storage = pdf_path
+            nome_storage = os.path.basename(pdf_path)
+
         cursor = db.execute("""
             INSERT INTO acquisizioni
             (nome_file_originale, nome_file_storage, percorso_storage, hash_file,

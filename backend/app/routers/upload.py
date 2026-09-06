@@ -270,7 +270,8 @@ async def reprocess_acquisition(id_acquisizione: int) -> Dict[str, Any]:
 
     # Verifica che l'acquisizione esista
     acq = db.execute(
-        "SELECT id_acquisizione, nome_file_storage, percorso_storage FROM acquisizioni WHERE id_acquisizione = ?",
+        "SELECT id_acquisizione, nome_file_originale, nome_file_storage, percorso_storage "
+        "FROM acquisizioni WHERE id_acquisizione = ?",
         (id_acquisizione,)
     ).fetchone()
 
@@ -311,7 +312,8 @@ async def reprocess_acquisition(id_acquisizione: int) -> Dict[str, Any]:
     # pdfplumber (MENARINI, DOMPE, CODIFI, BAYER) ricadono sul fallback testuale
     # e il reprocess produce righe diverse da quelle dell'upload originale.
     result = process_pdf(
-        acq["nome_file_storage"], content, pdf_path=pdf_path, save_to_disk=False
+        acq["nome_file_originale"] or acq["nome_file_storage"],
+        content, pdf_path=pdf_path, save_to_disk=False
     )
 
     return {
