@@ -361,8 +361,8 @@ class TestSegmentazioneBloccoMenarini:
         blocchi, _, materiali, anomalie = self._segmenta(
             [PARENT, MATERIALE, CHILD_A, materiale2]
         )
-        assert blocchi[0]['codice'] == '87AB54'
-        assert materiali == {1}
+        assert blocchi[0]['codice'] == '87AB54'  # il primo va sul parent
+        assert materiali == {1, 3}  # entrambi restano child contenitore
         assert len(anomalie) == 1
         assert anomalie[0]['codice_anomalia'] == 'ESP-A08'
 
@@ -504,3 +504,78 @@ class TestScontiRigheNonEspositore:
     def test_nessuno_sconto(self):
         out = self._riga_output({})
         assert out['sconto1'] == 0.0
+
+
+class TestVarianteContenitoreSenzaCodice:
+    """
+    Seconda variante MENARINI: la riga contenitore ha Cod. Min. "--" invece del
+    codice materiale, e ripete la descrizione del parent (ordine 25990648000426).
+
+    Il discriminante fra parent e contenitore e' quindi il VALORE, non il codice:
+    con la sola regola "-- = parent" lo stesso espositore veniva spezzato in due.
+    """
+
+    CONTENITORE = _riga('AFTAMED EXPO BANCO 3+3 INVERNO', '--', 1, '0,00 €', '0,00 €', '0,00 €')
+    PARENT_AFT = _riga('AFTAMED EXPO BANCO 3+3 INVERNO', '--', 1, '45,12 €', '32,89 €')
+    CHILD_1 = _riga('AFTAMED GEL 10ML CP', '943303507', 3, '6,86 €', '15,00 €', '5,00 €')
+    CHILD_2 = _riga('AFTAMED 20ML 1SPRAY CP', '904733413', 3, '8,18 €', '17,89 €', '5,96 €')
+
+    def _segmenta(self, righe):
+        from app.services.extraction.vendors.menarini import _segmenta_blocchi_espositore
+        return _segmenta_blocchi_espositore(righe)
+
+    def test_un_solo_parent_non_due(self):
+        blocchi, parent_di, materiali, _ = self._segmenta(
+            [self.PARENT_AFT, self.CHILD_1, self.CHILD_2, self.CONTENITORE]
+        )
+        assert list(blocchi) == [0], "il contenitore '--' non deve aprire un secondo espositore"
+        assert parent_di == {1: 0, 2: 0, 3: 0}
+        assert materiali == {3}
+
+    def test_contenitore_senza_codice_lascia_il_parent_con_trattino(self):
+        blocchi, _, _, anomalie = self._segmenta(
+            [self.PARENT_AFT, self.CHILD_1, self.CONTENITORE]
+        )
+        assert blocchi[0]['codice'] == ''  # '--' non e' un codice
+        assert len(anomalie) == 1
+        assert anomalie[0]['codice_anomalia'] == 'ESP-A08'
+        assert "senza codice materiale" in anomalie[0]['descrizione']
+
+    def test_due_espositori_consecutivi_con_contenitore_senza_codice(self):
+        """Il parent successivo chiude il blocco anche se in mezzo c'e' un '--' a zero."""
+        parent2 = _riga('SUST BANCO 50+ FLAC 6PZ', '--', 1, '74,94 €', '54,71 €')
+        blocchi, parent_di, materiali, _ = self._segmenta(
+            [self.PARENT_AFT, self.CHILD_1, self.CONTENITORE, parent2, MATERIALE]
+        )
+        assert sorted(blocchi) == [0, 3]
+        assert blocchi[0]['codice'] == ''
+        assert blocchi[3]['codice'] == '87AB54'
+        assert materiali == {2, 4}
+        assert parent_di == {1: 0, 2: 0, 4: 3}
+
+    def test_contenitore_e_child_dell_espositore(self):
+        """Deve restare collegato al parent, non diventare una riga autonoma."""
+        from app.services.espositore import elabora_righe_ordine
+        righe = [
+            {'codice_originale': '--', 'codice_materiale': '', 'codice_aic': '',
+             'descrizione': 'AFTAMED EXPO BANCO 3+3 INVERNO', 'tipo_riga': 'PARENT_ESPOSITORE',
+             'quantita': 1, 'q_venduta': 1, 'prezzo_netto': 32.89, 'prezzo_pubblico': 45.12,
+             'valore_netto': 32.89, 'is_espositore': True, 'is_child': False},
+            {'codice_originale': '943303507', 'codice_aic': '943303507', 'descrizione': 'AFTAMED GEL',
+             'tipo_riga': 'CHILD_ESPOSITORE', '_belongs_to_parent': True, 'is_child': True,
+             'quantita': 3, 'prezzo_netto': 5.00, 'valore_netto': 15.00},
+            {'codice_originale': '904733413', 'codice_aic': '904733413', 'descrizione': 'AFTAMED SPRAY',
+             'tipo_riga': 'CHILD_ESPOSITORE', '_belongs_to_parent': True, 'is_child': True,
+             'quantita': 3, 'prezzo_netto': 5.96, 'valore_netto': 17.89},
+            {'codice_originale': '--', 'codice_aic': '', 'descrizione': 'AFTAMED EXPO BANCO 3+3 INVERNO',
+             'tipo_riga': 'CHILD_ESPOSITORE', '_belongs_to_parent': True, 'is_child': True,
+             'is_espositore_vuoto': True, 'quantita': 1, 'prezzo_netto': 0.0, 'valore_netto': 0.0},
+        ]
+        ctx = elabora_righe_ordine(righe, vendor='MENARINI')
+        parents = [r for r in ctx.righe_output if r['tipo_riga'] == 'PARENT_ESPOSITORE']
+        child = [r for r in ctx.righe_output if r['tipo_riga'] == 'CHILD_ESPOSITORE']
+        assert len(parents) == 1
+        assert len(child) == 3
+        assert [c['is_espositore_vuoto'] for c in child] == [False, False, True]
+        # il contenitore a zero non altera la verifica di valore
+        assert ctx.anomalie == []

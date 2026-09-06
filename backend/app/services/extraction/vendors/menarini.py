@@ -141,14 +141,26 @@ def _intero(valore: str) -> int:
         return 0
 
 
+def _is_riga_parent(cod_min: str, totale_netto: float) -> bool:
+    """
+    Parent espositore: Cod. Min. "--" **e** un valore.
+
+    Il solo "--" non basta, perche' anche la riga dell'espositore vuoto puo'
+    averlo (quando Menarini non stampa il codice materiale): senza il vincolo
+    sul valore lo stesso espositore veniva spezzato in due parent distinti.
+    """
+    return cod_min == '--' and totale_netto > 0
+
+
 def _is_riga_materiale(cod_min: str, totale_netto: float) -> bool:
     """
-    Riga "espositore vuoto": porta il codice materiale Menarini (es. 87AB54)
-    ma nessun valore. E' il contenitore fisico, non un prodotto: il suo codice
-    va sul parent, la riga non e' una riga d'ordine.
+    Riga "espositore vuoto": e' il contenitore fisico, non un prodotto.
+
+    Il discriminante e' il **valore a zero**, non il codice: nella maggior parte
+    dei PDF la riga porta il codice materiale Menarini (es. 87AB54), ma esiste
+    la variante in cui porta "--" e ripete la descrizione del parent
+    (es. "AFTAMED EXPO BANCO 3+3 INVERNO", ordine 25990648000426).
     """
-    if not cod_min or cod_min == '--':
-        return False
     if _RE_AIC.match(cod_min):
         return False
     return totale_netto == 0.0
@@ -161,21 +173,24 @@ def _segmenta_blocchi_espositore(
     Segmenta le righe della tabella in blocchi espositore e appaia ogni parent
     con la sua riga materiale, ovunque essa si trovi nel blocco.
 
-    Un blocco va dalla riga con Cod. Min. "--" alla successiva (o a fine
-    tabella). Sulle 38 occorrenze dei PDF campione ogni blocco contiene
-    esattamente una riga materiale, ma la sua posizione e' libera: appaiarla
-    in chiusura d'espositore (per valore) la perdeva nel 16% dei casi.
+    Un blocco va dal parent (Cod. Min. "--" con valore) al parent successivo o
+    a fine tabella. Su 98 blocchi nei PDF campione ognuno contiene esattamente
+    una riga materiale, ma la sua posizione e' libera: appaiarla in chiusura
+    d'espositore (per valore) la perdeva nel 16% dei casi.
 
     Returns:
         (blocchi, parent_di, indici_materiale, anomalie)
         - blocchi: {idx_parent: {'codice', 'descrizione', 'idx_materiale'}}
         - parent_di: {idx_child: idx_parent}
-        - indici_materiale: indici delle righe materiale, da non emettere
-        - anomalie: ESP-A08 per i blocchi senza materiale o con piu' di uno
+        - indici_materiale: indici delle righe "espositore vuoto"
+        - anomalie: ESP-A08 sui blocchi senza codice materiale o con piu' righe
     """
     indici_parent = [
         idx for idx, row in enumerate(data_rows)
-        if _cella(row, COL_COD_MIN) == '--'
+        if _is_riga_parent(
+            _cella(row, COL_COD_MIN),
+            _importo(_cella(row, COL_TOTALE_NETTO)),
+        )
     ]
 
     blocchi: Dict[int, Dict] = {}
@@ -195,28 +210,36 @@ def _segmenta_blocchi_espositore(
 
         desc_parent = _cella(data_rows[idx_parent], COL_DESCRIZIONE)[:40]
         idx_materiale = materiali[0] if materiali else None
+        # "--" non e' un codice: e' la variante in cui Menarini non lo stampa
+        codice = _cella(data_rows[idx_materiale], COL_COD_MIN) if materiali else ''
+        if codice == '--':
+            codice = ''
 
         blocchi[idx_parent] = {
-            'codice': _cella(data_rows[idx_materiale], COL_COD_MIN) if materiali else '',
+            'codice': codice,
             'descrizione': _cella(data_rows[idx_materiale], COL_DESCRIZIONE)[:40] if materiali else '',
             'idx_materiale': idx_materiale,
         }
 
         for idx in range(idx_parent + 1, fine):
             parent_di[idx] = idx_parent
-        if idx_materiale is not None:
-            indici_materiale.add(idx_materiale)
+        indici_materiale.update(materiali)
 
-        # Mai visto sui campioni, ma non deve restare silenzioso: senza codice
-        # materiale il parent resta identificato dal solo "--".
-        if not materiali:
+        # Senza codice il parent resta identificato dal solo "--" e l'operatore
+        # deve saperlo: non e' un dato che possiamo ricavare altrove.
+        if not codice:
+            motivo = (
+                "non espone alcuna riga contenitore"
+                if not materiali else
+                "espone la riga contenitore senza codice materiale ('--')"
+            )
             anomalie.append({
                 'tipo_anomalia': 'ESPOSITORE',
                 'livello': 'ATTENZIONE',
                 'codice_anomalia': 'ESP-A08',
                 'descrizione': (
-                    f"Espositore senza riga materiale: '{desc_parent}' non espone "
-                    f"alcun codice prodotto, il codice resta '--'"
+                    f"Espositore '{desc_parent}' {motivo}: "
+                    f"il codice della riga d'ordine resta '--'"
                 ),
                 'valore_anomalo': desc_parent,
                 'richiede_supervisione': False,
@@ -386,12 +409,6 @@ def extract_menarini(text: str, lines: List[str], pdf_path: str = None) -> List[
                     if not desc_raw:
                         continue
 
-                    # La riga materiale non e' una riga d'ordine: e' il
-                    # contenitore a prezzo 0. Il suo codice e' gia' finito sul
-                    # parent, la riga si ferma qui.
-                    if idx in indici_materiale:
-                        continue
-
                     cod_min = _cella(row, COL_COD_MIN)
                     qty = _intero(_cella(row, COL_QUANTITA))
                     prezzo = _importo(_cella(row, COL_PREZZO))
@@ -453,6 +470,7 @@ def extract_menarini(text: str, lines: List[str], pdf_path: str = None) -> List[
                         continue
 
                     is_child_of_parent = idx in parent_di
+                    is_espositore_vuoto = idx in indici_materiale
 
                     n_riga += 1
                     riga_data = {
@@ -470,14 +488,17 @@ def extract_menarini(text: str, lines: List[str], pdf_path: str = None) -> List[
                         'valore_netto': totale_netto,
                         'is_espositore': False,
                         'is_child': is_child_of_parent,
-                        'is_espositore_vuoto': False,
+                        'is_espositore_vuoto': is_espositore_vuoto,
+                        # Il tipo e' sempre esplicito: identifica_tipo_riga
+                        # classificherebbe come PARENT qualunque riga "--",
+                        # compresa quella del contenitore vuoto.
+                        'tipo_riga': 'CHILD_ESPOSITORE' if is_child_of_parent else 'PRODOTTO_STANDARD',
                         'anomalia_no_aic': not is_aic and not is_child_of_parent,
                     }
 
                     # Marca child
                     if is_child_of_parent:
                         riga_data['_belongs_to_parent'] = True
-                        riga_data['tipo_riga'] = 'CHILD_ESPOSITORE'
                         riga_data['_parent_desc_norm'] = _normalizza_descrizione_espositore(
                             _cella(data_rows[parent_di[idx]], COL_DESCRIZIONE)
                         )

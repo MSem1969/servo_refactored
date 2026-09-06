@@ -411,14 +411,24 @@ riga d'ordine sono **su righe diverse**:
 | `LAILA EXPO BANCO GIOVANI 2026` | **87AB54** | 1 | 0,00 | 0,00 | materiale: **codice**, nessun prezzo |
 | `LAILA 80MG 28CPR CP` | 044460020 | 4 | 15,78 | 50,50 | child |
 
-Il **blocco** va dalla riga `--` alla successiva (o a fine tabella) e contiene sempre
-esattamente **una** riga materiale, ma **in posizione libera**: in testa, in mezzo o in
-coda ai child (38/38 blocchi sui PDF campione, 6 dei quali con materiale in coda).
+Il **blocco** va dal parent al parent successivo (o a fine tabella) e contiene sempre
+esattamente **una** riga contenitore, ma **in posizione libera**: in testa, in mezzo o in
+coda ai child (103/103 blocchi sui PDF campione, 6 dei quali con contenitore in coda).
+
+> **Il discriminante fra parent e contenitore e' il VALORE, non il codice.** Il parent e'
+> `Cod. Min. '--'` **con Totale Netto > 0**; il contenitore ha **Totale Netto = 0**, e il
+> suo Cod. Min. e' di solito il codice materiale (`87AB54`) ma **puo' essere `--`**, con la
+> descrizione ripetuta dal parent (variante osservata sull'ordine `25990648000426`). Con la
+> sola regola "`--` = parent" lo stesso espositore veniva spezzato in **due parent distinti**.
+> Quando il contenitore non porta il codice non c'e' nulla da unire: il parent resta `--` e
+> si apre **ESP-A08**, perche' quel codice nel PDF non c'e' e non e' ricavabile altrove.
 
 → Codice materiale e prezzi vengono **uniti sul parent in estrazione**
 (`vendors/menarini.py::_segmenta_blocchi_espositore`), prima che la state machine degli
-espositori giri: è l'unico punto in cui la posizione della riga materiale è irrilevante.
-La riga materiale **non viene emessa** — è il contenitore a prezzo 0, non una riga d'ordine.
+espositori giri: è l'unico punto in cui la posizione della riga contenitore è irrilevante.
+La riga contenitore resta in DB come **CHILD dell'espositore** (`is_espositore_vuoto`),
+collegata via `id_parent_espositore`: è fuori dal tracciato come ogni child, ma visibile
+nella tab Espositore invece di sparire in silenzio.
 
 Sul parent finiscono i valori **dichiarati** dal PDF, non ricalcolati:
 `prezzo_netto` = Totale Netto / q.tà, `prezzo_pubblico` = Prezzo / q.tà. Ricalcolare il

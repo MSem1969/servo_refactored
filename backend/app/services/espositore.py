@@ -659,6 +659,8 @@ def _genera_righe_child(esp: Espositore, n_riga: int) -> List[Dict]:
             'is_espositore': 0,
             'is_child': 1,
             'tipo_riga': 'CHILD_ESPOSITORE',
+            # Contenitore vuoto: child a valore 0, non un prodotto
+            'is_espositore_vuoto': child.is_espositore_vuoto,
             'richiede_supervisione': False,
             'stato_riga': 'ESTRATTO',
             '_belongs_to_parent': True,
