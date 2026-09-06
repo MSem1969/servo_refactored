@@ -293,7 +293,8 @@ async def reprocess_acquisition(id_acquisizione: int) -> Dict[str, Any]:
 
     for t in testate:
         for tabella in ('supervisione_aic', 'supervisione_lookup', 'supervisione_espositore',
-                        'supervisione_prezzo', 'supervisione_anagrafica', 'supervisione_erp'):
+                        'supervisione_listino', 'supervisione_prezzo',
+                        'supervisione_anagrafica', 'supervisione_erp'):
             db.execute(f"DELETE FROM {tabella} WHERE id_testata = ?", (t["id_testata"],))
         db.execute("DELETE FROM anomalie WHERE id_testata = ?", (t["id_testata"],))
         db.execute("DELETE FROM ordini_dettaglio WHERE id_testata = ?", (t["id_testata"],))

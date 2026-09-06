@@ -37,6 +37,7 @@ logs/
 
 # Database backups (keep structure, not data)
 backend/backups/*.dump
+backend/backups/*.json
 backend/backups/wal/*
 backend/backups/full/*
 

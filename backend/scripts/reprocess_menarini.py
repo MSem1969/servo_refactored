@@ -24,9 +24,12 @@ from app.database_pg import get_db  # noqa: E402
 from app.services.pdf_processor import process_pdf  # noqa: E402
 from app import config  # noqa: E402
 
+# Tutte le tabelle supervisione_*: dimenticarne una lascia righe PENDING
+# appese a ordini inesistenti, che continuano a contare nei totali della UI.
 TABELLE_SUPERVISIONE = (
     'supervisione_aic', 'supervisione_lookup', 'supervisione_espositore',
-    'supervisione_prezzo', 'supervisione_anagrafica', 'supervisione_erp',
+    'supervisione_listino', 'supervisione_prezzo',
+    'supervisione_anagrafica', 'supervisione_erp',
 )
 
 VENDOR = 'MENARINI'
