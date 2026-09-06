@@ -324,8 +324,8 @@ Il bottone RIPRISTINA su singola riga effettua un **HARD RESET**:
 
 | Codice | Tipo | Descrizione |
 |--------|------|-------------|
-| **ESP-A01** | ESPOSITORE | Pezzi child < attesi (>=20%) |
-| **ESP-A02** | ESPOSITORE | Pezzi child > attesi (>=20%) |
+| **ESP-A01** | ESPOSITORE | Child sotto l'atteso (>=20%) — pezzi, **valore** per MENARINI |
+| **ESP-A02** | ESPOSITORE | Child sopra l'atteso (>=20%) — pezzi, **valore** per MENARINI |
 | **ESP-A03** | ESPOSITORE | Espositore senza child |
 | **ESP-A04/05** | ESPOSITORE | Chiusura forzata |
 | **ESP-A06** | ESPOSITORE | Conflitto ML vs estrazione |
@@ -341,6 +341,7 @@ Il bottone RIPRISTINA su singola riga effettua un **HARD RESET**:
 | Codice | Descrizione |
 |--------|-------------|
 | **LKP-A03** | Score 80-95% |
+| **ESP-A08** | Blocco espositore MENARINI senza riga materiale, o con più di una |
 | **DOCGEN-A08** | Quantità >200 pezzi |
 
 ### Soglie Lookup
@@ -362,7 +363,7 @@ Il bottone RIPRISTINA su singola riga effettua un **HARD RESET**:
 | **ANGELINI** | Attivo | MIN_ID diretto, sconti cascata, espositore 6 cifre |
 | **AVAS** | Attivo | Transfer Order Avas Pharmaceuticals, prefix EDI `AVA`. Detection: `AVAS PHARMACEUTICALS`/`@avaspharma.com`/P.IVA `09190500968`. P.netto unitario già scontato → sconti a 0 (come ZENTIVA); P.IVA cliente dopo label `P.Iva Cliente` (evita P.IVA vendor); dati testata da `Sede Dest.` |
 | **CODIFI** | Attivo | Multi-cliente (N ordini/PDF) |
-| **MENARINI** | Attivo | Espositore `--`, chiusura su somma netto |
+| **MENARINI** | Attivo | Espositore `--`, blocco parent+materiale+child (vedi sez. Espositori) |
 | **DOC_GENERICI** | Attivo | Transfer Order, NO prezzi. Riga prodotto = AIC + N.pz; **classe e condizione sono testo libero** (`A-A`, `3-3`, `ACCORDO TO`, `TO EMATONIL`…), mai usate come filtro |
 | **CHIESI** | In attesa | Escludere P.IVA 02944970348 |
 | **COOPER** | Attivo | — |
@@ -396,7 +397,48 @@ Se in futuro si vorrà tornare al comportamento precedente (ordine elaborato con
 | Vendor | Chiusura |
 |--------|----------|
 | ANGELINI | pezzi_accumulati >= pezzi_attesi |
-| MENARINI | somma_netto_child >= netto_parent |
+| MENARINI | fine del blocco (parent successivo o fine documento) |
+
+### MENARINI: un espositore, tre righe di PDF (2026-09)
+
+Un espositore MENARINI non sta su una riga sola, e i dati che servono a farne una
+riga d'ordine sono **su righe diverse**:
+
+| Prodotto | Cod. Min. | Q.tà | Prezzo | Totale Netto | |
+|---|---|---|---|---|---|
+| `LAILA ANSIA EXPO BANCO GIOV` | `--` | 1 | 98,44 | **78,75** | parent: prezzo, **nessun codice** |
+| `LAILA 80MG 14CPR CP` | 044460018 | 4 | 8,83 | 28,26 | child (prodotto reale) |
+| `LAILA EXPO BANCO GIOVANI 2026` | **87AB54** | 1 | 0,00 | 0,00 | materiale: **codice**, nessun prezzo |
+| `LAILA 80MG 28CPR CP` | 044460020 | 4 | 15,78 | 50,50 | child |
+
+Il **blocco** va dalla riga `--` alla successiva (o a fine tabella) e contiene sempre
+esattamente **una** riga materiale, ma **in posizione libera**: in testa, in mezzo o in
+coda ai child (38/38 blocchi sui PDF campione, 6 dei quali con materiale in coda).
+
+→ Codice materiale e prezzi vengono **uniti sul parent in estrazione**
+(`vendors/menarini.py::_segmenta_blocchi_espositore`), prima che la state machine degli
+espositori giri: è l'unico punto in cui la posizione della riga materiale è irrilevante.
+La riga materiale **non viene emessa** — è il contenitore a prezzo 0, non una riga d'ordine.
+
+Sul parent finiscono i valori **dichiarati** dal PDF, non ricalcolati:
+`prezzo_netto` = Totale Netto / q.tà, `prezzo_pubblico` = Prezzo / q.tà. Ricalcolare il
+netto dalla somma dei child sbagliava di un centesimo (78,76 contro 78,75) e azzerava il
+prezzo di vendita dell'espositore.
+
+> **La chiusura per valore era il bug, non la regola.** Chiudere l'espositore quando la
+> somma dei netto child raggiungeva il netto del parent dipendeva dall'ordine delle righe:
+> perdeva il codice materiale nel 16% dei blocchi e sarebbe bastato un child sotto il 2%
+> del totale in ultima posizione per lasciarlo orfano. Il confronto di valore resta, ma
+> **solo come verifica** (`verifica_scostamento_valore` → ESP-A01/A02, tolleranza 2%).
+
+I child MENARINI sono salvati in DB con `is_child=TRUE` e `id_parent_espositore`, come per
+ANGELINI: restano fuori da tracciato, AIC-A01, LST-A01, contatori, conferma ed evasione
+(tutte quelle query filtrano su `is_child`), ma rendono visibile la composizione.
+
+> **`87AB54` non è un AIC**: è il codice materiale Menarini. Il parent resta quindi senza
+> codice ministeriale e apre `AIC-A01` + supervisione. Il merge non la elimina, la rende
+> **una sola per espositore** e con `pattern_signature` stabile: al primo AIC assegnato a
+> mano, `criteri_ordinari_aic` lo applica da solo agli ordini successivi.
 
 ---
 

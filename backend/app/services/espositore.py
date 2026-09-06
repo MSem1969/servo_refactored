@@ -34,6 +34,7 @@ CODICI_ANOMALIA = {
     'ESP-A05': 'Chiusura forzata a fine documento',
     'ESP-A06': 'Conflitto pattern ML vs estrazione',
     'ESP-A07': 'Chiusura forzata per riga non correlata',  # v9.0
+    'ESP-A08': 'Espositore senza riga materiale o con piu di una',
     # Anomalie Lookup Farmacia
     'LKP-A01': 'Lookup score inferiore a 80% - verifica obbligatoria',
     'LKP-A02': 'Farmacia non trovata in anagrafica',
@@ -93,6 +94,7 @@ class Espositore:
     aliquota_iva: float = 10.0
     n_riga: int = 0
     prezzo_netto_dichiarato: float = 0.0  # MENARINI: Totale Netto dichiarato dal parent ("prezzo dell'espositore")
+    prezzo_pubblico_dichiarato: float = 0.0  # MENARINI: colonna "Prezzo" del parent
 
     righe_child: List[RigaChild] = field(default_factory=list)
     pezzi_accumulati: int = 0
@@ -370,14 +372,24 @@ def elabora_righe_ordine(righe_raw: List[Dict], vendor: str = 'ANGELINI') -> Con
         if tipo == 'PARENT_ESPOSITORE':
             if ctx.espositore_attivo:
                 ctx.contatore_righe += 1
-                riga_out, righe_child, anomalia = _chiudi_espositore_forzato(
-                    ctx.espositore_attivo, ctx.contatore_righe, 'NUOVO_PARENT', ctx.vendor
-                )
+                # MENARINI: il blocco espositore finisce dove ne comincia un
+                # altro, quindi il nuovo parent e' la chiusura NORMALE, non
+                # un'interruzione (ESP-A04). Resta forzata solo se il blocco
+                # non ha raccolto alcun child.
+                if vendor.upper() == 'MENARINI' and ctx.espositore_attivo.righe_child:
+                    riga_out, righe_child, anomalia = _chiudi_espositore_normale(
+                        ctx.espositore_attivo, ctx.contatore_righe, ctx.vendor
+                    )
+                    ctx.chiusure_normali += 1
+                else:
+                    riga_out, righe_child, anomalia = _chiudi_espositore_forzato(
+                        ctx.espositore_attivo, ctx.contatore_righe, 'NUOVO_PARENT', ctx.vendor
+                    )
+                    ctx.chiusure_forzate += 1
                 ctx.righe_output.append(riga_out)
                 ctx.righe_output.extend(righe_child)  # v10.2: Ripristinato per salvataggio child nel DB
                 if anomalia:
                     ctx.anomalie.append(anomalia)
-                ctx.chiusure_forzate += 1
 
             pezzi = riga.get('pezzi_per_unita') or estrai_pezzi_espositore(descrizione, 1)[0] or 0
 
@@ -395,6 +407,10 @@ def elabora_righe_ordine(righe_raw: List[Dict], vendor: str = 'ANGELINI') -> Con
                 aliquota_iva=riga.get('aliquota_iva', 10),
                 n_riga=ctx.contatore_righe + 1,
                 prezzo_netto_dichiarato=menarini_netto_parent if vendor.upper() == 'MENARINI' else 0.0,
+                prezzo_pubblico_dichiarato=(
+                    float(riga.get('prezzo_pubblico', 0) or 0)
+                    if vendor.upper() == 'MENARINI' else 0.0
+                ),
             )
             ctx.espositori_elaborati += 1
             continue
@@ -465,19 +481,14 @@ def elabora_righe_ordine(righe_raw: List[Dict], vendor: str = 'ANGELINI') -> Con
                 should_close = False
 
                 if vendor.upper() == 'MENARINI':
-                    # MENARINI: chiusura guidata dal CONFRONTO VALORE.
-                    # Il parent dichiara il "prezzo dell'espositore" (Totale Netto);
-                    # i child (prodotti componenti) si accumulano finche' la somma
-                    # dei loro Totale Netto raggiunge quella del parent. Il
-                    # contenitore vuoto (netto 0) non altera la somma. Nessuna
-                    # dipendenza da keyword/pezzi (criterio ANGELINI) ne' dalla
-                    # presenza dell'espositore vuoto tra i child.
-                    # La somma non puo' raggiungere il totale prima dell'ultimo
-                    # child a valore, quindi non c'e' rischio di chiusura anticipata.
-                    if menarini_netto_parent > 0:
-                        tolleranza = menarini_netto_parent * 0.02  # 2%
-                        if ctx.espositore_attivo.valore_netto_accumulato >= menarini_netto_parent - tolleranza:
-                            should_close = True
+                    # MENARINI: l'espositore si chiude sul BLOCCO (parent
+                    # successivo o fine documento), non al raggiungimento del
+                    # valore. Chiudere per valore dipendeva dall'ordine delle
+                    # righe: bastava un child sotto la tolleranza del 2% in
+                    # ultima posizione per chiudere un giro prima e lasciarlo
+                    # orfano. Il confronto di valore resta come VERIFICA, in
+                    # _chiudi_espositore (verifica_scostamento_valore).
+                    should_close = False
                 else:
                     # ANGELINI e altri: chiudi quando pezzi accumulati >= pezzi attesi
                     if ctx.espositore_attivo.pezzi_accumulati >= ctx.espositore_attivo.pezzi_attesi_totali:
@@ -506,15 +517,22 @@ def elabora_righe_ordine(righe_raw: List[Dict], vendor: str = 'ANGELINI') -> Con
     # Fine documento: chiudi espositore residuo
     if ctx.espositore_attivo:
         ctx.contatore_righe += 1
-        motivo = 'SENZA_CHILD' if len(ctx.espositore_attivo.righe_child) == 0 else 'FINE_DOCUMENTO'
-        riga_out, righe_child, anomalia = _chiudi_espositore_forzato(
-            ctx.espositore_attivo, ctx.contatore_righe, motivo, ctx.vendor
-        )
+        # MENARINI: fine documento = fine dell'ultimo blocco, chiusura normale.
+        if vendor.upper() == 'MENARINI' and ctx.espositore_attivo.righe_child:
+            riga_out, righe_child, anomalia = _chiudi_espositore_normale(
+                ctx.espositore_attivo, ctx.contatore_righe, ctx.vendor
+            )
+            ctx.chiusure_normali += 1
+        else:
+            motivo = 'SENZA_CHILD' if len(ctx.espositore_attivo.righe_child) == 0 else 'FINE_DOCUMENTO'
+            riga_out, righe_child, anomalia = _chiudi_espositore_forzato(
+                ctx.espositore_attivo, ctx.contatore_righe, motivo, ctx.vendor
+            )
+            ctx.chiusure_forzate += 1
         ctx.righe_output.append(riga_out)
         ctx.righe_output.extend(righe_child)  # v10.2: Ripristinato per salvataggio child nel DB
         if anomalia:
             ctx.anomalie.append(anomalia)
-        ctx.chiusure_forzate += 1
         ctx.espositore_attivo = None
 
     return ctx
@@ -561,23 +579,23 @@ def _chiudi_espositore(
     # Richiede supervisione: sempre se forzato, altrimenti solo per fasce critiche
     richiede_supervisione = True if forzato or fascia in FASCE_SUPERVISIONE_OBBLIGATORIA else False
 
-    # v10.3: Per MENARINI, cerca codice materiale nella riga child "espositore vuoto"
-    # L'espositore vuoto è la riga con is_espositore_vuoto=True e contiene il codice
-    # materiale dell'azienda (es: "87AA25") che deve essere assegnato al parent
+    # Il codice materiale e i prezzi dell'espositore arrivano gia' uniti sul
+    # parent dall'estrattore (segmentazione del blocco): qui non si ricostruisce
+    # piu' nulla dai child.
     codice_materiale_parent = esp.codice_materiale
     codice_originale_parent = esp.codice_originale
 
-    if vendor.upper() == 'MENARINI':
-        for child in esp.righe_child:
-            if child.is_espositore_vuoto:
-                # Trovato espositore vuoto - usa il suo codice se valido
-                codice_child = child.codice_originale
-                if codice_child and codice_child != '--' and codice_child.strip():
-                    codice_materiale_parent = codice_child
-                    # Se il parent ha "--", usa anche come codice_originale
-                    if codice_originale_parent == '--' or not codice_originale_parent:
-                        codice_originale_parent = codice_child
-                    break
+    # MENARINI: prezzi DICHIARATI dal PDF. Ricalcolarli dalla somma dei child
+    # introduceva uno scostamento di un centesimo (78,76 contro 78,75) e
+    # azzerava il prezzo di vendita dell'espositore.
+    if vendor.upper() == 'MENARINI' and esp.prezzo_netto_dichiarato > 0:
+        prezzo_netto_parent = esp.prezzo_netto_dichiarato
+        prezzo_pubblico_parent = esp.prezzo_pubblico_dichiarato
+        valore_netto_parent = round(prezzo_netto_parent * esp.quantita_parent, 2)
+    else:
+        prezzo_netto_parent = prezzo_calcolato
+        prezzo_pubblico_parent = 0
+        valore_netto_parent = esp.valore_netto_accumulato
 
     # Riga parent output
     riga_output = {
@@ -589,10 +607,10 @@ def _chiudi_espositore(
         'q_venduta': esp.quantita_parent,
         'q_omaggio': 0,
         'q_sconto_merce': 0,
-        'prezzo_netto': prezzo_calcolato,
-        'prezzo_pubblico': 0,
+        'prezzo_netto': prezzo_netto_parent,
+        'prezzo_pubblico': prezzo_pubblico_parent,
         'aliquota_iva': esp.aliquota_iva,
-        'valore_netto': esp.valore_netto_accumulato,
+        'valore_netto': valore_netto_parent,
         'is_espositore': 1,
         'is_child': 0,
         'tipo_riga': 'PARENT_ESPOSITORE',
@@ -622,8 +640,9 @@ def _genera_righe_child(esp: Espositore, n_riga: int) -> List[Dict]:
     """
     righe_child = []
     for idx, child in enumerate(esp.righe_child):
-        # v6.2 FIX: Calcola valore_netto da prezzo × quantità
-        child_valore = child.prezzo_netto * child.quantita
+        # Valore netto dichiarato dal PDF quando c'e' (MENARINI lo espone come
+        # "Totale Netto"); solo in sua assenza si ricalcola da prezzo x quantita.
+        child_valore = round(child.valore_netto or child.prezzo_netto * child.quantita, 2)
         righe_child.append({
             'n_riga': n_riga + 0.001 * (idx + 1),
             'codice_aic': child.codice_aic,
