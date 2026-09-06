@@ -279,3 +279,303 @@ class TestContestoElaborazione:
 
         ctx = ContestoElaborazione(vendor='MENARINI')
         assert ctx.vendor == 'MENARINI'
+
+
+# =============================================================================
+# MENARINI - Blocco espositore: merge parent + riga materiale
+# =============================================================================
+# Un espositore MENARINI occupa piu' righe di tabella: il parent ("--") porta i
+# prezzi ma nessun codice, la riga materiale porta il codice ma nessun prezzo, e
+# la sua posizione nel blocco e' libera. Questi test fissano l'appaiamento nelle
+# tre posizioni osservate nei PDF reali.
+
+def _riga(descrizione, cod_min, qta=1, prezzo='0,00 €', netto='0,00 €', p_netto='--'):
+    """Riga della tabella prodotti MENARINI come la restituisce pdfplumber."""
+    return [descrizione, cod_min, str(qta), prezzo, '--', '--', '--', p_netto, netto]
+
+
+PARENT = _riga('LAILA ANSIA EXPO BANCO GIOV', '--', 1, '98,44 €', '78,75 €')
+MATERIALE = _riga('LAILA EXPO BANCO GIOVANI 2026', '87AB54', 1, '0,00 €', '0,00 €', '0,00 €')
+CHILD_A = _riga('LAILA 80MG 14CPR CP', '044460018', 4, '8,83 €', '28,26 €', '7,06 €')
+CHILD_B = _riga('LAILA 80MG 28CPR CP', '044460020', 4, '15,78 €', '50,50 €', '12,62 €')
+
+
+class TestSegmentazioneBloccoMenarini:
+    """La riga materiale va appaiata al parent ovunque si trovi nel blocco."""
+
+    def _segmenta(self, righe):
+        from app.services.extraction.vendors.menarini import _segmenta_blocchi_espositore
+        return _segmenta_blocchi_espositore(righe)
+
+    def test_materiale_in_testa(self):
+        blocchi, parent_di, materiali, anomalie = self._segmenta(
+            [PARENT, MATERIALE, CHILD_A, CHILD_B]
+        )
+        assert blocchi[0]['codice'] == '87AB54'
+        assert materiali == {1}
+        assert parent_di == {1: 0, 2: 0, 3: 0}
+        assert anomalie == []
+
+    def test_materiale_in_mezzo(self):
+        blocchi, _, materiali, anomalie = self._segmenta(
+            [PARENT, CHILD_A, MATERIALE, CHILD_B]
+        )
+        assert blocchi[0]['codice'] == '87AB54'
+        assert materiali == {2}
+        assert anomalie == []
+
+    def test_materiale_in_coda(self):
+        """Caso che l'appaiamento in chiusura per valore perdeva (6/38 blocchi)."""
+        blocchi, _, materiali, anomalie = self._segmenta(
+            [PARENT, CHILD_A, CHILD_B, MATERIALE]
+        )
+        assert blocchi[0]['codice'] == '87AB54'
+        assert materiali == {3}
+        assert anomalie == []
+
+    def test_due_blocchi_consecutivi(self):
+        """Il blocco finisce dove ne comincia un altro."""
+        parent2 = _riga('SUST BANCO 50+ FLAC 6PZ', '--', 1, '74,94 €', '54,71 €')
+        materiale2 = _riga('SUSTENIUM BANCO 50+', '87AA25', 1, '0,00 €', '0,00 €', '0,00 €')
+        blocchi, parent_di, materiali, anomalie = self._segmenta(
+            [CHILD_A, PARENT, CHILD_B, MATERIALE, parent2, materiale2]
+        )
+        assert sorted(blocchi) == [1, 4]
+        assert blocchi[1]['codice'] == '87AB54'
+        assert blocchi[4]['codice'] == '87AA25'
+        assert 0 not in parent_di  # riga prima del primo parent: autonoma
+        assert materiali == {3, 5}
+        assert anomalie == []
+
+    def test_blocco_senza_materiale_genera_esp_a08(self):
+        blocchi, _, materiali, anomalie = self._segmenta([PARENT, CHILD_A, CHILD_B])
+        assert blocchi[0]['codice'] == ''
+        assert materiali == set()
+        assert len(anomalie) == 1
+        assert anomalie[0]['codice_anomalia'] == 'ESP-A08'
+        assert anomalie[0]['livello'] == 'ATTENZIONE'
+        assert anomalie[0]['richiede_supervisione'] is False
+
+    def test_blocco_con_due_materiali_usa_il_primo(self):
+        materiale2 = _riga('ALTRO CONTENITORE', '87AB99', 1, '0,00 €', '0,00 €', '0,00 €')
+        blocchi, _, materiali, anomalie = self._segmenta(
+            [PARENT, MATERIALE, CHILD_A, materiale2]
+        )
+        assert blocchi[0]['codice'] == '87AB54'  # il primo va sul parent
+        assert materiali == {1, 3}  # entrambi restano child contenitore
+        assert len(anomalie) == 1
+        assert anomalie[0]['codice_anomalia'] == 'ESP-A08'
+
+    def test_child_con_valore_zero_non_e_materiale(self):
+        """Un AIC a valore 0 e' un omaggio, non il contenitore."""
+        omaggio = _riga('LAILA 80MG 14CPR CP', '044460018', 4, '0,00 €', '0,00 €', '0,00 €')
+        blocchi, _, materiali, anomalie = self._segmenta([PARENT, omaggio, CHILD_A])
+        assert materiali == set()
+        assert anomalie[0]['codice_anomalia'] == 'ESP-A08'
+
+
+class TestChiusuraBloccoMenarini:
+    """La chiusura segue il blocco, il valore resta solo come verifica."""
+
+    def _elabora(self, righe_raw):
+        from app.services.espositore import elabora_righe_ordine
+        return elabora_righe_ordine(righe_raw, vendor='MENARINI')
+
+    def _parent(self, netto=78.75, pubblico=98.44, codice='87AB54'):
+        return {
+            'codice_originale': codice, 'codice_materiale': codice, 'codice_aic': '',
+            'descrizione': 'LAILA ANSIA EXPO BANCO GIOV', 'tipo_riga': 'PARENT_ESPOSITORE',
+            'quantita': 1, 'q_venduta': 1, 'prezzo_netto': netto, 'prezzo_pubblico': pubblico,
+            'valore_netto': netto, 'is_espositore': True, 'is_child': False,
+        }
+
+    def _child(self, aic, quantita, netto, valore):
+        return {
+            'codice_originale': aic, 'codice_aic': aic, 'descrizione': f'PROD {aic}',
+            'tipo_riga': 'CHILD_ESPOSITORE', '_belongs_to_parent': True, 'is_child': True,
+            'quantita': quantita, 'q_venduta': quantita,
+            'prezzo_netto': netto, 'valore_netto': valore,
+        }
+
+    def test_parent_conserva_codice_e_prezzi_dichiarati(self):
+        ctx = self._elabora([
+            self._parent(),
+            self._child('044460018', 4, 7.06, 28.26),
+            self._child('044460020', 4, 12.62, 50.50),
+        ])
+        parent = ctx.righe_output[0]
+        assert parent['tipo_riga'] == 'PARENT_ESPOSITORE'
+        assert parent['codice_originale'] == '87AB54'
+        assert parent['codice_materiale'] == '87AB54'
+        # 78,75 dichiarato, non 78,76 ricalcolato dalla somma dei child
+        assert parent['prezzo_netto'] == 78.75
+        assert parent['prezzo_pubblico'] == 98.44
+        assert ctx.chiusure_normali == 1
+        assert ctx.chiusure_forzate == 0
+        assert ctx.anomalie == []
+
+    def test_child_in_output_con_valore_dichiarato(self):
+        ctx = self._elabora([
+            self._parent(),
+            self._child('044460018', 4, 7.06, 28.26),
+            self._child('044460020', 4, 12.62, 50.50),
+        ])
+        child = [r for r in ctx.righe_output if r['tipo_riga'] == 'CHILD_ESPOSITORE']
+        assert [c['codice_aic'] for c in child] == ['044460018', '044460020']
+        assert [c['valore_netto'] for c in child] == [28.26, 50.50]
+
+    def test_child_dopo_il_raggiungimento_del_valore_resta_nel_blocco(self):
+        """Con la chiusura per valore l'ultimo child usciva dal gruppo."""
+        ctx = self._elabora([
+            self._parent(netto=100.00),
+            self._child('044460018', 4, 24.75, 99.00),
+            self._child('044460020', 1, 1.00, 1.00),
+        ])
+        child = [r for r in ctx.righe_output if r['tipo_riga'] == 'CHILD_ESPOSITORE']
+        assert len(child) == 2
+        assert ctx.anomalie == []
+
+    def test_secondo_parent_chiude_il_primo_senza_anomalia(self):
+        ctx = self._elabora([
+            self._parent(),
+            self._child('044460018', 4, 7.06, 28.26),
+            self._child('044460020', 4, 12.62, 50.50),
+            self._parent(netto=54.71, pubblico=74.94, codice='87AA25'),
+            self._child('989415373', 6, 9.12, 54.71),
+        ])
+        parents = [r for r in ctx.righe_output if r['tipo_riga'] == 'PARENT_ESPOSITORE']
+        assert [p['codice_originale'] for p in parents] == ['87AB54', '87AA25']
+        assert ctx.chiusure_normali == 2
+        assert ctx.chiusure_forzate == 0
+        assert ctx.anomalie == []
+
+    def test_scostamento_di_valore_genera_anomalia(self):
+        ctx = self._elabora([
+            self._parent(netto=100.00),
+            self._child('044460018', 4, 10.0, 40.00),
+        ])
+        assert len(ctx.anomalie) == 1
+        assert ctx.anomalie[0]['codice_anomalia'] == 'ESP-A01'
+
+    def test_espositore_senza_child_resta_chiusura_forzata(self):
+        ctx = self._elabora([self._parent()])
+        assert ctx.chiusure_forzate == 1
+        assert ctx.anomalie[0]['codice_anomalia'] == 'ESP-A03'
+
+
+class TestScontiRigheNonEspositore:
+    """
+    Le righe che passano da elabora_righe_ordine devono conservare gli sconti.
+
+    _crea_riga_output leggeva 'sconto_pct', chiave che nessun estrattore
+    valorizza: in DB tutte le righe ANGELINI e MENARINI avevano sconto_1 = 0
+    pur avendo sconti reali nel PDF.
+    """
+
+    def _riga_output(self, riga, vendor='ANGELINI'):
+        from app.services.espositore import elabora_righe_ordine
+        base = {'codice_aic': '035618026', 'codice_originale': '035618026',
+                'descrizione': 'MOMENTACT 400MG 12 CPR', 'quantita': 6,
+                'prezzo_netto': 6.06, 'aliquota_iva': 10}
+        ctx = elabora_righe_ordine([{**base, **riga}], vendor=vendor)
+        return ctx.righe_output[0]
+
+    def test_sconto_cascata_angelini(self):
+        """ANGELINI espone gli sconti come 'sconto1'..'sconto4' (es. 33,35+1)."""
+        out = self._riga_output({'sconto1': 33.35, 'sconto2': 1.0})
+        assert out['sconto1'] == 33.35
+        assert out['sconto2'] == 1.0
+        assert out['sconto3'] == 0.0
+        assert out['sconto4'] == 0.0
+
+    def test_sconto_menarini(self):
+        out = self._riga_output({'sconto1': 37.0}, vendor='MENARINI')
+        assert out['sconto1'] == 37.0
+
+    def test_sconto_con_nome_cooper(self):
+        """COOPER usa 'sconto_1'."""
+        out = self._riga_output({'sconto_1': 60.0})
+        assert out['sconto1'] == 60.0
+
+    def test_sconto_pct_legacy(self):
+        out = self._riga_output({'sconto_pct': 12.5})
+        assert out['sconto1'] == 12.5
+
+    def test_nessuno_sconto(self):
+        out = self._riga_output({})
+        assert out['sconto1'] == 0.0
+
+
+class TestVarianteContenitoreSenzaCodice:
+    """
+    Seconda variante MENARINI: la riga contenitore ha Cod. Min. "--" invece del
+    codice materiale, e ripete la descrizione del parent (ordine 25990648000426).
+
+    Il discriminante fra parent e contenitore e' quindi il VALORE, non il codice:
+    con la sola regola "-- = parent" lo stesso espositore veniva spezzato in due.
+    """
+
+    CONTENITORE = _riga('AFTAMED EXPO BANCO 3+3 INVERNO', '--', 1, '0,00 €', '0,00 €', '0,00 €')
+    PARENT_AFT = _riga('AFTAMED EXPO BANCO 3+3 INVERNO', '--', 1, '45,12 €', '32,89 €')
+    CHILD_1 = _riga('AFTAMED GEL 10ML CP', '943303507', 3, '6,86 €', '15,00 €', '5,00 €')
+    CHILD_2 = _riga('AFTAMED 20ML 1SPRAY CP', '904733413', 3, '8,18 €', '17,89 €', '5,96 €')
+
+    def _segmenta(self, righe):
+        from app.services.extraction.vendors.menarini import _segmenta_blocchi_espositore
+        return _segmenta_blocchi_espositore(righe)
+
+    def test_un_solo_parent_non_due(self):
+        blocchi, parent_di, materiali, _ = self._segmenta(
+            [self.PARENT_AFT, self.CHILD_1, self.CHILD_2, self.CONTENITORE]
+        )
+        assert list(blocchi) == [0], "il contenitore '--' non deve aprire un secondo espositore"
+        assert parent_di == {1: 0, 2: 0, 3: 0}
+        assert materiali == {3}
+
+    def test_contenitore_senza_codice_lascia_il_parent_con_trattino(self):
+        blocchi, _, _, anomalie = self._segmenta(
+            [self.PARENT_AFT, self.CHILD_1, self.CONTENITORE]
+        )
+        assert blocchi[0]['codice'] == ''  # '--' non e' un codice
+        assert len(anomalie) == 1
+        assert anomalie[0]['codice_anomalia'] == 'ESP-A08'
+        assert "senza codice materiale" in anomalie[0]['descrizione']
+
+    def test_due_espositori_consecutivi_con_contenitore_senza_codice(self):
+        """Il parent successivo chiude il blocco anche se in mezzo c'e' un '--' a zero."""
+        parent2 = _riga('SUST BANCO 50+ FLAC 6PZ', '--', 1, '74,94 €', '54,71 €')
+        blocchi, parent_di, materiali, _ = self._segmenta(
+            [self.PARENT_AFT, self.CHILD_1, self.CONTENITORE, parent2, MATERIALE]
+        )
+        assert sorted(blocchi) == [0, 3]
+        assert blocchi[0]['codice'] == ''
+        assert blocchi[3]['codice'] == '87AB54'
+        assert materiali == {2, 4}
+        assert parent_di == {1: 0, 2: 0, 4: 3}
+
+    def test_contenitore_e_child_dell_espositore(self):
+        """Deve restare collegato al parent, non diventare una riga autonoma."""
+        from app.services.espositore import elabora_righe_ordine
+        righe = [
+            {'codice_originale': '--', 'codice_materiale': '', 'codice_aic': '',
+             'descrizione': 'AFTAMED EXPO BANCO 3+3 INVERNO', 'tipo_riga': 'PARENT_ESPOSITORE',
+             'quantita': 1, 'q_venduta': 1, 'prezzo_netto': 32.89, 'prezzo_pubblico': 45.12,
+             'valore_netto': 32.89, 'is_espositore': True, 'is_child': False},
+            {'codice_originale': '943303507', 'codice_aic': '943303507', 'descrizione': 'AFTAMED GEL',
+             'tipo_riga': 'CHILD_ESPOSITORE', '_belongs_to_parent': True, 'is_child': True,
+             'quantita': 3, 'prezzo_netto': 5.00, 'valore_netto': 15.00},
+            {'codice_originale': '904733413', 'codice_aic': '904733413', 'descrizione': 'AFTAMED SPRAY',
+             'tipo_riga': 'CHILD_ESPOSITORE', '_belongs_to_parent': True, 'is_child': True,
+             'quantita': 3, 'prezzo_netto': 5.96, 'valore_netto': 17.89},
+            {'codice_originale': '--', 'codice_aic': '', 'descrizione': 'AFTAMED EXPO BANCO 3+3 INVERNO',
+             'tipo_riga': 'CHILD_ESPOSITORE', '_belongs_to_parent': True, 'is_child': True,
+             'is_espositore_vuoto': True, 'quantita': 1, 'prezzo_netto': 0.0, 'valore_netto': 0.0},
+        ]
+        ctx = elabora_righe_ordine(righe, vendor='MENARINI')
+        parents = [r for r in ctx.righe_output if r['tipo_riga'] == 'PARENT_ESPOSITORE']
+        child = [r for r in ctx.righe_output if r['tipo_riga'] == 'CHILD_ESPOSITORE']
+        assert len(parents) == 1
+        assert len(child) == 3
+        assert [c['is_espositore_vuoto'] for c in child] == [False, False, True]
+        # il contenitore a zero non altera la verifica di valore
+        assert ctx.anomalie == []

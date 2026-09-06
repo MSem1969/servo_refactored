@@ -1359,6 +1359,8 @@ def _insert_detail_row(db, id_testata: int, riga: Dict) -> int:
     descrizione_val = riga.get('descrizione', '')[:40] if riga.get('descrizione') else ''
     codice_aic_val = riga.get('codice_aic', '')
     codice_originale_val = riga.get('codice_originale', '')
+    # Codice materiale del vendor (MENARINI: codice dell'espositore, es. 87AB54)
+    codice_materiale_val = str(riga.get('codice_materiale') or '')[:20] or None
 
     # Determina fonte codice AIC
     fonte_codice_aic = 'ESTRATTO'
@@ -1367,31 +1369,36 @@ def _insert_detail_row(db, id_testata: int, riga: Dict) -> int:
 
     cursor = db.execute("""
         INSERT INTO ordini_dettaglio
-        (id_testata, n_riga, codice_aic, codice_originale, descrizione,
+        (id_testata, n_riga, codice_aic, codice_originale, codice_materiale, descrizione,
          q_venduta, q_sconto_merce, q_omaggio, data_consegna_riga,
          sconto_1, sconto_2, sconto_3, sconto_4,
-         prezzo_netto, prezzo_pubblico, prezzo_scontare, aliquota_iva,
+         prezzo_netto, prezzo_pubblico, prezzo_scontare, aliquota_iva, valore_netto,
          is_espositore, is_child, is_no_aic,
          tipo_riga, id_parent_espositore, espositore_metadata,
          q_originale, q_residua, q_esportata,
          descrizione_estratta, fonte_codice_aic, fonte_quantita)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, %s)
+                %s, %s, %s, %s, %s)
         RETURNING id_dettaglio
     """, (
         id_testata, n_riga,
         codice_aic_val,
         codice_originale_val,
+        codice_materiale_val,
         descrizione_val,
         riga.get('q_venduta', 0),
         (riga.get('q_sconto_merce') or 0) + (riga.get('merce_sconto_extra') or 0),  # v6.2: BAYER sconto extra
         riga.get('q_omaggio', 0),
         _convert_date_to_iso(riga.get('data_consegna_riga') or riga.get('data_consegna', '')),
-        riga.get('sconto1', 0), riga.get('sconto2', 0),
-        riga.get('sconto3', 0), riga.get('sconto4', 0),
+        # COOPER usa 'sconto_N', gli altri estrattori 'scontoN'
+        riga.get('sconto1') or riga.get('sconto_1') or 0,
+        riga.get('sconto2') or riga.get('sconto_2') or 0,
+        riga.get('sconto3') or riga.get('sconto_3') or 0,
+        riga.get('sconto4') or riga.get('sconto_4') or 0,
         riga.get('prezzo_netto', 0), riga.get('prezzo_pubblico', 0),
         riga.get('prezzo_scontare', 0),
         riga.get('aliquota_iva', 10),
+        riga.get('valore_netto') or 0,
         is_esp, is_child, is_no_aic,
         tipo_riga, id_parent, esp_metadata,
         calcola_q_totale(riga),  # q_originale

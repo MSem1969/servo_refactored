@@ -4,14 +4,22 @@ EXTRACTOR_TO - Estrattore MENARINI
 Convertito da SERV.O_v6_0_DB_def.ipynb - Cella 10
 Regole: REGOLE_MENARINI.md
 
-v2.0 - Supporto Espositore Parent/Child
-- Parent: codice "--" + keywords (BANCO, FSTAND, etc.)
-- Child: righe successive, non più filtrate
-- Chiusura: basata su somma valore netto
+Espositore MENARINI: un espositore occupa PIU' righe di tabella e i dati che
+servono a farne una riga d'ordine stanno su righe diverse.
+
+    LAILA ANSIA EXPO BANCO GIOV  | --     | 1 | 98,44 | -- | 78,75   <- parent: prezzo, NIENTE codice
+    LAILA 80MG 14CPR CP          | 044460018 | 4 | 8,83 | ... | 28,26   <- child (prodotto reale)
+    LAILA EXPO BANCO GIOVANI 2026| 87AB54 | 1 |  0,00 | 0,00 | 0,00   <- materiale: codice, NIENTE prezzo
+    LAILA 80MG 28CPR CP          | 044460020 | 4 | 15,78 | ... | 50,50   <- child
+
+Il blocco va dalla riga "--" alla successiva (o a fine tabella) e contiene
+sempre esattamente una riga materiale, ma in posizione LIBERA (in testa, in
+mezzo o in coda ai child). Il merge codice+prezzo si fa quindi qui, sul blocco:
+e' l'unico punto in cui quella posizione e' irrilevante.
 """
 
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from ....utils import parse_date, format_piva
 from ...espositore import elabora_righe_ordine
@@ -30,10 +38,6 @@ try:
 except ImportError:
     FTFY_AVAILABLE = False
 
-# Keywords per identificare espositori
-ESPOSITORE_KEYWORDS = r'BANCO|DBOX|FSTAND|EXPO|DISPLAY|ESPOSITORE|CESTA'
-
-
 def _normalizza_descrizione_espositore(descrizione: str) -> str:
     """
     Normalizza descrizione per confronto parent/child.
@@ -50,41 +54,6 @@ def _normalizza_descrizione_espositore(descrizione: str) -> str:
     # Rimuove spazi multipli
     desc = re.sub(r'\s+', ' ', desc).strip()
     return desc
-
-
-def _is_child_per_descrizione(desc_riga: str, desc_parent_norm: str) -> bool:
-    """
-    v9.0: Verifica se una riga è child in base alla descrizione.
-
-    Una riga è child se:
-    - La sua descrizione normalizzata corrisponde o è contenuta nel parent
-    - Es: "AFTAMED EXPO BANCO" (child) matches "AFTAMED EXPO BANCO" (parent norm)
-    """
-    if not desc_parent_norm or not desc_riga:
-        return False
-
-    desc_norm = _normalizza_descrizione_espositore(desc_riga)
-
-    # Match esatto
-    if desc_norm == desc_parent_norm:
-        return True
-
-    # La descrizione della riga è contenuta nel parent (senza i numeri)
-    # Es: "AFTAMED EXPO BANCO" è contenuta in "AFTAMED EXPO BANCO"
-    if desc_norm and desc_parent_norm:
-        # Estrai la parte "nome prodotto" (primi 2-3 token)
-        tokens_riga = desc_norm.split()[:3]
-        tokens_parent = desc_parent_norm.split()[:3]
-
-        # Se i primi token corrispondono, è un child (stesso prodotto base)
-        if tokens_riga and tokens_parent:
-            if tokens_riga[0] == tokens_parent[0]:  # Almeno il primo token uguale
-                # E almeno 2 token in comune
-                common = set(tokens_riga) & set(tokens_parent)
-                if len(common) >= 2:
-                    return True
-
-    return False
 
 
 def _is_espositore_candidate(cod_min: str, descrizione: str) -> Tuple[bool, Optional[int]]:
@@ -130,6 +99,166 @@ def _is_espositore_candidate(cod_min: str, descrizione: str) -> Tuple[bool, Opti
             pezzi_per_unita = int(pezzi_match.group(1))
 
     return True, pezzi_per_unita
+
+
+# =============================================================================
+# BLOCCO ESPOSITORE: segmentazione e merge parent + riga materiale
+# =============================================================================
+
+# Colonne della tabella prodotti MENARINI
+COL_DESCRIZIONE = 0
+COL_COD_MIN = 1
+COL_QUANTITA = 2
+COL_PREZZO = 3
+COL_TOTALE_NETTO = 8
+
+_RE_AIC = re.compile(r'^\d{9}$')
+
+
+def _cella(row: List, idx: int) -> str:
+    """Valore testuale di una cella, stringa vuota se la colonna non c'e'."""
+    if not row or idx >= len(row):
+        return ''
+    return str(row[idx] or '').strip()
+
+
+def _importo(valore: str) -> float:
+    """Converte un importo in formato italiano ("1.234,56 €") in float."""
+    testo = str(valore or '').replace('€', '').replace('.', '').replace(',', '.').strip()
+    if not testo or testo == '--':
+        return 0.0
+    try:
+        return float(testo)
+    except ValueError:
+        return 0.0
+
+
+def _intero(valore: str) -> int:
+    testo = str(valore or '').strip()
+    try:
+        return int(testo)
+    except ValueError:
+        return 0
+
+
+def _is_riga_parent(cod_min: str, totale_netto: float) -> bool:
+    """
+    Parent espositore: Cod. Min. "--" **e** un valore.
+
+    Il solo "--" non basta, perche' anche la riga dell'espositore vuoto puo'
+    averlo (quando Menarini non stampa il codice materiale): senza il vincolo
+    sul valore lo stesso espositore veniva spezzato in due parent distinti.
+    """
+    return cod_min == '--' and totale_netto > 0
+
+
+def _is_riga_materiale(cod_min: str, totale_netto: float) -> bool:
+    """
+    Riga "espositore vuoto": e' il contenitore fisico, non un prodotto.
+
+    Il discriminante e' il **valore a zero**, non il codice: nella maggior parte
+    dei PDF la riga porta il codice materiale Menarini (es. 87AB54), ma esiste
+    la variante in cui porta "--" e ripete la descrizione del parent
+    (es. "AFTAMED EXPO BANCO 3+3 INVERNO", ordine 25990648000426).
+    """
+    if _RE_AIC.match(cod_min):
+        return False
+    return totale_netto == 0.0
+
+
+def _segmenta_blocchi_espositore(
+    data_rows: List[List]
+) -> Tuple[Dict[int, Dict], Dict[int, int], Set[int], List[Dict]]:
+    """
+    Segmenta le righe della tabella in blocchi espositore e appaia ogni parent
+    con la sua riga materiale, ovunque essa si trovi nel blocco.
+
+    Un blocco va dal parent (Cod. Min. "--" con valore) al parent successivo o
+    a fine tabella. Su 98 blocchi nei PDF campione ognuno contiene esattamente
+    una riga materiale, ma la sua posizione e' libera: appaiarla in chiusura
+    d'espositore (per valore) la perdeva nel 16% dei casi.
+
+    Returns:
+        (blocchi, parent_di, indici_materiale, anomalie)
+        - blocchi: {idx_parent: {'codice', 'descrizione', 'idx_materiale'}}
+        - parent_di: {idx_child: idx_parent}
+        - indici_materiale: indici delle righe "espositore vuoto"
+        - anomalie: ESP-A08 sui blocchi senza codice materiale o con piu' righe
+    """
+    indici_parent = [
+        idx for idx, row in enumerate(data_rows)
+        if _is_riga_parent(
+            _cella(row, COL_COD_MIN),
+            _importo(_cella(row, COL_TOTALE_NETTO)),
+        )
+    ]
+
+    blocchi: Dict[int, Dict] = {}
+    parent_di: Dict[int, int] = {}
+    indici_materiale: Set[int] = set()
+    anomalie: List[Dict] = []
+
+    for pos, idx_parent in enumerate(indici_parent):
+        fine = indici_parent[pos + 1] if pos + 1 < len(indici_parent) else len(data_rows)
+        materiali = [
+            idx for idx in range(idx_parent + 1, fine)
+            if _is_riga_materiale(
+                _cella(data_rows[idx], COL_COD_MIN),
+                _importo(_cella(data_rows[idx], COL_TOTALE_NETTO)),
+            )
+        ]
+
+        desc_parent = _cella(data_rows[idx_parent], COL_DESCRIZIONE)[:40]
+        idx_materiale = materiali[0] if materiali else None
+        # "--" non e' un codice: e' la variante in cui Menarini non lo stampa
+        codice = _cella(data_rows[idx_materiale], COL_COD_MIN) if materiali else ''
+        if codice == '--':
+            codice = ''
+
+        blocchi[idx_parent] = {
+            'codice': codice,
+            'descrizione': _cella(data_rows[idx_materiale], COL_DESCRIZIONE)[:40] if materiali else '',
+            'idx_materiale': idx_materiale,
+        }
+
+        for idx in range(idx_parent + 1, fine):
+            parent_di[idx] = idx_parent
+        indici_materiale.update(materiali)
+
+        # Senza codice il parent resta identificato dal solo "--" e l'operatore
+        # deve saperlo: non e' un dato che possiamo ricavare altrove.
+        if not codice:
+            motivo = (
+                "non espone alcuna riga contenitore"
+                if not materiali else
+                "espone la riga contenitore senza codice materiale ('--')"
+            )
+            anomalie.append({
+                'tipo_anomalia': 'ESPOSITORE',
+                'livello': 'ATTENZIONE',
+                'codice_anomalia': 'ESP-A08',
+                'descrizione': (
+                    f"Espositore '{desc_parent}' {motivo}: "
+                    f"il codice della riga d'ordine resta '--'"
+                ),
+                'valore_anomalo': desc_parent,
+                'richiede_supervisione': False,
+            })
+        elif len(materiali) > 1:
+            codici = ', '.join(_cella(data_rows[i], COL_COD_MIN) for i in materiali)
+            anomalie.append({
+                'tipo_anomalia': 'ESPOSITORE',
+                'livello': 'ATTENZIONE',
+                'codice_anomalia': 'ESP-A08',
+                'descrizione': (
+                    f"Espositore '{desc_parent}' con {len(materiali)} righe materiale "
+                    f"({codici}): assegnato il primo"
+                ),
+                'valore_anomalo': desc_parent,
+                'richiede_supervisione': False,
+            })
+
+    return blocchi, parent_di, indici_materiale, anomalie
 
 
 def extract_menarini(text: str, lines: List[str], pdf_path: str = None) -> List[Dict]:
@@ -267,112 +396,81 @@ def extract_menarini(text: str, lines: List[str], pdf_path: str = None) -> List[
                 # Estrazione righe dalla tabella (già senza header)
                 data_rows = [r for r in data_table if r and r[0] and not str(r[0]).strip().startswith('Totale')]
 
+                # Appaia ogni parent con la sua riga materiale prima di emettere
+                # le righe: cosi' la posizione del materiale nel blocco non conta.
+                blocchi, parent_di, indici_materiale, anomalie_blocchi = \
+                    _segmenta_blocchi_espositore(data_rows)
+
                 n_riga = 0
-                # v9.1: Tracciamento parent/child per espositori
-                has_active_parent = False
-                active_parent_desc_norm = ''
-                seen_espositori = set()
-                accumulated_child_value = 0.0
 
                 for idx, row in enumerate(data_rows):
 
-                    desc_raw = str(row[0] or '').strip()
+                    desc_raw = _cella(row, COL_DESCRIZIONE)
                     if not desc_raw:
                         continue
 
-                    cod_min = str(row[1] or '').strip() if len(row) > 1 else ''
+                    cod_min = _cella(row, COL_COD_MIN)
+                    qty = _intero(_cella(row, COL_QUANTITA))
+                    prezzo = _importo(_cella(row, COL_PREZZO))
 
-                    # Debug per espositore
-                    if 'SUST' in desc_raw.upper() or 'BANCO' in desc_raw.upper() or 'EXPO' in desc_raw.upper():
-                        print(f"   [DEBUG] Row {idx}: desc='{desc_raw[:35]}', cod_min='{cod_min}'")
-
-                    try:
-                        qty = int(str(row[2] or '0').strip()) if len(row) > 2 else 0
-                    except:
-                        qty = 0
-
-                    try:
-                        prezzo = float(str(row[3] or '0').replace('€', '').replace(',', '.').strip()) if len(row) > 3 else 0.0
-                    except:
-                        prezzo = 0.0
-
-                    sconto_str = str(row[4] or '--').strip() if len(row) > 4 else '--'
+                    sconto_str = _cella(row, 4) or '--'
                     sconto1 = 0.0
                     if sconto_str != '--':
                         try:
                             sconto1 = float(sconto_str.replace('%', '').replace(',', '.'))
-                        except:
+                        except ValueError:
                             pass
 
-                    sm = str(row[5] or '--').strip() if len(row) > 5 else '--'
-                    om = str(row[6] or '--').strip() if len(row) > 6 else '--'
+                    sm = _cella(row, 5)
+                    om = _cella(row, 6)
                     q_sm = int(sm) if sm.isdigit() else 0
                     q_om = int(om) if om.isdigit() else 0
                     q_omaggio = q_sm + q_om
 
-                    pn = str(row[7] or '--').replace('€', '').replace(',', '.').strip() if len(row) > 7 else '--'
-                    prezzo_netto = float(pn) if pn and pn != '--' else 0.0
-
-                    # v9.3: Totale Netto da col[8] - usato per chiusura espositore
-                    tn = str(row[8] or '--').replace('€', '').replace(',', '.').strip() if len(row) > 8 else '--'
-                    totale_netto = float(tn) if tn and tn != '--' else 0.0
+                    prezzo_netto = _importo(_cella(row, 7))
+                    totale_netto = _importo(_cella(row, COL_TOTALE_NETTO))
 
                     descrizione = re.sub(r'\s*\([A-Z0-9]+\)\s*$', '', desc_raw).strip()[:40]
-
-                    # v9.1: Verifica se è un candidato espositore (codice "--" + keywords)
-                    is_espositore_candidate, pezzi_per_unita = _is_espositore_candidate(cod_min, descrizione)
                     desc_norm = _normalizza_descrizione_espositore(descrizione)
-                    is_aic = bool(re.match(r'^\d{9}$', cod_min))
+                    is_aic = bool(_RE_AIC.match(cod_min))
 
-                    # v9.3: LOGICA PARENT/CHILD basata su ORDINE DI APPARIZIONE
-                    if is_espositore_candidate:
-                        # v9.4: LOGICA MENARINI basata su TOTALE NETTO
-                        if totale_netto > 0:
-                            # PARENT: espositore con valore
-                            print(f"   [DEBUG v9.4] PARENT detected: '{desc_norm}' totale_netto={totale_netto}")
+                    # PARENT ESPOSITORE: identificato dal solo Cod. Min. "--",
+                    # completato col codice materiale del blocco e valorizzato
+                    # con i prezzi DICHIARATI dal PDF (non ricalcolati).
+                    if idx in blocchi:
+                        _, pezzi_per_unita = _is_espositore_candidate(cod_min, descrizione)
+                        blocco = blocchi[idx]
+                        codice_materiale = blocco['codice']
+                        divisore = qty if qty > 0 else 1
 
-                            has_active_parent = True
-                            active_parent_desc_norm = desc_norm
-                            accumulated_child_value = 0.0
+                        n_riga += 1
+                        data['righe'].append({
+                            'n_riga': n_riga,
+                            'codice_aic': '',
+                            'codice_originale': codice_materiale or cod_min,
+                            'codice_materiale': codice_materiale,
+                            'descrizione': descrizione,
+                            'descrizione_normalizzata': desc_norm,
+                            'descrizione_materiale': blocco['descrizione'],
+                            'data_consegna': data.get('data_consegna'),
+                            'q_venduta': qty,
+                            'quantita': qty,
+                            'q_omaggio': q_omaggio,
+                            'sconto1': sconto1,
+                            'prezzo_pubblico': round(prezzo / divisore, 2),
+                            'prezzo_netto': round(totale_netto / divisore, 2),
+                            'valore_netto': totale_netto,
+                            'is_espositore': True,
+                            'is_child': False,
+                            'tipo_riga': 'PARENT_ESPOSITORE',
+                            'pezzi_per_unita': pezzi_per_unita,
+                            'prezzo_netto_parent': round(totale_netto / divisore, 2),
+                            'anomalia_no_aic': False,
+                        })
+                        continue
 
-                            n_riga += 1
-                            data['righe'].append({
-                                'n_riga': n_riga,
-                                'codice_aic': '',
-                                'codice_originale': cod_min,
-                                'descrizione': descrizione,
-                                'descrizione_normalizzata': desc_norm,
-                                'data_consegna': data.get('data_consegna'),
-                                'q_venduta': qty,
-                                'quantita': qty,
-                                'q_omaggio': q_omaggio,
-                                'sconto1': sconto1,
-                                'prezzo_pubblico': prezzo,
-                                'prezzo_netto': totale_netto,
-                                'valore_netto': totale_netto,
-                                'is_espositore': True,
-                                'is_child': False,
-                                'tipo_riga': 'PARENT_ESPOSITORE',
-                                'pezzi_per_unita': pezzi_per_unita,
-                                'prezzo_netto_parent': totale_netto,
-                                'anomalia_no_aic': False,
-                            })
-                            continue
-                        else:
-                            # CHILD: espositore vuoto (Totale Netto = 0)
-                            print(f"   [DEBUG v9.4] CHILD (espositore vuoto) detected: '{desc_norm}' totale_netto=0")
-                            pass  # Continua sotto come child
-
-                    # v9.5: Logica child MENARINI - TUTTI i prodotti dopo parent sono child
-                    is_child_of_parent = False
-                    is_espositore_vuoto = False
-
-                    if has_active_parent:
-                        # TUTTE le righe dopo un parent sono child fino a chiusura
-                        is_child_of_parent = True
-                        # Non-AIC = materiale espositore (escluso da tracciato)
-                        if not is_aic:
-                            is_espositore_vuoto = True
+                    is_child_of_parent = idx in parent_di
+                    is_espositore_vuoto = idx in indici_materiale
 
                     n_riga += 1
                     riga_data = {
@@ -391,14 +489,19 @@ def extract_menarini(text: str, lines: List[str], pdf_path: str = None) -> List[
                         'is_espositore': False,
                         'is_child': is_child_of_parent,
                         'is_espositore_vuoto': is_espositore_vuoto,
+                        # Il tipo e' sempre esplicito: identifica_tipo_riga
+                        # classificherebbe come PARENT qualunque riga "--",
+                        # compresa quella del contenitore vuoto.
+                        'tipo_riga': 'CHILD_ESPOSITORE' if is_child_of_parent else 'PRODOTTO_STANDARD',
                         'anomalia_no_aic': not is_aic and not is_child_of_parent,
                     }
 
                     # Marca child
                     if is_child_of_parent:
                         riga_data['_belongs_to_parent'] = True
-                        riga_data['tipo_riga'] = 'CHILD_ESPOSITORE'
-                        riga_data['_parent_desc_norm'] = active_parent_desc_norm
+                        riga_data['_parent_desc_norm'] = _normalizza_descrizione_espositore(
+                            _cella(data_rows[parent_di[idx]], COL_DESCRIZIONE)
+                        )
 
                     data['righe'].append(riga_data)
 
@@ -409,16 +512,18 @@ def extract_menarini(text: str, lines: List[str], pdf_path: str = None) -> List[
 
                     # Elabora con logica espositori MENARINI
                     ctx = elabora_righe_ordine(righe_raw, vendor='MENARINI')
-                    # v9.4: Filtra righe CHILD_ESPOSITORE
-                    data['righe'] = [r for r in ctx.righe_output if r.get('tipo_riga') != 'CHILD_ESPOSITORE']
-                    data['anomalie_espositore'] = ctx.anomalie
+                    # I child restano nell'output: vanno salvati in DB con
+                    # is_child=TRUE (fuori da tracciato, AIC, listino e contatori)
+                    # per rendere visibile la composizione dell'espositore.
+                    data['righe'] = ctx.righe_output
+                    data['anomalie_espositore'] = anomalie_blocchi + ctx.anomalie
                     data['_stats'] = {
                         'righe_raw': len(righe_raw),
                         'righe_output': len(ctx.righe_output),
                         'espositori': ctx.espositori_elaborati,
                         'chiusure_normali': ctx.chiusure_normali,
                         'chiusure_forzate': ctx.chiusure_forzate,
-                        'anomalie': len(ctx.anomalie),
+                        'anomalie': len(data['anomalie_espositore']),
                     }
 
                     all_orders.append(data)
