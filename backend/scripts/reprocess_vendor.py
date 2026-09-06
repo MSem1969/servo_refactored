@@ -152,6 +152,8 @@ def main():
     parser.add_argument('--vendor', default='MENARINI',
                         help=f'codice vendor, fra {VENDOR_AMMESSI} (default: MENARINI)')
     parser.add_argument('--dry-run', action='store_true', help='mostra cosa farebbe, senza toccare nulla')
+    parser.add_argument('--breve', action='store_true',
+                        help='con --dry-run: stampa solo il riepilogo finale')
     args = parser.parse_args()
 
     vendor = args.vendor.upper()
@@ -189,8 +191,29 @@ def main():
         print()
 
     if args.dry_run:
-        for acq in lavorabili:
-            print(f"  [dry-run] {acq['id_acquisizione']:>5}  {acq['nome_file_storage']}")
+        if not args.breve:
+            for acq in lavorabili:
+                print(f"  [dry-run] {acq['id_acquisizione']:>5}  {acq['nome_file_storage']}")
+            print()
+        # Riepilogo in due righe: su un terminale remoto da cui non si copia
+        # (Coolify, console web) sono le uniche due che serve leggere.
+        print("=" * 60)
+        print(f"RIEPILOGO {vendor}: {len(acquisizioni)} acquisizioni, "
+              f"{len(lavorabili)} riprocessabili, {len(saltate)} saltate")
+        motivi_totali = {}
+        for _, motivi in saltate:
+            for motivo in motivi:
+                # "3 esportati" -> chiave "esportati", valore sommato
+                numero, _, etichetta = motivo.partition(' ')
+                try:
+                    motivi_totali[etichetta] = motivi_totali.get(etichetta, 0) + int(numero)
+                except ValueError:
+                    motivi_totali[motivo] = motivi_totali.get(motivo, 0) + 1
+        if motivi_totali:
+            print("MOTIVI: " + ", ".join(f"{v} {k}" for k, v in sorted(motivi_totali.items())))
+        else:
+            print("MOTIVI: nessuno, tutte riprocessabili")
+        print("=" * 60)
         return 0
 
     ok = errori = ordini = righe = 0
