@@ -4,6 +4,8 @@ Riprocessa le acquisizioni di un vendor con l'estrattore corrente.
 Serve dopo un fix dell'estrattore: gli ordini gia' in DB restano quelli
 prodotti dalla versione precedente e non si aggiornano da soli.
 
+Gira SOLO sui vendor elencati in VENDOR_AMMESSI: oggi il solo MENARINI.
+
 Per ogni acquisizione: cancella supervisioni -> anomalie -> dettagli ->
 testata -> acquisizione, poi rilegge il PDF da disco e lo rielabora.
 E' la stessa sequenza di POST /upload/reprocess/{id}, in blocco.
@@ -21,10 +23,18 @@ e riprocessa solo le altre. Non esiste un --force: se un ordine e' stato
 lavorato, la correzione va fatta a mano o non va fatta.
 
 Un'acquisizione e' considerata intoccabile se un suo ordine ha:
-  - stato diverso da ESTRATTO / ANOMALIA
+  - stato diverso da ESTRATTO / ANOMALIA / ARCHIVIATO
   - lookup_method = 'MANUALE' o un cliente assegnato a mano
   - una riga in esportazioni_dettaglio (tracciato gia' emesso)
-  - una supervisione decisa da un operatore (stato != PENDING)
+  - una supervisione decisa da un operatore (APPROVED, REJECTED, CORRETTA...)
+
+ARCHIVIATO e' riprocessabile perche' un ordine viene archiviato anche quando
+l'estrazione era sbagliata, ed e' proprio il caso che questo script serve a
+recuperare. Ma attenzione: il reprocess lo riporta in vita come ESTRATTO o
+ANOMALIA, quindi torna nella lista con le sue anomalie e supervisioni riaperte,
+e va ri-archiviato a mano se davvero non serviva. Per lo stesso motivo le
+supervisioni in stato ARCHIVED non contano come "decise": non sono un giudizio
+dell'operatore, sono la conseguenza dell'archiviazione.
 
 ## In produzione
 
@@ -52,7 +62,21 @@ TABELLE_SUPERVISIONE = (
     'supervisione_anagrafica', 'supervisione_erp',
 )
 
-STATI_NON_LAVORATI = ('ESTRATTO', 'ANOMALIA')
+# Vendor su cui e' lecito girare. La lista e' volutamente corta: il reprocess
+# cancella e ricrea gli ordini, quindi allargarla e' una decisione da prendere
+# una volta e scrivere qui, non un parametro da passare al volo.
+#
+# ANGELINI e COOPER hanno lo stesso bug degli sconti corretto per MENARINI, ma
+# NON vanno riprocessati alla leggera: ANGELINI trasmette via FTP e riprocessare
+# cambierebbe i Discount1-4 di ordini gia' inviati all'ERP.
+VENDOR_AMMESSI = ('MENARINI',)
+
+STATI_NON_LAVORATI = ('ESTRATTO', 'ANOMALIA', 'ARCHIVIATO')
+
+# Stati di supervisione che NON bloccano il reprocess: in attesa di lavorazione
+# o chiusi d'ufficio con l'archiviazione dell'ordine. Tutti gli altri
+# (APPROVED, REJECTED, CORRETTA, ...) sono decisioni di un operatore.
+STATI_SUPERVISIONE_NON_DECISI = ('PENDING', 'ARCHIVED')
 
 
 def acquisizioni_vendor(db, vendor):
@@ -88,7 +112,8 @@ def motivi_intoccabile(db, id_acquisizione):
             decise += db.execute(f"""
                 SELECT count(*) FROM {tabella} s
                 JOIN ordini_testata t ON t.id_testata = s.id_testata
-                WHERE t.id_acquisizione = %s AND s.stato <> 'PENDING'
+                WHERE t.id_acquisizione = %s
+                  AND s.stato NOT IN {STATI_SUPERVISIONE_NON_DECISI}
             """, (id_acquisizione,)).fetchone()[0]
         except Exception:  # noqa: BLE001 - tabella assente in DB piu' vecchi
             db.rollback()
@@ -124,11 +149,19 @@ def cancella_acquisizione(db, id_acquisizione):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--vendor', default='MENARINI', help='codice vendor (default: MENARINI)')
+    parser.add_argument('--vendor', default='MENARINI',
+                        help=f'codice vendor, fra {VENDOR_AMMESSI} (default: MENARINI)')
     parser.add_argument('--dry-run', action='store_true', help='mostra cosa farebbe, senza toccare nulla')
     args = parser.parse_args()
 
     vendor = args.vendor.upper()
+    if vendor not in VENDOR_AMMESSI:
+        print(f"STOP: {vendor} non e' fra i vendor ammessi {VENDOR_AMMESSI}.")
+        print("Il reprocess cancella e ricrea gli ordini: aggiungere un vendor a")
+        print("VENDOR_AMMESSI e' una decisione da prendere e scrivere nello script,")
+        print("dopo aver verificato l'impatto sui tracciati gia' trasmessi.")
+        return 1
+
     db = get_db()
 
     acquisizioni = acquisizioni_vendor(db, vendor)
