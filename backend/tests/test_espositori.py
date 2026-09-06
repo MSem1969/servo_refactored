@@ -461,3 +461,46 @@ class TestChiusuraBloccoMenarini:
         ctx = self._elabora([self._parent()])
         assert ctx.chiusure_forzate == 1
         assert ctx.anomalie[0]['codice_anomalia'] == 'ESP-A03'
+
+
+class TestScontiRigheNonEspositore:
+    """
+    Le righe che passano da elabora_righe_ordine devono conservare gli sconti.
+
+    _crea_riga_output leggeva 'sconto_pct', chiave che nessun estrattore
+    valorizza: in DB tutte le righe ANGELINI e MENARINI avevano sconto_1 = 0
+    pur avendo sconti reali nel PDF.
+    """
+
+    def _riga_output(self, riga, vendor='ANGELINI'):
+        from app.services.espositore import elabora_righe_ordine
+        base = {'codice_aic': '035618026', 'codice_originale': '035618026',
+                'descrizione': 'MOMENTACT 400MG 12 CPR', 'quantita': 6,
+                'prezzo_netto': 6.06, 'aliquota_iva': 10}
+        ctx = elabora_righe_ordine([{**base, **riga}], vendor=vendor)
+        return ctx.righe_output[0]
+
+    def test_sconto_cascata_angelini(self):
+        """ANGELINI espone gli sconti come 'sconto1'..'sconto4' (es. 33,35+1)."""
+        out = self._riga_output({'sconto1': 33.35, 'sconto2': 1.0})
+        assert out['sconto1'] == 33.35
+        assert out['sconto2'] == 1.0
+        assert out['sconto3'] == 0.0
+        assert out['sconto4'] == 0.0
+
+    def test_sconto_menarini(self):
+        out = self._riga_output({'sconto1': 37.0}, vendor='MENARINI')
+        assert out['sconto1'] == 37.0
+
+    def test_sconto_con_nome_cooper(self):
+        """COOPER usa 'sconto_1'."""
+        out = self._riga_output({'sconto_1': 60.0})
+        assert out['sconto1'] == 60.0
+
+    def test_sconto_pct_legacy(self):
+        out = self._riga_output({'sconto_pct': 12.5})
+        assert out['sconto1'] == 12.5
+
+    def test_nessuno_sconto(self):
+        out = self._riga_output({})
+        assert out['sconto1'] == 0.0

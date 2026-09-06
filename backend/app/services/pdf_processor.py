@@ -1390,8 +1390,11 @@ def _insert_detail_row(db, id_testata: int, riga: Dict) -> int:
         (riga.get('q_sconto_merce') or 0) + (riga.get('merce_sconto_extra') or 0),  # v6.2: BAYER sconto extra
         riga.get('q_omaggio', 0),
         _convert_date_to_iso(riga.get('data_consegna_riga') or riga.get('data_consegna', '')),
-        riga.get('sconto1', 0), riga.get('sconto2', 0),
-        riga.get('sconto3', 0), riga.get('sconto4', 0),
+        # COOPER usa 'sconto_N', gli altri estrattori 'scontoN'
+        riga.get('sconto1') or riga.get('sconto_1') or 0,
+        riga.get('sconto2') or riga.get('sconto_2') or 0,
+        riga.get('sconto3') or riga.get('sconto_3') or 0,
+        riga.get('sconto4') or riga.get('sconto_4') or 0,
         riga.get('prezzo_netto', 0), riga.get('prezzo_pubblico', 0),
         riga.get('prezzo_scontare', 0),
         riga.get('aliquota_iva', 10),

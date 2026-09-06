@@ -686,6 +686,25 @@ track_from_user(current_user, Sezione.DATABASE, Azione.CONFIRM,
 3. Caso isolato? → Documenta eccezione
 4. Uniforma: error handling, response format, componenti UI
 
+### ⚠️ Trappola: nomi di campo diversi fra estrattore e INSERT
+
+Le righe grezze degli estrattori sono `dict` senza schema: un campo scritto con un
+nome e riletto con un altro non da' errore, **da' zero**. Era il caso degli sconti:
+`espositore.py::_crea_riga_output` leggeva `sconto_pct` — chiave che **nessun**
+estrattore valorizza — e scriveva `sconto_1`, mentre `_insert_detail_row` legge
+`sconto1`. Doppio buco silenzioso: in DB **249 righe ANGELINI, 86 COOPER e 53
+MENARINI con `sconto_1 = 0`** a fronte di sconti reali del 20-70% nel PDF, e
+`Discount1-4` a `000.00` nei tracciati ANGELINI (vendor FTP).
+
+Nomi in uso oggi: gli estrattori scrivono **`scontoN`**, COOPER **`sconto_N`**, le
+colonne DB sono **`sconto_N`**. `_insert_detail_row` accetta entrambe le grafie e
+`_crea_riga_output` normalizza via `_sconto()`.
+
+> Quando si aggiunge un campo a una riga, verificare **da dove viene riletto**
+> (`_crea_riga_output`, `_insert_detail_row`) e non solo dove viene scritto.
+> Una query di controllo per vendor (`count(*) FILTER (WHERE campo <> 0)`) rivela
+> in un secondo se un campo non arriva mai in fondo.
+
 ### ⚠️ Trappola: `modulo.py` e `modulo/` nella stessa directory
 
 Se in una directory coesistono `x.py` e il package `x/`, **Python carica sempre il

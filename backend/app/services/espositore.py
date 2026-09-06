@@ -804,6 +804,24 @@ def _chiudi_espositore_forzato(esp: Espositore, n_riga: int, motivo: str, vendor
     return _chiudi_espositore(esp, n_riga, vendor, forzato=True, motivo=motivo)
 
 
+def _sconto(riga: Dict, n: int) -> float:
+    """
+    Sconto n-esimo di una riga grezza, qualunque nome usi l'estrattore.
+
+    Gli estrattori scrivono 'sconto1'..'sconto4' (ANGELINI, MENARINI, ...),
+    COOPER scrive 'sconto_1'. La vecchia chiave 'sconto_pct' non e' mai
+    valorizzata da nessuno: leggendo solo quella si perdevano TUTTI gli sconti
+    delle righe che passano da elabora_righe_ordine (249 righe ANGELINI e 53
+    MENARINI in DB con sconto_1 = 0 a fronte di sconti reali nel PDF).
+    """
+    for chiave in (f'sconto{n}', f'sconto_{n}'):
+        if riga.get(chiave):
+            return float(riga[chiave])
+    if n == 1 and riga.get('sconto_pct'):
+        return float(riga['sconto_pct'])
+    return 0.0
+
+
 def _crea_riga_output(riga: Dict, n_riga: int, tipo_riga: str) -> Dict:
     """Crea riga output formattata."""
     return {
@@ -819,7 +837,10 @@ def _crea_riga_output(riga: Dict, n_riga: int, tipo_riga: str) -> Dict:
         'prezzo_listino': float(riga.get('prezzo_listino', 0) or 0),
         'prezzo_netto': float(riga.get('prezzo_netto', 0) or 0),
         'prezzo_pubblico': float(riga.get('prezzo_pubblico', 0) or 0),
-        'sconto_1': float(riga.get('sconto_pct', 0) or 0),
+        'sconto1': _sconto(riga, 1),
+        'sconto2': _sconto(riga, 2),
+        'sconto3': _sconto(riga, 3),
+        'sconto4': _sconto(riga, 4),
         'aliquota_iva': float(riga.get('aliquota_iva', 10) or 10),
         'valore_netto': float(riga.get('valore_netto', 0) or 0),
         'is_espositore': 0,
