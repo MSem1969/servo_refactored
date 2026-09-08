@@ -95,6 +95,10 @@ class Espositore:
     n_riga: int = 0
     prezzo_netto_dichiarato: float = 0.0  # MENARINI: Totale Netto dichiarato dal parent ("prezzo dell'espositore")
     prezzo_pubblico_dichiarato: float = 0.0  # MENARINI: colonna "Prezzo" del parent
+    # Pezzi gratuiti dichiarati sulla riga del parent: e' la riga che finisce
+    # nel tracciato, quindi vanno conservati fino in fondo.
+    q_omaggio: int = 0
+    q_sconto_merce: int = 0
 
     righe_child: List[RigaChild] = field(default_factory=list)
     pezzi_accumulati: int = 0
@@ -411,6 +415,8 @@ def elabora_righe_ordine(righe_raw: List[Dict], vendor: str = 'ANGELINI') -> Con
                     float(riga.get('prezzo_pubblico', 0) or 0)
                     if vendor.upper() == 'MENARINI' else 0.0
                 ),
+                q_omaggio=int(riga.get('q_omaggio', 0) or 0),
+                q_sconto_merce=int(riga.get('q_sconto_merce', 0) or 0),
             )
             ctx.espositori_elaborati += 1
             continue
@@ -605,8 +611,8 @@ def _chiudi_espositore(
         'codice_materiale': codice_materiale_parent,
         'descrizione': esp.descrizione,
         'q_venduta': esp.quantita_parent,
-        'q_omaggio': 0,
-        'q_sconto_merce': 0,
+        'q_omaggio': esp.q_omaggio,
+        'q_sconto_merce': esp.q_sconto_merce,
         'prezzo_netto': prezzo_netto_parent,
         'prezzo_pubblico': prezzo_pubblico_parent,
         'aliquota_iva': esp.aliquota_iva,
@@ -834,8 +840,13 @@ def _crea_riga_output(riga: Dict, n_riga: int, tipo_riga: str) -> Dict:
         'descrizione': riga.get('descrizione', ''),
         'tipo_posizione': riga.get('tipo_posizione', ''),
         'q_venduta': int(riga.get('quantita', 0) or 0),
-        'q_omaggio': 0,
-        'q_sconto_merce': 0,
+        # I pezzi gratuiti vanno propagati, non azzerati: nel tracciato TO_D
+        # confluiscono entrambi in QuantityFreePieces, e perderli qui vuol dire
+        # dichiarare all'ERP meno merce di quella ordinata. I rami SCONTO_MERCE
+        # e MATERIALE_POP li riscrivono subito dopo la chiamata, quindi non
+        # vengono disturbati.
+        'q_omaggio': int(riga.get('q_omaggio', 0) or 0),
+        'q_sconto_merce': int(riga.get('q_sconto_merce', 0) or 0),
         'prezzo_listino': float(riga.get('prezzo_listino', 0) or 0),
         'prezzo_netto': float(riga.get('prezzo_netto', 0) or 0),
         'prezzo_pubblico': float(riga.get('prezzo_pubblico', 0) or 0),
