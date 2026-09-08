@@ -579,3 +579,102 @@ class TestVarianteContenitoreSenzaCodice:
         assert [c['is_espositore_vuoto'] for c in child] == [False, False, True]
         # il contenitore a zero non altera la verifica di valore
         assert ctx.anomalie == []
+
+
+class TestPezziGratuitiNonSiPerdono:
+    """
+    Sconto merce e omaggi confluiscono ENTRAMBI in QuantityFreePieces (TO_D pos
+    69-74), mentre QuantityDiscountPieces resta sempre 0. Azzerarli in
+    _crea_riga_output significava dichiarare all'ERP meno merce di quella
+    ordinata: 3 omaggi + 2 sconto merce su una riga da 10 pezzi arrivavano come
+    10 pezzi netti invece di 15.
+    """
+
+    def _riga_edi(self, riga_output):
+        from app.services.export.formatters.to_d import generate_to_d_line
+        dati = dict(riga_output)
+        dati['numero_ordine'] = 'TEST'
+        dati.setdefault('aliquota_iva', 10)
+        linea = generate_to_d_line(dati)
+        # SalesQuantity, QuantityDiscountPieces, QuantityFreePieces
+        return linea[56:62], linea[62:68], linea[68:74]
+
+    def test_riga_standard_conserva_omaggio_e_sconto_merce(self):
+        from app.services.espositore import elabora_righe_ordine
+        from app.utils.quantities import calcola_q_totale
+
+        ctx = elabora_righe_ordine([{
+            'codice_originale': '904733413', 'codice_aic': '904733413',
+            'descrizione': 'AFTAMED 20ML 1SPRAY', 'quantita': 10, 'q_venduta': 10,
+            'q_omaggio': 3, 'q_sconto_merce': 2, 'prezzo_netto': 5.96,
+        }], vendor='MENARINI')
+        riga = ctx.righe_output[0]
+
+        assert riga['q_omaggio'] == 3
+        assert riga['q_sconto_merce'] == 2
+        assert calcola_q_totale(riga) == 15
+
+        vendute, sconto_pezzi, gratuiti = self._riga_edi(riga)
+        assert vendute == '000010'
+        assert gratuiti == '000005', "sconto merce e omaggio vanno sommati in QuantityFreePieces"
+        assert sconto_pezzi == '000000', "QuantityDiscountPieces resta sempre 0"
+
+    def test_parent_espositore_conserva_i_pezzi_gratuiti(self):
+        """E' la riga che finisce nel tracciato: perderli sotto-dichiara la merce."""
+        from app.services.espositore import elabora_righe_ordine
+
+        ctx = elabora_righe_ordine([
+            {'codice_originale': '87AB54', 'codice_materiale': '87AB54', 'codice_aic': '',
+             'descrizione': 'LAILA EXPO BANCO', 'tipo_riga': 'PARENT_ESPOSITORE',
+             'quantita': 1, 'q_venduta': 1, 'q_omaggio': 2, 'q_sconto_merce': 1,
+             'prezzo_netto': 78.75, 'prezzo_pubblico': 98.44, 'valore_netto': 78.75,
+             'is_espositore': True},
+            {'codice_originale': '044460018', 'codice_aic': '044460018', 'descrizione': 'LAILA',
+             'tipo_riga': 'CHILD_ESPOSITORE', '_belongs_to_parent': True, 'is_child': True,
+             'quantita': 4, 'prezzo_netto': 7.06, 'valore_netto': 78.75},
+        ], vendor='MENARINI')
+        parent = ctx.righe_output[0]
+
+        assert parent['tipo_riga'] == 'PARENT_ESPOSITORE'
+        assert parent['q_omaggio'] == 2
+        assert parent['q_sconto_merce'] == 1
+
+        vendute, _, gratuiti = self._riga_edi(parent)
+        assert vendute == '000001'
+        assert gratuiti == '000003'
+
+    def test_riga_senza_pezzi_gratuiti_resta_a_zero(self):
+        from app.services.espositore import elabora_righe_ordine
+
+        ctx = elabora_righe_ordine([{
+            'codice_originale': '904733413', 'codice_aic': '904733413',
+            'descrizione': 'AFTAMED', 'quantita': 10, 'prezzo_netto': 5.96,
+        }], vendor='MENARINI')
+        riga = ctx.righe_output[0]
+        assert riga['q_omaggio'] == 0
+        assert riga['q_sconto_merce'] == 0
+
+    def test_ramo_sconto_merce_angelini_invariato(self):
+        """I rami dedicati riscrivono le quantita' dopo _crea_riga_output."""
+        from app.services.espositore import elabora_righe_ordine
+
+        ctx = elabora_righe_ordine([{
+            'codice_originale': '035618026', 'codice_aic': '035618026',
+            'descrizione': 'MOMENTACT', 'tipo_posizione': 'SC.MERCE', 'quantita': 6,
+        }], vendor='ANGELINI')
+        riga = ctx.righe_output[0]
+        assert riga['tipo_riga'] == 'SCONTO_MERCE'
+        assert riga['q_venduta'] == 0
+        assert riga['q_sconto_merce'] == 6
+
+    def test_ramo_materiale_pop_angelini_invariato(self):
+        from app.services.espositore import elabora_righe_ordine
+
+        ctx = elabora_righe_ordine([{
+            'codice_originale': '035618026', 'codice_aic': '035618026',
+            'descrizione': 'ESPOSITORE', 'tipo_posizione': 'P.O.P.', 'quantita': 4,
+        }], vendor='ANGELINI')
+        riga = ctx.righe_output[0]
+        assert riga['tipo_riga'] == 'MATERIALE_POP'
+        assert riga['q_venduta'] == 0
+        assert riga['q_omaggio'] == 4

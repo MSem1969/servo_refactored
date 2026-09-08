@@ -134,6 +134,30 @@ HAL_FARVI 271952954                      10905              00407890672     PATR
 
 **REGOLA OMAGGIO:** `QuantityFreePieces = q_sconto_merce + q_omaggio` (QuantityDiscountPieces sempre 0)
 
+Sconto merce e omaggio sono due colonne diverse nei PDF dei fornitori, ma **verso l'ERP
+sono la stessa cosa**: pezzi gratuiti. La distinzione si conserva in DB per l'operatore,
+si perde nel tracciato — dove confluiscono in un unico campo — ed e' `to_d.py` a fare la
+somma, in un solo punto (`q_omaggio_totale`).
+
+⚠️ **Il rischio non e' la somma, e' che i pezzi non arrivino fin li'.**
+`espositore.py::_crea_riga_output` azzerava `q_omaggio` e `q_sconto_merce` invece di
+propagarli, e lo stesso faceva la riga parent in `_chiudi_espositore`: una riga da 10
+pezzi con 3 omaggi e 2 di sconto merce arrivava all'ERP come **10 pezzi invece di 15**,
+senza che nulla lo segnalasse. Colpiva i soli vendor che passano da
+`elabora_righe_ordine` — MENARINI e ANGELINI — e su ANGELINI restava invisibile perche'
+le sue righe SC.MERCE e P.O.P. hanno rami dedicati che riscrivono le quantita' **dopo**
+quella chiamata.
+
+Verificato vendor per vendor (2026-09) ispezionando le chiavi realmente emesse dagli
+estrattori: nessuno usa un nome che `_insert_detail_row` non legge. BAYER rinomina
+`q_merce_sconto` → `q_sconto_merce` e aggiunge `merce_sconto_extra`, che l'INSERT somma;
+DOMPE mette la quantita' su `q_omaggio` quando il prezzo netto e' 0. CODIFI, OPELLA,
+PERRIGO e GENERIC scrivono zero perche' i loro PDF **non hanno colonne di pezzi
+gratuiti** — non e' una perdita.
+
+> Quando si aggiunge un vendor, la domanda non e' «gestisce gli omaggi?» ma **«con quale
+> nome li scrive?»**: il campo sbagliato non da' errore, da' zero.
+
 ### Data di consegna stimata (2026-08)
 
 Circa il **36% degli ordini** non ha data di consegna nel PDF (DOC_GENERICI e AVAS non
