@@ -794,9 +794,39 @@ Il fix per "idle in transaction" faceva rollback su `TRANSACTION_STATUS_INTRANS`
 ## Permessi: la matrice in Impostazioni è la fonte (2026-10)
 
 I permessi per sezione si regolano **da dashboard** (Impostazioni → Permessi, tabella
-`permessi_ruolo`), non con controlli di ruolo scritti nel codice. Per un'azione che
-modifica una sezione usare `Depends(require_section_edit("<sezione>"))` nel backend e
-`canEditSection('<sezione>')` (`App.jsx`) nel frontend — **mai** `ruolo === 'admin'`.
+`permessi_ruolo`), non con controlli di ruolo scritti nel codice. Admin ha sempre accesso
+pieno (la matrice non può ridurlo); per tutti gli altri decide la matrice.
+
+| Backend | Frontend (`utils/permessi.js`) |
+|---|---|
+| `Depends(require_section_view("<sez>"))` / `require_section_edit` | `puoVedere('<sez>')` / `puoModificare('<sez>')` |
+| `puo_vedere_sezione` / `puo_modificare_sezione(ruolo, sez)` | `App.jsx::canViewSection` / `canEditSection` |
+| `puo_propagare_globale(ruolo)` | `puoPropagareGlobale()` |
+
+**Mai** `ruolo === 'admin'` (o liste di ruoli) per abilitare un'azione di sezione: un test
+lo impedisce (`test_permessi_sezione.py::test_nessun_controllo_di_ruolo_cablato_nei_router_di_sezione`).
+
+| Sezione | Cosa regola |
+|---|---|
+| `admin` (Amministrazione) | voce di menu **Impostazioni** (la pagina; i tab dipendono dalle sezioni sotto) |
+| `sistema` | tab Generale/Automazione/Email/FTP/Database/Sistema, `/email/*`, endpoint FTP, `/admin/{reset,ordini/all,settings,sync/*}` |
+| `backup` | tab Backup, `/backup/*`, `POST /admin/backup` |
+| `tracciati` (edit) | edit, riemissione, ritrasmissione tracciati |
+| `supervisione` (edit) | propagazione **GLOBALE** di correzioni AIC/anomalie |
+| `crm` (edit) | vedere tutti i ticket e cambiarne lo stato (senza: solo i propri) |
+
+`sistema` e `backup` nascono dalla migration `v19` **chiuse per tutti i non-admin**.
+
+**La matrice stessa** segue la gerarchia, non una sezione: ogni ruolo modifica solo i
+ruoli inferiori (admin > superuser > supervisore > operatore/readonly, come
+`get_ruoli_creabili`) e **non può concedere un permesso che non ha** — può però lasciarlo
+o toglierlo. Restano cablate di proposito, perché sono gerarchia fra utenti e non
+permessi di sezione: creazione/disabilitazione utenti (`utenti.py`) e scope della
+produttività (`produttivita.py`).
+
+> Il ruolo per i controlli si legge **sempre da `current_user`**: gli endpoint di
+> propagazione accettavano `ruolo` dal client (body/query) e un operatore poteva
+> dichiararsi supervisore. Il campo resta nei modelli per compatibilità ma è ignorato.
 
 > Il dict `PERMESSI_PER_RUOLO` (`auth/permissions.py`) esiste ancora per gerarchia utenti
 > e log, ma non va usato per abilitare azioni di sezione: la matrice non lo vedrebbe.

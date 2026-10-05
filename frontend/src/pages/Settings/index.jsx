@@ -9,6 +9,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { adminApi, anagraficaApi, utentiApi, listiniApi, getApiBaseUrl } from "../../api";
 import { Button, StatusBadge, VendorBadge, Loading, ErrorBox } from "../../common";
 import { richiestaConferma } from "../../utils/confirmazione";
+import { puoVedere, puoModificare, gestisceRuoliInferiori } from "../../utils/permessi";
 import UtentiPage from "../UtentiPage";
 import BackupPage from "../BackupPage";
 import EmailTab from "./EmailTab";
@@ -65,9 +66,9 @@ const SettingsPage = ({ currentUser }) => {
 
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
-  // Default tab basato su ruolo: admin=general, altri=password
+  // Default tab: Generale se si vede la sezione Sistema, altrimenti Cambio Password
   const [activeTab, setActiveTab] = useState(() => {
-    return currentUser?.ruolo === 'admin' ? "general" : "password";
+    return puoVedere('sistema') ? "general" : "password";
   });
   const [importProgress, setImportProgress] = useState(null);
 
@@ -591,47 +592,33 @@ Ultimo Backup: ${systemInfo.last_backup || "Mai"}
     }
   };
 
-  // Tabs configurazione basati su ruolo
-  // ADMIN: tutti i tab
-  // SUPERVISORE: Cambio Password + Utenti
-  // OPERATORE: solo Cambio Password
-  const isAdmin = currentUser?.ruolo === 'admin';
-  const isSupervisor = currentUser?.ruolo === 'supervisore';
-  const isAdminOrSupervisor = isAdmin || isSupervisor;
+  // Tab regolati dalla matrice permessi (Impostazioni → Permessi):
+  // - sezione 'sistema': Generale, Automazione, Email, FTP, Database, Sistema
+  //   (can_view = vede il tab, can_edit = salva/modifica)
+  // - sezione 'backup': tab Backup
+  // - Utenti e Permessi: gerarchia, per chi gestisce ruoli inferiori
+  // - Cambio Password: tutti
+  const vedeSistema = puoVedere('sistema');
+  const modificaSistema = puoModificare('sistema');
+  const vedeBackup = puoVedere('backup');
+  const gestisceRuoli = gestisceRuoliInferiori();
 
-  const getTabs = () => {
-    // Tab base per tutti: Cambio Password
-    const baseTabs = [
-      { id: "password", label: "Cambio Password", icon: "🔐" },
-    ];
-
-    // SUPERVISORE: aggiunge Utenti
-    if (isSupervisor) {
-      return [
-        ...baseTabs,
-        { id: "utenti", label: "Utenti", icon: "👥" },
-      ];
-    }
-
-    // ADMIN: tutti i tab
-    if (isAdmin) {
-      return [
-        { id: "general", label: "Generale", icon: "⚙️" },
-        { id: "automation", label: "Automazione", icon: "🤖" },
-        { id: "email", label: "Email", icon: "📧" },
-        { id: "ftp", label: "FTP", icon: "📤" },
-        { id: "database", label: "Database", icon: "🗄️" },
-        { id: "backup", label: "Backup", icon: "💾" },
-        { id: "system", label: "Sistema", icon: "📊" },
-        { id: "utenti", label: "Utenti", icon: "👥" },
-        { id: "permessi", label: "Permessi", icon: "🔒" },
-        { id: "password", label: "Cambio Password", icon: "🔐" },
-      ];
-    }
-
-    // OPERATORE: solo Cambio Password
-    return baseTabs;
-  };
+  const getTabs = () => [
+    ...(vedeSistema ? [
+      { id: "general", label: "Generale", icon: "⚙️" },
+      { id: "automation", label: "Automazione", icon: "🤖" },
+      { id: "email", label: "Email", icon: "📧" },
+      { id: "ftp", label: "FTP", icon: "📤" },
+      { id: "database", label: "Database", icon: "🗄️" },
+    ] : []),
+    ...(vedeBackup ? [{ id: "backup", label: "Backup", icon: "💾" }] : []),
+    ...(vedeSistema ? [{ id: "system", label: "Sistema", icon: "📊" }] : []),
+    ...(gestisceRuoli ? [
+      { id: "utenti", label: "Utenti", icon: "👥" },
+      { id: "permessi", label: "Permessi", icon: "🔒" },
+    ] : []),
+    { id: "password", label: "Cambio Password", icon: "🔐" },
+  ];
 
   const tabs = getTabs();
 
@@ -649,17 +636,17 @@ Ultimo Backup: ${systemInfo.last_backup || "Mai"}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-slate-800">
-            {isAdmin ? "Impostazioni Sistema" : "Impostazioni"}
+            {vedeSistema ? "Impostazioni Sistema" : "Impostazioni"}
           </h1>
           <p className="text-sm text-slate-600">
-            {isAdmin
+            {vedeSistema
               ? `Configurazione SERV.O ${systemInfo.version}`
               : `Gestione account - ${currentUser?.username}`
             }
           </p>
         </div>
-        {/* Pulsanti salvataggio solo per admin */}
-        {isAdmin && (
+        {/* Pulsanti salvataggio: permesso di modifica su Sistema */}
+        {modificaSistema && (
           <div className="flex gap-3">
             <Button variant="secondary" onClick={handleReset}>
               🔄 Reset Default
@@ -699,7 +686,7 @@ Ultimo Backup: ${systemInfo.last_backup || "Mai"}
         </div>
 
         {/* Tab Generale - Solo Admin */}
-        {activeTab === "general" && isAdmin && (
+        {activeTab === "general" && vedeSistema && (
           <div className="p-6 space-y-6">
             {/* Email Notifiche */}
             <div>
@@ -756,17 +743,17 @@ Ultimo Backup: ${systemInfo.last_backup || "Mai"}
         )}
 
         {/* Tab Email - Solo Admin */}
-        {activeTab === "email" && isAdmin && (
+        {activeTab === "email" && vedeSistema && (
           <EmailTab />
         )}
 
         {/* Tab FTP - Solo Admin (v11.6) */}
-        {activeTab === "ftp" && isAdmin && (
+        {activeTab === "ftp" && vedeSistema && (
           <FtpTab />
         )}
 
         {/* Tab Automazione - Solo Admin */}
-        {activeTab === "automation" && isAdmin && (
+        {activeTab === "automation" && vedeSistema && (
           <div className="p-6 space-y-6">
             {/* Validazione Automatica */}
             <div>
@@ -863,7 +850,7 @@ Ultimo Backup: ${systemInfo.last_backup || "Mai"}
         )}
 
         {/* Tab Database - Solo Admin */}
-        {activeTab === "database" && isAdmin && (
+        {activeTab === "database" && vedeSistema && (
           <div className="p-6 space-y-6">
             {/* Backup */}
             <div>
@@ -1456,14 +1443,14 @@ Ultimo Backup: ${systemInfo.last_backup || "Mai"}
         )}
 
         {/* Tab Backup - Solo Admin */}
-        {activeTab === "backup" && isAdmin && (
+        {activeTab === "backup" && vedeBackup && (
           <div className="p-0">
             <BackupPage currentUser={currentUser} embedded={true} />
           </div>
         )}
 
         {/* Tab Sistema - Solo Admin */}
-        {activeTab === "system" && isAdmin && (
+        {activeTab === "system" && vedeSistema && (
           <div className="p-6 space-y-6">
             {/* Info Sistema */}
             <div>
@@ -1602,14 +1589,14 @@ Ultimo Backup: ${systemInfo.last_backup || "Mai"}
         )}
 
         {/* Tab Utenti - Solo per admin/supervisore */}
-        {activeTab === "utenti" && isAdminOrSupervisor && (
+        {activeTab === "utenti" && gestisceRuoli && (
           <div className="p-0">
             <UtentiPage currentUser={currentUser} />
           </div>
         )}
 
         {/* Tab Permessi - Solo Admin */}
-        {activeTab === "permessi" && isAdmin && (
+        {activeTab === "permessi" && gestisceRuoli && (
           <div className="p-0">
             <PermessiTab />
           </div>

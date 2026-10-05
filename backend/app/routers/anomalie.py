@@ -10,7 +10,7 @@ from typing import Dict, Any, List, Optional
 from pydantic import BaseModel
 from enum import Enum
 
-from ..auth.dependencies import get_current_user
+from ..auth.dependencies import get_current_user, puo_propagare_globale
 from ..auth.models import UtenteResponse
 
 from ..services.orders import (
@@ -68,7 +68,7 @@ class RisoluzionePropagazioneRequest(BaseModel):
     """Modello per risoluzione anomalia con propagazione v10.5."""
     livello_propagazione: str = "ORDINE"  # ORDINE (default), GLOBALE (solo supervisore+)
     operatore: str
-    ruolo: str = "operatore"  # Per verifica permessi
+    ruolo: str = "operatore"  # Ignorato: il ruolo e' quello dell'utente autenticato
     note: Optional[str] = None
 
 
@@ -202,9 +202,8 @@ async def aggiorna_anomalia(
 
     Stati validi: APERTA, IN_GESTIONE, RISOLTA, IGNORATA
 
-    v11.2: Gestione ruoli per supervisioni:
-    - SUPERVISORE/ADMIN → risolve anomalia + supervisione collegata
-    - OPERATORE → risolve anomalia ma supervisione resta PENDING
+    v11.4: risolvendo l'anomalia si approva anche la supervisione collegata,
+    qualunque sia il ruolo.
     """
     stati_validi = ['APERTA', 'IN_GESTIONE', 'RISOLTA', 'IGNORATA']
 
@@ -230,8 +229,9 @@ async def aggiorna_anomalia(
         if not success:
             raise HTTPException(status_code=404, detail="Anomalia non trovata")
 
-        # v11.2: Informa se supervisione è stata risolta automaticamente
-        sup_risolta = ruolo.lower() in ['supervisore', 'admin']
+        # v11.4: le supervisioni collegate vengono SEMPRE approvate alla
+        # risoluzione, indipendentemente dal ruolo (update_anomalia_stato)
+        sup_risolta = True
 
         return {
             "success": True,
@@ -760,16 +760,17 @@ async def conta_anomalie_identiche_endpoint(id_anomalia: int) -> Dict[str, Any]:
 @router.get("/dettaglio/{id_anomalia}/livelli-permessi", summary="Livelli propagazione permessi")
 async def get_livelli_permessi(
     id_anomalia: int,
-    ruolo: str = Query("operatore", description="Ruolo utente")
+    ruolo: Optional[str] = Query(None, description="Ignorato: si usa il ruolo dell'utente autenticato"),
+    current_user: UtenteResponse = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """
     Ritorna i livelli di propagazione permessi per il ruolo specificato.
 
-    - **Operatore**: Solo ORDINE (stesso ordine, stesso vendor)
-    - **Supervisore/Admin**: ORDINE, GLOBALE (stesso vendor)
+    - **GLOBALE** solo con can_edit su 'supervisione' (matrice permessi)
 
     Utile per configurare il dropdown nel frontend.
     """
+    ruolo = getattr(current_user.ruolo, "value", current_user.ruolo)
     try:
         livelli = get_livello_permesso(ruolo)
         conteggi = conta_anomalie_identiche(id_anomalia)
@@ -789,7 +790,8 @@ async def get_livelli_permessi(
 @router.post("/dettaglio/{id_anomalia}/risolvi-propaga", summary="Risolvi con propagazione")
 async def risolvi_anomalia_con_propagazione_endpoint(
     id_anomalia: int,
-    request: RisoluzionePropagazioneRequest
+    request: RisoluzionePropagazioneRequest,
+    current_user: UtenteResponse = Depends(get_current_user),
 ) -> Dict[str, Any]:
     """
     Risolve un'anomalia con propagazione gerarchica (v10.6).
@@ -801,8 +803,8 @@ async def risolvi_anomalia_con_propagazione_endpoint(
 
     ## Vincoli ruolo:
 
-    - **Operatore**: Solo livello ORDINE (stesso ordine, stesso vendor)
-    - **Supervisore/Admin**: Tutti i livelli disponibili incluso GLOBALE
+    - **GLOBALE**: richiede can_edit su 'supervisione' (matrice permessi)
+    - Altrimenti solo livello ORDINE (stesso ordine, stesso vendor)
 
     ## Effetti:
 
@@ -839,7 +841,7 @@ async def risolvi_anomalia_con_propagazione_endpoint(
             id_anomalia=id_anomalia,
             livello=livello,
             operatore=request.operatore,
-            ruolo=request.ruolo,
+            ruolo=getattr(current_user.ruolo, "value", current_user.ruolo),
             note=request.note
         )
 
@@ -890,8 +892,8 @@ async def correggi_aic_anomalia(
 
     ## Restrizioni per ruolo:
 
-    - **Operatore**: Solo ORDINE (stesso ordine)
-    - **Supervisore/Admin/Superuser**: Tutti i livelli incluso GLOBALE
+    - **GLOBALE**: richiede can_edit su 'supervisione' (matrice permessi)
+    - Altrimenti solo ORDINE (stesso ordine)
 
     ## Effetti:
 
@@ -917,16 +919,12 @@ async def correggi_aic_anomalia(
             detail=f"Livello propagazione non valido. Valori: ORDINE, GLOBALE"
         )
 
-    # v10.6: Controllo ruoli per livello propagazione
-    # Operatore: solo ORDINE (stesso ordine)
-    # Supervisore+: tutti i livelli incluso GLOBALE
-    ruolo = current_user.ruolo.upper() if current_user.ruolo else 'OPERATORE'
-    ruoli_superiori = ['SUPERVISORE', 'ADMIN', 'SUPERUSER']
-
-    if livello == LivelloPropagazioneAIC.GLOBALE and ruolo not in ruoli_superiori:
+    # Livello GLOBALE: can_edit su 'supervisione' nella matrice permessi
+    if livello == LivelloPropagazioneAIC.GLOBALE and not puo_propagare_globale(current_user.ruolo):
         raise HTTPException(
             status_code=403,
-            detail="Propagazione GLOBALE riservata a supervisori e ruoli superiori"
+            detail=("Propagazione GLOBALE non consentita: serve il permesso di modifica "
+                    "su Supervisione (Impostazioni → Permessi)")
         )
 
     try:

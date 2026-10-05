@@ -554,20 +554,61 @@ async def require_admin_or_supervisor(
 # Admin ha sempre accesso pieno (la matrice non permette di ridurlo).
 # =============================================================================
 
-def puo_modificare_sezione(ruolo, sezione: str) -> bool:
-    """True se il ruolo ha can_edit sulla sezione in permessi_ruolo."""
-    ruolo_str = getattr(ruolo, "value", ruolo)
+def _permesso_sezione(ruolo, sezione: str, campo: str) -> bool:
+    """Legge can_view/can_edit della sezione per il ruolo da permessi_ruolo."""
+    assert campo in ("can_view", "can_edit")
+    ruolo_str = str(getattr(ruolo, "value", ruolo) or "").lower()
     if ruolo_str == RuoloUtente.ADMIN.value:
         return True
 
     row = _get_db().execute(
-        """
-        SELECT can_edit FROM permessi_ruolo
+        f"""
+        SELECT {campo} FROM permessi_ruolo
         WHERE ruolo = %s AND codice_sezione = %s
         """,
         (ruolo_str, sezione),
     ).fetchone()
-    return bool(row and row["can_edit"])
+    return bool(row and row[campo])
+
+
+def puo_vedere_sezione(ruolo, sezione: str) -> bool:
+    """True se il ruolo ha can_view sulla sezione in permessi_ruolo."""
+    return _permesso_sezione(ruolo, sezione, "can_view")
+
+
+def puo_modificare_sezione(ruolo, sezione: str) -> bool:
+    """True se il ruolo ha can_edit sulla sezione in permessi_ruolo."""
+    return _permesso_sezione(ruolo, sezione, "can_edit")
+
+
+def puo_propagare_globale(ruolo) -> bool:
+    """
+    Propagazione GLOBALE di correzioni/anomalie (tutti gli ordini del vendor):
+    e' un'azione di supervisione, regolata da can_edit su 'supervisione'.
+    """
+    return puo_modificare_sezione(ruolo, "supervisione")
+
+
+def _ruolo_str(ruolo) -> str:
+    return getattr(ruolo, "value", ruolo)
+
+
+def require_section_view(sezione: str):
+    """Factory di dependency: richiede can_view sulla sezione (matrice permessi)."""
+    async def section_view_checker(
+        current_user: UtenteResponse = Depends(get_current_user)
+    ) -> UtenteResponse:
+        if not puo_vedere_sezione(current_user.ruolo, sezione):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    f"Il ruolo '{_ruolo_str(current_user.ruolo)}' non ha accesso "
+                    f"alla sezione '{sezione}'. Abilitarlo in Impostazioni → Permessi."
+                ),
+            )
+        return current_user
+
+    return section_view_checker
 
 
 def require_section_edit(sezione: str):
@@ -586,7 +627,7 @@ def require_section_edit(sezione: str):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=(
-                    f"Il ruolo '{getattr(current_user.ruolo, 'value', current_user.ruolo)}' "
+                    f"Il ruolo '{_ruolo_str(current_user.ruolo)}' "
                     f"non ha il permesso di modifica sulla sezione '{sezione}'. "
                     "Abilitarlo in Impostazioni → Permessi."
                 ),

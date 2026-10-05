@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from typing import Dict, Any, Optional
 from pydantic import BaseModel, EmailStr
 
-from ..auth.dependencies import get_current_user, require_admin
+from ..auth.dependencies import get_current_user, require_section_view, require_section_edit
 from ..auth.models import UtenteResponse
 from ..database_pg import get_db
 from ..services.email import (
@@ -63,7 +63,7 @@ class TestEmailRequest(BaseModel):
 
 @router.get("/config")
 async def get_config(
-    current_user: UtenteResponse = Depends(require_admin)
+    current_user: UtenteResponse = Depends(require_section_view("sistema"))
 ) -> Dict[str, Any]:
     """
     Recupera configurazione email completa.
@@ -82,7 +82,7 @@ async def get_config(
 @router.put("/config")
 async def update_config(
     data: EmailConfigUpdate,
-    current_user: UtenteResponse = Depends(require_admin)
+    current_user: UtenteResponse = Depends(require_section_edit("sistema"))
 ) -> Dict[str, Any]:
     """
     Aggiorna configurazione email.
@@ -106,7 +106,7 @@ async def update_config(
 
 @router.get("/config/imap")
 async def get_imap_config(
-    current_user: UtenteResponse = Depends(require_admin)
+    current_user: UtenteResponse = Depends(require_section_view("sistema"))
 ) -> Dict[str, Any]:
     """Recupera solo configurazione IMAP"""
     try:
@@ -120,7 +120,7 @@ async def get_imap_config(
 
 @router.get("/config/smtp")
 async def get_smtp_config(
-    current_user: UtenteResponse = Depends(require_admin)
+    current_user: UtenteResponse = Depends(require_section_view("sistema"))
 ) -> Dict[str, Any]:
     """Recupera solo configurazione SMTP"""
     try:
@@ -142,7 +142,7 @@ async def get_smtp_config(
 
 @router.post("/test/imap")
 async def test_imap_connection(
-    current_user: UtenteResponse = Depends(require_admin)
+    current_user: UtenteResponse = Depends(require_section_edit("sistema"))
 ) -> Dict[str, Any]:
     """
     Test connessione IMAP.
@@ -173,7 +173,7 @@ async def test_imap_connection(
 @router.post("/test/smtp")
 async def test_smtp_connection(
     data: Optional[TestEmailRequest] = None,
-    current_user: UtenteResponse = Depends(require_admin)
+    current_user: UtenteResponse = Depends(require_section_edit("sistema"))
 ) -> Dict[str, Any]:
     """
     Test connessione SMTP.
@@ -226,7 +226,7 @@ async def get_log(
     ticket_id: Optional[int] = None,
     limit: int = 100,
     offset: int = 0,
-    current_user: UtenteResponse = Depends(require_admin)
+    current_user: UtenteResponse = Depends(require_section_view("sistema"))
 ) -> Dict[str, Any]:
     """
     Recupera log email inviate.
@@ -252,7 +252,7 @@ async def get_log(
 @router.post("/log/{log_id}/retry")
 async def retry_email(
     log_id: int,
-    current_user: UtenteResponse = Depends(require_admin)
+    current_user: UtenteResponse = Depends(require_section_edit("sistema"))
 ) -> Dict[str, Any]:
     """
     Ritenta invio email fallita.

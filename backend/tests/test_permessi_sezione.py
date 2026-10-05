@@ -85,3 +85,125 @@ def test_endpoint_riemissione_usano_la_matrice():
             assert tracciati._require_tracciati_edit in deps, r.path
             trovati.add(r.path)
     assert trovati == protetti
+
+
+# ---------------------------------------------------------------------------
+# can_view, propagazione GLOBALE, gerarchia della matrice
+# ---------------------------------------------------------------------------
+
+class _MatriceViewEditDb:
+    """permessi_ruolo completa: {(ruolo, sezione): (can_view, can_edit)}."""
+    def __init__(self, matrice):
+        self.matrice = matrice
+
+    def execute(self, sql, params):
+        ruolo, sezione = params
+        if (ruolo, sezione) not in self.matrice:
+            return _Cursor(None)
+        v, e = self.matrice[(ruolo, sezione)]
+        return _Cursor({"can_view": v, "can_edit": e})
+
+
+@pytest.fixture
+def matrice_ve(monkeypatch):
+    db = _MatriceViewEditDb({
+        ("supervisore", "backup"): (True, False),
+        ("supervisore", "supervisione"): (True, True),
+        ("operatore", "supervisione"): (True, False),
+    })
+    monkeypatch.setattr(dependencies, "_get_db", lambda: db)
+    return db
+
+
+def test_view_ed_edit_distinti(matrice_ve):
+    from app.auth.dependencies import puo_vedere_sezione
+    assert puo_vedere_sezione("supervisore", "backup") is True
+    assert puo_modificare_sezione("supervisore", "backup") is False
+
+
+def test_ruolo_maiuscolo_normalizzato(matrice_ve):
+    assert puo_modificare_sezione("SUPERVISORE", "supervisione") is True
+
+
+def test_propagazione_globale_segue_matrice(matrice_ve):
+    from app.services.anomalies.propagazione import get_livello_permesso
+    assert get_livello_permesso("supervisore") == ["ORDINE", "GLOBALE"]
+    assert get_livello_permesso("operatore") == ["ORDINE"]
+    # Concedere can_edit su supervisione all'operatore gli apre il GLOBALE
+    matrice_ve.matrice[("operatore", "supervisione")] = (True, True)
+    assert get_livello_permesso("operatore") == ["ORDINE", "GLOBALE"]
+
+
+class _User:
+    def __init__(self, ruolo):
+        self.ruolo = RuoloUtente(ruolo)
+        self.username = ruolo
+
+
+def test_matrice_gerarchica_ruoli_gestibili():
+    from app.routers.permessi import _ruoli_gestibili
+    assert _ruoli_gestibili(_User("admin")) == ["superuser", "supervisore", "operatore", "readonly"]
+    assert _ruoli_gestibili(_User("superuser")) == ["supervisore", "operatore", "readonly"]
+    assert _ruoli_gestibili(_User("supervisore")) == ["operatore", "readonly"]
+    assert _ruoli_gestibili(_User("operatore")) == []
+
+
+def test_matrice_non_si_modifica_un_pari_o_superiore():
+    from fastapi import HTTPException
+    from app.routers.permessi import _verifica_ruolo_gestibile
+    _verifica_ruolo_gestibile(_User("supervisore"), "operatore")
+    for target in ("supervisore", "superuser", "admin"):
+        with pytest.raises(HTTPException) as e:
+            _verifica_ruolo_gestibile(_User("supervisore"), target)
+        assert e.value.status_code == 403
+
+
+def test_non_si_concede_un_permesso_che_non_si_ha(matrice_ve):
+    from fastapi import HTTPException
+    from app.routers.permessi import _verifica_concessione, PermessoUpdate
+    sup = _User("supervisore")
+    # backup: il supervisore ha view ma non edit
+    _verifica_concessione(matrice_ve, sup, "operatore", "backup",
+                          PermessoUpdate(can_view=True, can_edit=False))
+    with pytest.raises(HTTPException) as e:
+        _verifica_concessione(matrice_ve, sup, "operatore", "backup",
+                              PermessoUpdate(can_view=True, can_edit=True))
+    assert e.value.status_code == 403
+
+
+def test_si_puo_lasciare_o_togliere_un_permesso_che_non_si_ha(matrice_ve):
+    from app.routers.permessi import _verifica_concessione, PermessoUpdate
+    sup = _User("supervisore")
+    # l'operatore ha gia' backup edit (dato dall'admin): il supervisore non lo blocca
+    matrice_ve.matrice[("operatore", "backup")] = (True, True)
+    _verifica_concessione(matrice_ve, sup, "operatore", "backup",
+                          PermessoUpdate(can_view=True, can_edit=True))
+    _verifica_concessione(matrice_ve, sup, "operatore", "backup",
+                          PermessoUpdate(can_view=False, can_edit=False))
+
+
+# ---------------------------------------------------------------------------
+# Guardia: nessun controllo di ruolo cablato per abilitare azioni di sezione
+# ---------------------------------------------------------------------------
+
+def test_nessun_controllo_di_ruolo_cablato_nei_router_di_sezione():
+    """I permessi si regolano dalla matrice (CLAUDE.md, sezione Permessi)."""
+    import pathlib, re
+    base = pathlib.Path(__file__).resolve().parents[1] / "app"
+    vietati = re.compile(
+        r"require_admin\b|_require_admin|_check_admin_role|"
+        r"ruolo\s*(?:==|!=)\s*['\"]admin['\"]|"
+        r"ruolo[^\n]*\s(?:not\s+)?in\s*[\[(]\s*['\"](?:admin|supervisore|SUPERVISORE)",
+    )
+    file_di_sezione = [
+        "routers/tracciati.py", "routers/backup.py", "routers/email.py",
+        "routers/ftp_endpoints.py", "routers/crm.py", "routers/anomalie.py",
+        "routers/admin.py", "services/anomalies/propagazione.py",
+        "services/anomalies/resolver.py",
+    ]
+    trovati = []
+    for rel in file_di_sezione:
+        for n, riga in enumerate((base / rel).read_text().splitlines(), 1):
+            if vietati.search(riga) and not riga.lstrip().startswith("#"):
+                trovati.append(f"{rel}:{n}: {riga.strip()}")
+    assert not trovati, "Controlli di ruolo cablati:\n" + "\n".join(trovati)

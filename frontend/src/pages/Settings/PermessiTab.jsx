@@ -48,6 +48,7 @@ export default function PermessiTab() {
 
     const currentValue = getPermessoValue(ruolo, sezione, field);
     const newValue = !currentValue;
+    if (newValue && !puoAttivare(ruolo, sezione, field)) return;
 
     // Se stiamo disabilitando can_view, disabilita anche can_edit
     let updatedPermesso = { ...getChangeOrCurrent(ruolo, sezione) };
@@ -84,6 +85,13 @@ export default function PermessiTab() {
 
   const getPermessoValue = (ruolo, sezione, field) => {
     return getChangeOrCurrent(ruolo, sezione)[field];
+  };
+
+  // Si concede solo cio' che si ha: un permesso gia' presente si puo' sempre
+  // togliere, uno assente si attiva solo se l'utente corrente lo possiede.
+  const puoAttivare = (ruolo, sezione, field) => {
+    const originale = matrice?.permessi?.[ruolo]?.[sezione]?.[field] ?? false;
+    return originale || (matrice?.concedibili?.[sezione]?.[field] ?? false);
   };
 
   // Verifica se ci sono modifiche non salvate
@@ -146,7 +154,7 @@ export default function PermessiTab() {
         <div>
           <h2 className="text-lg font-semibold text-slate-800">Matrice Permessi</h2>
           <p className="text-sm text-slate-500">
-            Gestisci i permessi di accesso per ogni ruolo. I permessi Admin non sono modificabili.
+            Gestisci i permessi dei ruoli gerarchicamente inferiori al tuo. Puoi concedere solo i permessi che hai tu; i permessi Admin non sono modificabili.
           </p>
         </div>
         {hasChanges && (
@@ -240,7 +248,9 @@ export default function PermessiTab() {
                             type="checkbox"
                             checked={canView}
                             onChange={() => handleToggle(ruolo, sezione.codice_sezione, 'can_view')}
-                            className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                            disabled={!canView && !puoAttivare(ruolo, sezione.codice_sezione, 'can_view')}
+                            title={!canView && !puoAttivare(ruolo, sezione.codice_sezione, 'can_view') ? 'Non puoi concedere un permesso che non hai' : undefined}
+                            className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
                           />
                           <span className={`text-xs ${canView ? 'text-green-600 font-medium' : 'text-slate-400'}`}>
                             View
@@ -253,7 +263,8 @@ export default function PermessiTab() {
                             type="checkbox"
                             checked={canEdit}
                             onChange={() => handleToggle(ruolo, sezione.codice_sezione, 'can_edit')}
-                            disabled={!canView}
+                            disabled={!canView || (!canEdit && !puoAttivare(ruolo, sezione.codice_sezione, 'can_edit'))}
+                            title={!canEdit && !puoAttivare(ruolo, sezione.codice_sezione, 'can_edit') ? 'Non puoi concedere un permesso che non hai' : undefined}
                             className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 disabled:opacity-50"
                           />
                           <span className={`text-xs ${canEdit ? 'text-green-600 font-medium' : 'text-slate-400'}`}>

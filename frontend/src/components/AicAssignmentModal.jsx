@@ -14,6 +14,7 @@ import { ModalBase } from '../common/ModalBase';
 import { Button, Loading, PdfViewerButton } from '../common';
 import { anomalieApi } from '../api/anomalie';
 import { supervisioneApi, ordiniApi } from '../api';
+import { puoPropagareGlobale } from '../utils/permessi';
 
 /**
  * Modalità operative del componente
@@ -90,16 +91,15 @@ const AicAssignmentModal = ({
 
   // Recupera operatore e ruolo dal localStorage
   const { operatore, isSupervisor } = useMemo(() => {
+    // Propagazione GLOBALE: can_edit su 'supervisione' (matrice permessi)
     if (operatoreOverride) {
-      return { operatore: operatoreOverride, isSupervisor: true };
+      return { operatore: operatoreOverride, isSupervisor: puoPropagareGlobale() };
     }
     try {
       const user = JSON.parse(localStorage.getItem('servo_user') || '{}');
-      const ruolo = (user.ruolo || '').toLowerCase();
-      const canGlobal = ['admin', 'supervisore', 'supervisor', 'superuser'].includes(ruolo);
       return {
         operatore: user.username || 'operatore',
-        isSupervisor: canGlobal,
+        isSupervisor: puoPropagareGlobale(),
       };
     } catch {
       return { operatore: 'operatore', isSupervisor: false };
@@ -829,7 +829,7 @@ function PropagationSection({
       </div>
       {!isSupervisor && (
         <p className="mt-2 text-xs text-amber-600">
-          Nota: L'opzione "Globale" è disponibile solo per supervisori.
+          Nota: L'opzione "Globale" richiede il permesso di modifica su Supervisione.
         </p>
       )}
     </div>

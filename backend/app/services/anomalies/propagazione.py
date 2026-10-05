@@ -32,18 +32,18 @@ def get_livello_permesso(ruolo: str) -> List[str]:
     Ritorna i livelli di propagazione permessi per un ruolo.
 
     Args:
-        ruolo: Ruolo utente (admin, superuser, supervisore, operatore, readonly)
+        ruolo: Ruolo utente
 
     Returns:
-        Lista livelli permessi
+        Lista livelli permessi (GLOBALE solo con can_edit su 'supervisione')
     """
-    ruolo = ruolo.lower() if ruolo else 'operatore'
+    # GLOBALE regolato dalla matrice permessi (can_edit su 'supervisione')
+    from ...auth.dependencies import puo_propagare_globale
 
-    if ruolo in ('admin', 'superuser', 'supervisore'):
+    if puo_propagare_globale(ruolo or 'operatore'):
         return ['ORDINE', 'GLOBALE']
-    else:
-        # Operatore e altri: solo ORDINE (stesso ordine)
-        return ['ORDINE']
+    # Senza permesso: solo ORDINE (stesso ordine)
+    return ['ORDINE']
 
 
 def calcola_chiave_anomalia(anomalia: Dict) -> str:
