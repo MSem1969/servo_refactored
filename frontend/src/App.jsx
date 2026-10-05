@@ -608,6 +608,12 @@ export default function App() {
     return userPermissions[sezione]?.can_view ?? false;
   };
 
+  // Permesso di modifica per sezione (matrice Impostazioni → Permessi)
+  const canEditSection = (sezione) => {
+    if (currentUser?.ruolo?.toLowerCase() === 'admin') return true;
+    return userPermissions[sezione]?.can_edit ?? false;
+  };
+
   const navigateTo = (pageName, params = {}) => {
     // v10.0: Verifica permessi prima di navigare
     // ordine-detail usa gli stessi permessi di database
@@ -804,7 +810,7 @@ export default function App() {
           />
         );
       case "tracciati":
-        return <TracciatiPage currentUser={currentUser} />;
+        return <TracciatiPage currentUser={currentUser} canEdit={canEditSection('tracciati')} />;
       case "report":
         return <ExportPage />;
       case "crm":

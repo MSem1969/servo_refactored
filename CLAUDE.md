@@ -650,13 +650,16 @@ POST /api/v1/tracciati/ftp/reset/{id} # Reset per retry
 
 ## Riemissione tracciato (edit + ritrasmissione)
 
-Quando l'ERP scarta un tracciato per errore di formato/contenuto, un admin può
+Quando l'ERP scarta un tracciato per errore di formato/contenuto, un utente abilitato può
 editare il testo raw di TO_T/TO_D e generare una nuova esportazione che sostituisce
 la precedente, senza toccare i dati dell'ordine in DB.
 
 ### Regole
 
-- **Solo admin** può eseguire edit e ritrasmissione (verifica lato endpoint e UI).
+- Edit e ritrasmissione richiedono **`can_edit` sulla sezione `tracciati`** nella matrice
+  Impostazioni → Permessi (tabella `permessi_ruolo`); admin sempre abilitato. Verifica
+  lato endpoint (`auth.require_section_edit`) e UI (`App.jsx::canEditSection`).
+  Fino al 2026-10 era cablato "solo admin" e la spunta in matrice non aveva effetto.
 - **Dati ordine intoccati**: l'ordine resta `ESPORTATO/PARZ_ESPORTATO`, `q_evasa`
   invariata. La riemissione opera solo a livello tracciato.
 - **Numero ordine suffissato**: la riemissione applica sempre `.N` (con `force=True`
@@ -785,6 +788,18 @@ importano i test**, non solo l'applicazione.
 ### Esempio reale
 
 Il fix per "idle in transaction" faceva rollback su `TRANSACTION_STATUS_INTRANS` (transazione attiva normale), annullando tutti gli UPDATE. La correzione: rollback solo su `TRANSACTION_STATUS_INERROR`.
+
+---
+
+## Permessi: la matrice in Impostazioni è la fonte (2026-10)
+
+I permessi per sezione si regolano **da dashboard** (Impostazioni → Permessi, tabella
+`permessi_ruolo`), non con controlli di ruolo scritti nel codice. Per un'azione che
+modifica una sezione usare `Depends(require_section_edit("<sezione>"))` nel backend e
+`canEditSection('<sezione>')` (`App.jsx`) nel frontend — **mai** `ruolo === 'admin'`.
+
+> Il dict `PERMESSI_PER_RUOLO` (`auth/permissions.py`) esiste ancora per gerarchia utenti
+> e log, ma non va usato per abilitare azioni di sezione: la matrice non lo vedrebbe.
 
 ---
 
