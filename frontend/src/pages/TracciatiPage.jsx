@@ -19,8 +19,7 @@ import { RiemissionTracciatoModal } from '../components';
  * - Visualizzazione storico esportazioni
  * - Download file TO_T e TO_D
  */
-const TracciatiPage = ({ currentUser }) => {
-  const admin = currentUser?.ruolo?.toLowerCase() === 'admin';
+const TracciatiPage = ({ currentUser, canEdit = false }) => {
 
   // State ricerca
   const [results, setResults] = useState([]);
@@ -395,7 +394,7 @@ const TracciatiPage = ({ currentUser }) => {
                   <th className="text-left p-3 text-xs font-medium text-slate-600 uppercase">Validato Da</th>
                   <th className="text-left p-3 text-xs font-medium text-slate-600 uppercase">Stato FTP</th>
                   <th className="text-left p-3 text-xs font-medium text-slate-600 uppercase">Download</th>
-                  {admin && (
+                  {canEdit && (
                     <th className="text-left p-3 text-xs font-medium text-slate-600 uppercase">Azioni</th>
                   )}
                   <th className="text-center p-3 text-xs font-medium text-slate-600 uppercase">DIFARM</th>
@@ -499,7 +498,7 @@ const TracciatiPage = ({ currentUser }) => {
                         )}
                       </div>
                     </td>
-                    {admin && (
+                    {canEdit && (
                       <td className="p-3">
                         <div className="flex gap-1">
                           {item.esportazione?.id &&

@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 from typing import Dict, Any, List, Optional
 
 from ..config import config
-from ..auth import get_current_user
+from ..auth import get_current_user, require_section_edit
 from ..services.export import (
     get_ordini_pronti_export,
     get_esportazioni_storico,
@@ -34,10 +34,9 @@ from ..services.tracking import track_from_user, Sezione, Azione
 router = APIRouter(prefix="/tracciati")
 
 
-def _require_admin(current_user) -> None:
-    """Verifica che l'utente sia admin (riemissione/ritrasmissione)."""
-    if getattr(current_user, "ruolo", None) != "admin":
-        raise HTTPException(403, "Operazione consentita solo agli admin")
+# Edit, riemissione e ritrasmissione sono consentiti a chi ha can_edit sulla
+# sezione 'tracciati' nella matrice permessi (Impostazioni → Permessi).
+_require_tracciati_edit = require_section_edit("tracciati")
 
 
 class RiemissionePayload(BaseModel):
@@ -312,14 +311,13 @@ async def lista_files_tracciato() -> Dict[str, Any]:
 @router.get("/{id_esportazione}/raw")
 async def get_tracciato_raw(
     id_esportazione: int,
-    current_user=Depends(get_current_user),
+    current_user=Depends(_require_tracciati_edit),
 ) -> Dict[str, Any]:
     """
     Ritorna il contenuto testuale di TO_T/TO_D di un'esportazione
     insieme ai metadati per popolare l'editor di riemissione.
-    Solo admin.
+    Richiede can_edit sulla sezione 'tracciati'.
     """
-    _require_admin(current_user)
     try:
         data = read_tracciato_files(id_esportazione)
         return {"success": True, "data": data}
@@ -336,16 +334,15 @@ async def riemetti_tracciato(
     id_esportazione: int,
     payload: RiemissionePayload,
     request: Request,
-    current_user=Depends(get_current_user),
+    current_user=Depends(_require_tracciati_edit),
 ) -> Dict[str, Any]:
     """
     Crea una nuova esportazione a partire dal contenuto editato del
     tracciato originale. L'esportazione originale viene marcata SUPERSEDED
     e i suoi file vengono spostati in archive/. La nuova esportazione e'
     PENDING e puo' essere ritrasmessa via FTP.
-    Solo admin.
+    Richiede can_edit sulla sezione 'tracciati'.
     """
-    _require_admin(current_user)
     try:
         result = crea_riemissione(
             id_esportazione=id_esportazione,
@@ -387,14 +384,13 @@ async def riemetti_tracciato(
 async def ritrasmetti_tracciato(
     id_esportazione: int,
     request: Request,
-    current_user=Depends(get_current_user),
+    current_user=Depends(_require_tracciati_edit),
 ) -> Dict[str, Any]:
     """
     Rinomina i file dell'esportazione con nuovo timestamp e li invia via FTP.
     Consentito solo per esportazioni in stato PENDING/RETRY/FAILED.
-    Solo admin.
+    Richiede can_edit sulla sezione 'tracciati'.
     """
-    _require_admin(current_user)
     try:
         result = ritrasmetti_esportazione(
             id_esportazione=id_esportazione,

@@ -543,3 +543,54 @@ async def require_admin_or_supervisor(
             detail="Richiesto ruolo amministratore, superuser o supervisore"
         )
     return current_user
+
+
+# =============================================================================
+# PERMESSI DI SEZIONE DA MATRICE DB (permessi_ruolo)
+# =============================================================================
+# La matrice editabile in Impostazioni → Permessi e' la fonte dei permessi di
+# modifica per sezione: un'azione che "modifica" una sezione la consente a chi
+# ha can_edit su quella sezione, non a un ruolo scritto nel codice.
+# Admin ha sempre accesso pieno (la matrice non permette di ridurlo).
+# =============================================================================
+
+def puo_modificare_sezione(ruolo, sezione: str) -> bool:
+    """True se il ruolo ha can_edit sulla sezione in permessi_ruolo."""
+    ruolo_str = getattr(ruolo, "value", ruolo)
+    if ruolo_str == RuoloUtente.ADMIN.value:
+        return True
+
+    row = _get_db().execute(
+        """
+        SELECT can_edit FROM permessi_ruolo
+        WHERE ruolo = %s AND codice_sezione = %s
+        """,
+        (ruolo_str, sezione),
+    ).fetchone()
+    return bool(row and row["can_edit"])
+
+
+def require_section_edit(sezione: str):
+    """
+    Factory di dependency: richiede can_edit sulla sezione (matrice permessi).
+
+    Esempio:
+        @router.post("/{id}/riemetti")
+        async def riemetti(user = Depends(require_section_edit("tracciati"))):
+            ...
+    """
+    async def section_edit_checker(
+        current_user: UtenteResponse = Depends(get_current_user)
+    ) -> UtenteResponse:
+        if not puo_modificare_sezione(current_user.ruolo, sezione):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=(
+                    f"Il ruolo '{getattr(current_user.ruolo, 'value', current_user.ruolo)}' "
+                    f"non ha il permesso di modifica sulla sezione '{sezione}'. "
+                    "Abilitarlo in Impostazioni → Permessi."
+                ),
+            )
+        return current_user
+
+    return section_edit_checker

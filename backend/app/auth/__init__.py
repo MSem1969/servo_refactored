@@ -81,6 +81,8 @@ from .dependencies import (
     require_roles,
     require_admin,
     require_admin_or_supervisor,
+    require_section_edit,
+    puo_modificare_sezione,
     get_client_ip,
     get_user_agent
 )
@@ -145,6 +147,8 @@ __all__ = [
     "require_roles",
     "require_admin",
     "require_admin_or_supervisor",
+    "require_section_edit",
+    "puo_modificare_sezione",
     "get_client_ip",
     "get_user_agent",
     
