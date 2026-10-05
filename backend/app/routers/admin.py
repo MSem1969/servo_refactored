@@ -5,18 +5,24 @@ Gestisce backup, reset, pulizia dati, impostazioni e sincronizzazioni.
 
 from fastapi import APIRouter, HTTPException, Query, Depends, BackgroundTasks
 from typing import Dict, Any, Optional
+
+from ..auth.dependencies import require_section_view, require_section_edit
 import shutil
 import os
 from datetime import datetime, date
 
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
+# Operazioni di sistema regolate dalla matrice permessi: sezione 'sistema'
+# (reset, pulizia ordini, impostazioni, sync anagrafica) e 'backup'.
+# Gli stati di sola lettura delle sync restano accessibili a tutti i loggati.
+
 # Path del database
 DB_PATH = "extractor_to.db"
 BACKUP_DIR = "backups"
 
 
-@router.post("/backup")
+@router.post("/backup", dependencies=[Depends(require_section_edit("backup"))])
 async def backup_database() -> Dict[str, Any]:
     """
     Crea un backup del database SQLite.
@@ -49,7 +55,7 @@ async def backup_database() -> Dict[str, Any]:
         raise HTTPException(500, f"Errore backup: {str(e)}")
 
 
-@router.delete("/ordini/all")
+@router.delete("/ordini/all", dependencies=[Depends(require_section_edit("sistema"))])
 async def clear_all_ordini(
     confirm: str = Query(..., description="Deve essere 'CONFERMA' per procedere")
 ) -> Dict[str, Any]:
@@ -96,7 +102,7 @@ async def clear_all_ordini(
         raise HTTPException(500, f"Errore pulizia: {str(e)}")
 
 
-@router.post("/reset")
+@router.post("/reset", dependencies=[Depends(require_section_edit("sistema"))])
 async def reset_sistema(
     confirm: str = Query(..., description="Deve essere 'RESET_COMPLETO' per procedere")
 ) -> Dict[str, Any]:
@@ -260,7 +266,7 @@ async def reset_sistema(
         raise HTTPException(500, f"Errore reset: {str(e)}")
 
 
-@router.get("/settings")
+@router.get("/settings", dependencies=[Depends(require_section_view("sistema"))])
 async def get_settings() -> Dict[str, Any]:
     """
     Recupera le impostazioni di sistema dal database.
@@ -308,7 +314,7 @@ async def get_settings() -> Dict[str, Any]:
         return {"success": True, "data": get_default_settings()}
 
 
-@router.put("/settings")
+@router.put("/settings", dependencies=[Depends(require_section_edit("sistema"))])
 async def save_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
     """
     Salva le impostazioni di sistema nel database.
@@ -404,7 +410,7 @@ async def get_sync_status() -> Dict[str, Any]:
         raise HTTPException(500, f"Errore verifica stato: {str(e)}")
 
 
-@router.post("/sync/farmacie")
+@router.post("/sync/farmacie", dependencies=[Depends(require_section_edit("sistema"))])
 async def sync_anagrafica_farmacie(
     force: bool = Query(False, description="Forza download anche se non modificato"),
     target_date: Optional[str] = Query(None, description="Data specifica YYYY-MM-DD (default: oggi)"),
@@ -445,7 +451,7 @@ async def sync_anagrafica_farmacie(
         raise HTTPException(500, f"Errore sincronizzazione: {str(e)}")
 
 
-@router.post("/sync/parafarmacie")
+@router.post("/sync/parafarmacie", dependencies=[Depends(require_section_edit("sistema"))])
 async def sync_anagrafica_parafarmacie(
     force: bool = Query(False, description="Forza download anche se non modificato"),
     target_date: Optional[str] = Query(None, description="Data specifica YYYY-MM-DD (default: oggi)"),
@@ -486,7 +492,7 @@ async def sync_anagrafica_parafarmacie(
         raise HTTPException(500, f"Errore sincronizzazione: {str(e)}")
 
 
-@router.post("/sync/all")
+@router.post("/sync/all", dependencies=[Depends(require_section_edit("sistema"))])
 async def sync_anagrafica_all(
     force: bool = Query(False, description="Forza download anche se non modificato"),
     target_date: Optional[str] = Query(None, description="Data specifica YYYY-MM-DD (default: oggi)"),
@@ -582,7 +588,7 @@ async def get_anagrafica_scheduler_status() -> Dict[str, Any]:
         raise HTTPException(500, f"Errore recupero stato scheduler: {str(e)}")
 
 
-@router.post("/sync/scheduler/run-now")
+@router.post("/sync/scheduler/run-now", dependencies=[Depends(require_section_edit("sistema"))])
 async def run_anagrafica_sync_now(background_tasks: BackgroundTasks) -> Dict[str, Any]:
     """
     Esegue immediatamente la sincronizzazione anagrafica.

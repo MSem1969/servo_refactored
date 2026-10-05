@@ -13,6 +13,7 @@ import { Layout, SimpleLayout } from "./layout";
 import UploadPage from "./pages/UploadPage";
 import DatabasePage from "./pages/Database";
 import SupervisionePage from "./pages/Supervisione";
+import { setPermessiUtente, resetPermessiUtente, puoVedere, puoModificare } from "./utils/permessi";
 import TracciatiPage from "./pages/TracciatiPage";
 import SettingsPage from "./pages/Settings";
 import OrdineDetailPage from "./pages/OrdineDetail";
@@ -601,24 +602,17 @@ export default function App() {
   const [databaseFilters, setDatabaseFilters] = useState(null);
 
   // v10.0: Helper per verificare permesso visualizzazione
-  const canViewSection = (sezione) => {
-    // Admin ha sempre accesso completo
-    if (currentUser?.ruolo?.toLowerCase() === 'admin') return true;
-    // Verifica permesso da database
-    return userPermissions[sezione]?.can_view ?? false;
-  };
-
-  // Permesso di modifica per sezione (matrice Impostazioni → Permessi)
-  const canEditSection = (sezione) => {
-    if (currentUser?.ruolo?.toLowerCase() === 'admin') return true;
-    return userPermissions[sezione]?.can_edit ?? false;
-  };
+  // Permessi per sezione dalla matrice (Impostazioni → Permessi): utils/permessi.js.
+  // userPermissions resta nello state per far ri-renderizzare l'app quando cambia.
+  // La pagina Impostazioni corrisponde alla sezione 'admin' (Amministrazione).
+  const SEZIONE_PER_PAGINA = { settings: 'admin', 'ordine-detail': 'database' };
+  const canViewSection = (sezione) => puoVedere(SEZIONE_PER_PAGINA[sezione] || sezione);
+  const canEditSection = (sezione) => puoModificare(SEZIONE_PER_PAGINA[sezione] || sezione);
 
   const navigateTo = (pageName, params = {}) => {
     // v10.0: Verifica permessi prima di navigare
-    // ordine-detail usa gli stessi permessi di database
-    const sectionToCheck = pageName === 'ordine-detail' ? 'database' : pageName;
-    if (!canViewSection(sectionToCheck)) {
+    // ordine-detail usa gli stessi permessi di database (SEZIONE_PER_PAGINA)
+    if (!canViewSection(pageName)) {
       console.warn(`Access denied to section: ${pageName}`);
       return; // Non navigare se non autorizzato
     }
@@ -640,13 +634,15 @@ export default function App() {
 
   // v10.0: Carica permessi utente dal database
   // v10.1: Restituisce i permessi per uso immediato (landing page)
-  const loadUserPermissions = async () => {
+  const loadUserPermissions = async (user) => {
     try {
       const perms = await permessiApi.getMyPermissions();
+      setPermessiUtente(user, perms);
       setUserPermissions(perms);
       return perms;
     } catch (err) {
       console.error('Failed to load permissions:', err);
+      setPermessiUtente(user, {});
       setUserPermissions({});
       return {};
     }
@@ -673,7 +669,7 @@ export default function App() {
           setCurrentUser(user);
           setIsAuthenticated(true);
           // v10.0: Carica permessi dopo autenticazione
-          const perms = await loadUserPermissions();
+          const perms = await loadUserPermissions(user);
           // v10.1: Landing page condizionale in base ai permessi
           setPage(getLandingPage(user, perms));
         } catch (err) {
@@ -691,7 +687,7 @@ export default function App() {
     setCurrentUser(user);
     setIsAuthenticated(true);
     // v10.0: Carica permessi dopo login
-    const perms = await loadUserPermissions();
+    const perms = await loadUserPermissions(user);
     // v10.1: Landing page condizionale in base ai permessi
     setPage(getLandingPage(user, perms));
   };
@@ -700,6 +696,7 @@ export default function App() {
   const handleLogout = async () => {
     await authApi.logout();
     setCurrentUser(null);
+    resetPermessiUtente();
     setUserPermissions({}); // v10.0: Reset permessi
     setIsAuthenticated(false);
     setPage("dashboard");

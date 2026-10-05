@@ -9,7 +9,8 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 
 from ..database_pg import get_db
-from ..auth.dependencies import get_current_user, require_admin
+from ..auth.dependencies import get_current_user, puo_vedere_sezione, puo_modificare_sezione
+from ..auth.permissions import get_ruoli_creabili
 
 
 router = APIRouter(prefix="/permessi", tags=["Permessi"])
@@ -41,10 +42,61 @@ class PermessoUpdate(BaseModel):
 
 
 class MatricePermessi(BaseModel):
-    """Matrice completa permessi per tutti i ruoli."""
+    """Matrice permessi dei ruoli gestibili dall'utente corrente."""
     sezioni: List[SezioneResponse]
     ruoli: List[str]
     permessi: Dict[str, Dict[str, PermessoResponse]]  # ruolo -> sezione -> permesso
+    # Permessi che l'utente corrente puo' concedere (= quelli che ha lui)
+    concedibili: Dict[str, PermessoUpdate] = {}
+
+
+# =============================================================================
+# GERARCHIA: chi modifica la matrice di chi
+# =============================================================================
+# Un ruolo modifica la matrice dei soli ruoli gerarchicamente inferiori
+# (stessa gerarchia della creazione utenti: admin > superuser > supervisore >
+# operatore/readonly) e non puo' concedere permessi che non ha lui stesso:
+# altrimenti un supervisore potrebbe dare a un operatore l'accesso al backup.
+
+def _ruoli_gestibili(current_user) -> List[str]:
+    return [r.value for r in get_ruoli_creabili(current_user.ruolo)]
+
+
+def _verifica_ruolo_gestibile(current_user, ruolo: str) -> None:
+    if ruolo not in _ruoli_gestibili(current_user):
+        raise HTTPException(
+            status_code=403,
+            detail=(f"Il ruolo '{getattr(current_user.ruolo, 'value', current_user.ruolo)}' "
+                    f"non può modificare i permessi del ruolo '{ruolo}': "
+                    "si gestiscono solo i ruoli gerarchicamente inferiori.")
+        )
+
+
+def _permessi_concedibili(current_user, sezioni: List[str]) -> Dict[str, PermessoUpdate]:
+    return {
+        sez: PermessoUpdate(
+            can_view=puo_vedere_sezione(current_user.ruolo, sez),
+            can_edit=puo_modificare_sezione(current_user.ruolo, sez),
+        )
+        for sez in sezioni
+    }
+
+
+def _verifica_concessione(db, current_user, ruolo: str, sezione: str, update) -> None:
+    """Blocca la concessione di un permesso che l'utente corrente non ha.
+    Revocare, o lasciare invariato un permesso gia' presente, e' sempre ammesso."""
+    attuale = db.execute(
+        "SELECT can_view, can_edit FROM permessi_ruolo WHERE ruolo = %s AND codice_sezione = %s",
+        (ruolo, sezione),
+    ).fetchone()
+    for campo, verifica in (("can_view", puo_vedere_sezione), ("can_edit", puo_modificare_sezione)):
+        concede = getattr(update, campo) and not (attuale and attuale[campo])
+        if concede and not verifica(current_user.ruolo, sezione):
+            raise HTTPException(
+                status_code=403,
+                detail=(f"Non puoi concedere '{campo}' sulla sezione '{sezione}' al ruolo "
+                        f"'{ruolo}': non hai tu stesso questo permesso.")
+            )
 
 
 # =============================================================================
@@ -72,17 +124,23 @@ async def get_ruoli() -> List[str]:
     return ['admin', 'superuser', 'supervisore', 'operatore', 'readonly']
 
 
-@router.get("/matrice", summary="Matrice completa permessi")
+@router.get("/matrice", summary="Matrice permessi dei ruoli gestibili")
 async def get_matrice_permessi(
-    current_user = Depends(require_admin)
+    current_user = Depends(get_current_user)
 ) -> MatricePermessi:
     """
-    Ritorna matrice completa permessi per tutti i ruoli.
-    Solo admin può visualizzare/modificare.
+    Ritorna la matrice permessi dei ruoli gerarchicamente inferiori
+    all'utente corrente, e i permessi che l'utente puo' concedere.
     """
+    ruoli = _ruoli_gestibili(current_user)
+    if not ruoli:
+        raise HTTPException(
+            status_code=403,
+            detail="Il tuo ruolo non gestisce i permessi di altri ruoli."
+        )
+
     db = get_db()
 
-    # Get sezioni
     sezioni_rows = db.execute("""
         SELECT codice_sezione, nome_display, descrizione, icona, ordine_menu, is_active
         FROM app_sezioni
@@ -91,32 +149,27 @@ async def get_matrice_permessi(
     """).fetchall()
     sezioni = [SezioneResponse(**dict(r)) for r in sezioni_rows]
 
-    # Get all permessi
     permessi_rows = db.execute("""
         SELECT ruolo, codice_sezione, can_view, can_edit
         FROM permessi_ruolo
+        WHERE ruolo = ANY(%s)
         ORDER BY ruolo, codice_sezione
-    """).fetchall()
+    """, (ruoli,)).fetchall()
 
-    # Build matrix
-    ruoli = ['admin', 'superuser', 'supervisore', 'operatore', 'readonly']
     permessi: Dict[str, Dict[str, PermessoResponse]] = {r: {} for r in ruoli}
-
     for row in permessi_rows:
-        ruolo = row['ruolo']
-        sezione = row['codice_sezione']
-        if ruolo in permessi:
-            permessi[ruolo][sezione] = PermessoResponse(
-                ruolo=ruolo,
-                codice_sezione=sezione,
-                can_view=row['can_view'],
-                can_edit=row['can_edit']
-            )
+        permessi[row['ruolo']][row['codice_sezione']] = PermessoResponse(
+            ruolo=row['ruolo'],
+            codice_sezione=row['codice_sezione'],
+            can_view=row['can_view'],
+            can_edit=row['can_edit']
+        )
 
     return MatricePermessi(
         sezioni=sezioni,
         ruoli=ruoli,
-        permessi=permessi
+        permessi=permessi,
+        concedibili=_permessi_concedibili(current_user, [x.codice_sezione for x in sezioni]),
     )
 
 
@@ -147,11 +200,12 @@ async def update_permesso(
     ruolo: str,
     sezione: str,
     update: PermessoUpdate,
-    current_user = Depends(require_admin)
+    current_user = Depends(get_current_user)
 ) -> PermessoResponse:
     """
     Aggiorna permesso per una combinazione ruolo/sezione.
-    Solo admin può modificare.
+    Solo per ruoli gerarchicamente inferiori, e senza concedere permessi
+    che l'utente corrente non ha.
 
     NOTA: I permessi admin non possono essere ridotti (sicurezza).
     """
@@ -177,6 +231,9 @@ async def update_permesso(
     ruoli_validi = ['admin', 'superuser', 'supervisore', 'operatore', 'readonly']
     if ruolo not in ruoli_validi:
         raise HTTPException(status_code=400, detail=f"Ruolo '{ruolo}' non valido")
+
+    _verifica_ruolo_gestibile(current_user, ruolo)
+    _verifica_concessione(db, current_user, ruolo, sezione, update)
 
     # Upsert permesso
     db.execute("""
@@ -204,7 +261,7 @@ async def update_permesso(
 async def update_permessi_ruolo_bulk(
     ruolo: str,
     permessi: Dict[str, PermessoUpdate],
-    current_user = Depends(require_admin)
+    current_user = Depends(get_current_user)
 ) -> Dict[str, PermessoResponse]:
     """
     Aggiorna tutti i permessi di un ruolo in una sola chiamata.
@@ -225,6 +282,11 @@ async def update_permessi_ruolo_bulk(
     ruoli_validi = ['superuser', 'supervisore', 'operatore', 'readonly']
     if ruolo not in ruoli_validi:
         raise HTTPException(status_code=400, detail=f"Ruolo '{ruolo}' non valido")
+
+    _verifica_ruolo_gestibile(current_user, ruolo)
+    # Tutto o niente: verifica ogni sezione prima di scrivere
+    for sezione, update in permessi.items():
+        _verifica_concessione(db, current_user, ruolo, sezione, update)
 
     result = {}
     for sezione, update in permessi.items():

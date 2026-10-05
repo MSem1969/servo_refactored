@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from typing import Dict, Any, Optional, List
 from pydantic import BaseModel, Field
 
-from ..auth.dependencies import get_current_user, require_admin
+from ..auth.dependencies import get_current_user, require_section_view, require_section_edit
 from ..auth.models import UtenteResponse
 from ..services.backup import backup_manager
 
@@ -55,7 +55,7 @@ class CleanupRequest(BaseModel):
 
 @router.get("/modules")
 async def get_modules(
-    user: UtenteResponse = Depends(get_current_user)
+    user: UtenteResponse = Depends(require_section_view("backup"))
 ) -> List[Dict[str, Any]]:
     """
     Lista moduli backup disponibili.
@@ -69,7 +69,7 @@ async def get_modules(
 @router.get("/modules/{module_name}")
 async def get_module(
     module_name: str,
-    user: UtenteResponse = Depends(get_current_user)
+    user: UtenteResponse = Depends(require_section_view("backup"))
 ) -> Dict[str, Any]:
     """
     Dettaglio singolo modulo.
@@ -94,7 +94,7 @@ async def get_module(
 @router.get("/modules/{module_name}/status")
 async def get_module_status(
     module_name: str,
-    user: UtenteResponse = Depends(get_current_user)
+    user: UtenteResponse = Depends(require_section_view("backup"))
 ) -> Dict[str, Any]:
     """
     Stato corrente modulo (health check dettagliato).
@@ -119,7 +119,7 @@ async def get_module_status(
 async def configure_module(
     module_name: str,
     request: ModuleConfigRequest,
-    user: UtenteResponse = Depends(require_admin)
+    user: UtenteResponse = Depends(require_section_edit("backup"))
 ) -> Dict[str, Any]:
     """
     Configura modulo backup.
@@ -151,7 +151,7 @@ async def configure_module(
 @router.post("/modules/{module_name}/enable")
 async def enable_module(
     module_name: str,
-    user: UtenteResponse = Depends(require_admin)
+    user: UtenteResponse = Depends(require_section_edit("backup"))
 ) -> Dict[str, Any]:
     """
     Abilita modulo backup (dopo configurazione e test).
@@ -181,7 +181,7 @@ async def enable_module(
 @router.post("/modules/{module_name}/disable")
 async def disable_module(
     module_name: str,
-    user: UtenteResponse = Depends(require_admin)
+    user: UtenteResponse = Depends(require_section_edit("backup"))
 ) -> Dict[str, Any]:
     """
     Disabilita modulo backup.
@@ -203,7 +203,7 @@ async def disable_module(
 @router.post("/modules/{module_name}/test")
 async def test_module(
     module_name: str,
-    user: UtenteResponse = Depends(require_admin)
+    user: UtenteResponse = Depends(require_section_edit("backup"))
 ) -> Dict[str, Any]:
     """
     Testa funzionamento modulo.
@@ -229,7 +229,7 @@ async def test_module(
 async def execute_backup(
     module_name: str,
     request: BackupExecuteRequest = BackupExecuteRequest(),
-    user: UtenteResponse = Depends(require_admin)
+    user: UtenteResponse = Depends(require_section_edit("backup"))
 ) -> Dict[str, Any]:
     """
     Esegue backup per modulo.
@@ -254,7 +254,7 @@ async def execute_backup(
 async def cleanup_module(
     module_name: str,
     request: CleanupRequest = CleanupRequest(),
-    user: UtenteResponse = Depends(require_admin)
+    user: UtenteResponse = Depends(require_section_edit("backup"))
 ) -> Dict[str, Any]:
     """
     Esegue cleanup backup vecchi per modulo.
@@ -281,7 +281,7 @@ async def cleanup_module(
 
 @router.get("/dashboard")
 async def get_dashboard(
-    user: UtenteResponse = Depends(get_current_user)
+    user: UtenteResponse = Depends(require_section_view("backup"))
 ) -> Dict[str, Any]:
     """
     Dashboard statistiche backup.
@@ -298,7 +298,7 @@ async def get_history(
     status: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
-    user: UtenteResponse = Depends(get_current_user)
+    user: UtenteResponse = Depends(require_section_view("backup"))
 ) -> List[Dict[str, Any]]:
     """
     Storico backup eseguiti.
@@ -326,7 +326,7 @@ async def get_history(
 
 @router.get("/storage")
 async def get_storage_locations(
-    user: UtenteResponse = Depends(get_current_user)
+    user: UtenteResponse = Depends(require_section_view("backup"))
 ) -> List[Dict[str, Any]]:
     """
     Lista storage locations configurati.
@@ -340,7 +340,7 @@ async def get_storage_locations(
 @router.post("/storage")
 async def add_storage_location(
     request: StorageRequest,
-    user: UtenteResponse = Depends(require_admin)
+    user: UtenteResponse = Depends(require_section_edit("backup"))
 ) -> Dict[str, Any]:
     """
     Aggiunge storage location.
@@ -377,7 +377,7 @@ async def add_storage_location(
 
 @router.post("/daily/execute")
 async def execute_daily_backup(
-    user: UtenteResponse = Depends(require_admin)
+    user: UtenteResponse = Depends(require_section_edit("backup"))
 ) -> Dict[str, Any]:
     """
     Esegue backup manuale: pg_dump locale + upload FTP su TRANSFER.
@@ -390,7 +390,7 @@ async def execute_daily_backup(
 
 @router.get("/daily/status")
 async def get_daily_backup_status(
-    user: UtenteResponse = Depends(get_current_user)
+    user: UtenteResponse = Depends(require_section_view("backup"))
 ) -> Dict[str, Any]:
     """Stato backup giornaliero: ultimo backup, file locali, spazio."""
     from ..services.backup.backup_scheduler import get_backup_status

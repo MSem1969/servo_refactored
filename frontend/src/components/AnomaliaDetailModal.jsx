@@ -17,6 +17,7 @@ import { PdfViewerButton } from '../common';
 import { lookupApi, reportApi } from '../api';
 // v8.2: Import diretto per evitare problemi con barrel export
 import { anomalieApi } from '../api/anomalie';
+import { puoPropagareGlobale } from '../utils/permessi';
 // v11.0: Import AicAssignmentModal unificato (TIER 2.1)
 import { AicAssignmentModal, AIC_MODAL_MODES } from './AicAssignmentModal';
 
@@ -36,15 +37,13 @@ export function AnomaliaDetailModal({
   // v11.5: Callback per correzione prezzo da OrdineDetail
   onCorreggiPrezzo = null,
 }) {
-  // v11.4: Determina se utente è supervisore
+  // Propagazione GLOBALE: can_edit su 'supervisione' (matrice permessi)
   const { operatore, isSupervisor } = useMemo(() => {
     try {
       const user = JSON.parse(localStorage.getItem('servo_user') || '{}');
-      const ruolo = (user.ruolo || '').toLowerCase();
-      const canGlobal = ['admin', 'supervisore', 'supervisor', 'superuser'].includes(ruolo);
       return {
         operatore: user.username || 'operatore',
-        isSupervisor: canGlobal
+        isSupervisor: puoPropagareGlobale()
       };
     } catch {
       return { operatore: 'operatore', isSupervisor: false };
@@ -1197,7 +1196,7 @@ function LookupSection({
             </div>
           )}
 
-          {/* v11.4: Opzioni Propagazione per Supervisore */}
+          {/* Opzioni Propagazione: can_edit su 'supervisione' */}
           {fromSupervisione && isSupervisor && (
             <div className="mt-4 pt-3 border-t border-green-200">
               <p className="text-sm font-medium text-green-800 mb-2">Propagazione:</p>
@@ -1865,11 +1864,11 @@ function PropagazioneSection({ anomalia, onSuccess, onClose }) {
     try {
       const user = JSON.parse(localStorage.getItem('servo_user') || '{}');
       const userRuolo = (user.ruolo || 'operatore').toLowerCase();
-      const canGlobal = userRuolo === 'admin' || userRuolo === 'supervisore' || userRuolo === 'supervisor' || userRuolo === 'superuser';
       return {
         operatore: user.username || 'operatore',
         ruolo: userRuolo,
-        isSupervisor: canGlobal
+        // Propagazione GLOBALE: can_edit su 'supervisione' (matrice permessi)
+        isSupervisor: puoPropagareGlobale()
       };
     } catch {
       return { operatore: 'operatore', ruolo: 'operatore', isSupervisor: false };
@@ -2030,9 +2029,9 @@ function PropagazioneSection({ anomalia, onSuccess, onClose }) {
               {/* Messaggio per operatori */}
               {!isSupervisor && conteggi.globale > 1 && (
                 <div className="p-3 bg-amber-50 border border-amber-200 rounded text-sm text-amber-700">
-                  <strong>Nota:</strong> Come operatore, puoi risolvere solo questa anomalia.
-                  Per propagare la risoluzione a tutte le {conteggi.globale} anomalie identiche,
-                  contatta un supervisore.
+                  <strong>Nota:</strong> Senza il permesso di modifica su Supervisione puoi
+                  risolvere solo questa anomalia. Per propagare la risoluzione a tutte le
+                  {' '}{conteggi.globale} anomalie identiche, contatta chi ha quel permesso.
                 </div>
               )}
 

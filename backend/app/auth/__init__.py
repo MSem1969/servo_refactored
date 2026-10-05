@@ -82,7 +82,10 @@ from .dependencies import (
     require_admin,
     require_admin_or_supervisor,
     require_section_edit,
+    require_section_view,
     puo_modificare_sezione,
+    puo_vedere_sezione,
+    puo_propagare_globale,
     get_client_ip,
     get_user_agent
 )
@@ -148,7 +151,10 @@ __all__ = [
     "require_admin",
     "require_admin_or_supervisor",
     "require_section_edit",
+    "require_section_view",
     "puo_modificare_sezione",
+    "puo_vedere_sezione",
+    "puo_propagare_globale",
     "get_client_ip",
     "get_user_agent",
     

@@ -230,12 +230,14 @@ class AnomaliaResolver:
         livello = LivelloPropagazione.GLOBALE if params.livello_propagazione == 'GLOBALE' else LivelloPropagazione.ORDINE
 
         # Verifica permessi
-        if livello == LivelloPropagazione.GLOBALE and params.ruolo not in ('admin', 'superuser', 'supervisore'):
+        from ...auth.dependencies import puo_propagare_globale
+        if livello == LivelloPropagazione.GLOBALE and not puo_propagare_globale(params.ruolo):
             return ResolutionResult(
                 success=False,
                 id_anomalia=anomalia['id_anomalia'],
                 tipo_risoluzione='PROPAGAZIONE',
-                message=f"Ruolo {params.ruolo} non può usare propagazione GLOBALE"
+                message=(f"Ruolo {params.ruolo} non può usare propagazione GLOBALE: "
+                         "serve il permesso di modifica su Supervisione (Impostazioni → Permessi)")
             )
 
         try:

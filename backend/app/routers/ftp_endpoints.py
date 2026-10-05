@@ -11,7 +11,7 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 from ..database_pg import get_db, log_operation
-from ..auth import get_current_user
+from ..auth import get_current_user, puo_vedere_sezione, puo_modificare_sezione
 from ..services.crypto import encrypt_password, decrypt_password, CryptoError
 from ..services.auth import OTPService, request_otp, verify_otp
 
@@ -74,10 +74,20 @@ def _get_client_info(request: Request) -> tuple:
     return ip, user_agent
 
 
-def _check_admin_role(current_user) -> None:
-    """Verifica che l'utente sia admin."""
-    if current_user.ruolo != 'admin':
-        raise HTTPException(403, "Solo gli admin possono gestire gli endpoint FTP")
+# Gli endpoint FTP sono configurazione di sistema: sezione 'sistema' della
+# matrice permessi (can_view per consultare, can_edit per modificare,
+# testare o rivelare la password).
+_MSG_PERMESSO = "Abilitarlo in Impostazioni → Permessi (sezione Sistema)."
+
+
+def _check_view_sistema(current_user) -> None:
+    if not puo_vedere_sezione(current_user.ruolo, 'sistema'):
+        raise HTTPException(403, f"Nessun accesso agli endpoint FTP. {_MSG_PERMESSO}")
+
+
+def _check_edit_sistema(current_user) -> None:
+    if not puo_modificare_sezione(current_user.ruolo, 'sistema'):
+        raise HTTPException(403, f"Nessun permesso di modifica sugli endpoint FTP. {_MSG_PERMESSO}")
 
 
 # =============================================================================
@@ -92,7 +102,7 @@ async def list_ftp_endpoints(
     Lista tutti gli endpoint FTP configurati.
     Le password sono MASCHERATE.
     """
-    _check_admin_role(current_user)
+    _check_view_sistema(current_user)
 
     db = get_db()
     try:
@@ -145,7 +155,7 @@ async def list_available_vendors(
     Lista vendor disponibili per configurazione endpoint.
     Include quelli esistenti in ordini + predefiniti.
     """
-    _check_admin_role(current_user)
+    _check_view_sistema(current_user)
 
     db = get_db()
     try:
@@ -194,7 +204,7 @@ async def get_ftp_log(
     """
     Recupera log operazioni FTP.
     """
-    _check_admin_role(current_user)
+    _check_view_sistema(current_user)
 
     db = get_db()
     try:
@@ -245,7 +255,7 @@ async def get_ftp_log(
 
 
 # =============================================================================
-# CREAZIONE ENDPOINT (NO 2FA - solo admin)
+# CREAZIONE ENDPOINT (NO 2FA - permesso di modifica su Sistema)
 # =============================================================================
 
 @router.post("/")
@@ -258,7 +268,7 @@ async def create_ftp_endpoint(
     Crea nuovo endpoint FTP.
     NON richiede 2FA (solo per modifica/visualizzazione password).
     """
-    _check_admin_role(current_user)
+    _check_edit_sistema(current_user)
 
     db = get_db()
     ip, user_agent = _get_client_info(request)
@@ -339,7 +349,7 @@ async def request_endpoint_otp(
     - FTP_VIEW_PASSWORD: Visualizzare password in chiaro
     - FTP_EDIT: Modificare configurazione endpoint
     """
-    _check_admin_role(current_user)
+    _check_edit_sistema(current_user)
 
     db = get_db()
     ip, user_agent = _get_client_info(request)
@@ -380,7 +390,7 @@ async def view_endpoint_password(
     Visualizza password FTP in chiaro.
     RICHIEDE verifica 2FA.
     """
-    _check_admin_role(current_user)
+    _check_edit_sistema(current_user)
 
     db = get_db()
     ip, user_agent = _get_client_info(request)
@@ -438,7 +448,7 @@ async def update_ftp_endpoint(
     Aggiorna endpoint FTP esistente.
     RICHIEDE verifica 2FA.
     """
-    _check_admin_role(current_user)
+    _check_edit_sistema(current_user)
 
     db = get_db()
     ip, user_agent = _get_client_info(request)
@@ -568,7 +578,7 @@ async def delete_ftp_endpoint(
     Elimina endpoint FTP.
     RICHIEDE verifica 2FA.
     """
-    _check_admin_role(current_user)
+    _check_edit_sistema(current_user)
 
     db = get_db()
     ip, user_agent = _get_client_info(request)
@@ -629,7 +639,7 @@ async def toggle_endpoint_active(
     Attiva/disattiva endpoint FTP.
     NON richiede 2FA (operazione rapida e reversibile).
     """
-    _check_admin_role(current_user)
+    _check_edit_sistema(current_user)
 
     db = get_db()
 
@@ -686,7 +696,7 @@ async def test_ftp_connection(
     Testa la connessione FTP di un endpoint.
     Prova a connettersi, listare la directory e disconnettersi.
     """
-    _check_admin_role(current_user)
+    _check_edit_sistema(current_user)
 
     db = get_db()
 
@@ -795,7 +805,7 @@ async def get_ftp_stats(
     """
     Statistiche FTP per dashboard.
     """
-    _check_admin_role(current_user)
+    _check_view_sistema(current_user)
 
     db = get_db()
 

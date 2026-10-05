@@ -7,6 +7,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import { backupApi } from "../api";
+import { puoModificare } from "../utils/permessi";
 import { Button, StatusBadge, Loading, ErrorBox } from "../common";
 
 /**
@@ -190,8 +191,8 @@ const BackupPage = ({ currentUser, embedded = false }) => {
     }
   };
 
-  // Verifica ruolo admin
-  const isAdmin = currentUser?.ruolo === 'admin';
+  // Azioni di backup: can_edit su 'backup' (matrice permessi)
+  const isAdmin = puoModificare('backup');
 
   // Tabs disponibili
   const tabs = [

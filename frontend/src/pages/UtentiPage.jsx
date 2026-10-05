@@ -8,41 +8,20 @@
  * - Modifica dati utente
  * - Cambio password
  * - Abilita/Disabilita utente
- * - Visualizzazione permessi per ruolo
+ * - (Matrice permessi: vedi Impostazioni → Permessi)
  */
 
 import { useState, useEffect, useCallback } from 'react';
 import { utentiApi } from '../api';
 import Avatar from '../components/Avatar';
 
-// Configurazione ruoli e permessi (mirror del backend)
+// Gerarchia ruoli (mirror di auth/permissions.get_ruoli_creabili)
 const RUOLI = {
   admin: { label: 'Amministratore', livello: 4, color: 'red' },
   superuser: { label: 'Superuser', livello: 3, color: 'orange' },
   supervisore: { label: 'Supervisore', livello: 2, color: 'purple' },
   operatore: { label: 'Operatore', livello: 1, color: 'blue' },
   readonly: { label: 'Sola Lettura', livello: 0, color: 'slate' }
-};
-
-const SEZIONI = [
-  { id: 'dashboard', label: 'Dashboard', icon: '📊' },
-  { id: 'upload', label: 'Upload PDF', icon: '📤' },
-  { id: 'database', label: 'Database Ordini', icon: '🗄️' },
-  { id: 'ordine_detail', label: 'Dettaglio Ordine', icon: '📋' },
-  { id: 'anomalie', label: 'Anomalie', icon: '🚨' },
-  { id: 'supervisione', label: 'Supervisione ML', icon: '🤖' },
-  { id: 'tracciati', label: 'Tracciati', icon: '📁' },
-  { id: 'settings', label: 'Impostazioni', icon: '⚙️' },
-  { id: 'utenti', label: 'Gestione Utenti', icon: '👥' }
-];
-
-// Permessi default per ruolo (da sincronizzare con backend)
-const PERMESSI_RUOLO = {
-  admin: ['dashboard', 'upload', 'database', 'ordine_detail', 'anomalie', 'supervisione', 'tracciati', 'settings', 'utenti'],
-  superuser: ['dashboard', 'upload', 'database', 'ordine_detail', 'anomalie', 'supervisione', 'tracciati', 'utenti'],
-  supervisore: ['dashboard', 'upload', 'database', 'ordine_detail', 'anomalie', 'supervisione', 'tracciati', 'utenti'],
-  operatore: ['dashboard', 'upload', 'database', 'ordine_detail', 'tracciati'],
-  readonly: ['dashboard', 'database']
 };
 
 export default function UtentiPage({ currentUser }) {
@@ -126,22 +105,6 @@ export default function UtentiPage({ currentUser }) {
     return Object.entries(RUOLI)
       .filter(([key, value]) => canManageRole(key))
       .map(([key]) => key);
-  };
-
-  // v6.2.1: Ruoli visibili nella matrice permessi (proprio ruolo + inferiori)
-  const getVisibleRoles = () => {
-    if (!currentUser) return [];
-    const currentLevel = RUOLI[currentUser.ruolo]?.livello || 0;
-    return Object.entries(RUOLI)
-      .filter(([key, value]) => value.livello <= currentLevel)
-      .map(([key]) => key);
-  };
-
-  // v6.2.1: Sezioni visibili nella matrice (solo quelle a cui l'utente ha accesso)
-  const getVisibleSections = () => {
-    if (!currentUser) return [];
-    const userPermissions = PERMESSI_RUOLO[currentUser.ruolo] || [];
-    return SEZIONI.filter(sezione => userPermissions.includes(sezione.id));
   };
 
   // Apri modal creazione
@@ -317,7 +280,7 @@ export default function UtentiPage({ currentUser }) {
   // Tabs
   const tabs = [
     { id: 'lista', label: 'Lista Utenti', count: utenti.length },
-    { id: 'permessi', label: 'Matrice Permessi', count: null }
+    // La matrice permessi reale e' nel tab Impostazioni → Permessi
   ];
 
   return (
@@ -532,50 +495,6 @@ export default function UtentiPage({ currentUser }) {
           </div>
         )}
 
-        {/* Tab Matrice Permessi */}
-        {activeTab === 'permessi' && (
-          <div className="p-4">
-            <p className="text-sm text-slate-500 mb-4">
-              Questa tabella mostra i permessi di accesso alle sezioni per ogni ruolo.
-              I permessi sono definiti a livello di ruolo e non modificabili per singolo utente.
-            </p>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="p-3 text-left">Sezione</th>
-                    {/* v6.2.1: Mostra solo ruoli visibili (proprio + inferiori) */}
-                    {getVisibleRoles().map((ruolo) => (
-                      <th key={ruolo} className="p-3 text-center">
-                        <RoleBadge ruolo={ruolo} />
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {/* v6.2.1: Mostra solo sezioni a cui l'utente ha accesso */}
-                  {getVisibleSections().map((sezione) => (
-                    <tr key={sezione.id} className="border-b border-slate-100">
-                      <td className="p-3">
-                        <span className="mr-2">{sezione.icon}</span>
-                        {sezione.label}
-                      </td>
-                      {getVisibleRoles().map((ruolo) => (
-                        <td key={ruolo} className="p-3 text-center">
-                          {PERMESSI_RUOLO[ruolo]?.includes(sezione.id) ? (
-                            <span className="text-green-500 text-lg">OK</span>
-                          ) : (
-                            <span className="text-red-300 text-lg">--</span>
-                          )}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Modal Creazione/Modifica/Password */}

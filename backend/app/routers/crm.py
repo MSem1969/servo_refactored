@@ -10,7 +10,7 @@ from typing import Dict, Any, Optional, List
 from pydantic import BaseModel, EmailStr, Field
 import os
 
-from ..auth.dependencies import get_current_user, require_admin
+from ..auth.dependencies import get_current_user, require_section_edit, puo_modificare_sezione
 from ..auth.models import UtenteResponse
 from ..database_pg import get_db
 from ..services.crm import (
@@ -87,12 +87,13 @@ async def list_tickets(
 ) -> Dict[str, Any]:
     """
     Lista ticket.
-    - Admin: vede tutti i ticket
-    - User: vede solo i propri ticket
+    - can_edit su 'crm': vede tutti i ticket
+    - Altrimenti: solo i propri ticket
     """
     try:
         db = get_db()
-        is_admin = current_user.ruolo in ['admin', 'superuser']
+        # Gestione di tutti i ticket: can_edit su 'crm' (matrice permessi)
+        is_admin = puo_modificare_sezione(current_user.ruolo, 'crm')
 
         filters = {}
         if stato:
@@ -185,7 +186,8 @@ async def get_ticket(
     """
     try:
         db = get_db()
-        is_admin = current_user.ruolo in ['admin', 'superuser']
+        # Gestione di tutti i ticket: can_edit su 'crm' (matrice permessi)
+        is_admin = puo_modificare_sezione(current_user.ruolo, 'crm')
 
         ticket = get_ticket_detail(
             db,
@@ -208,11 +210,11 @@ async def get_ticket(
 async def change_ticket_status(
     ticket_id: int,
     data: UpdateStatusRequest,
-    current_user: UtenteResponse = Depends(require_admin)
+    current_user: UtenteResponse = Depends(require_section_edit("crm"))
 ) -> Dict[str, Any]:
     """
     Cambia stato ticket.
-    Richiede: Admin
+    Richiede: can_edit su 'crm' (matrice permessi)
 
     Transizioni valide:
     - aperto -> in_lavorazione, chiuso
@@ -265,7 +267,8 @@ async def update_ticket(
         from ..services.crm.tickets import update_ticket as update_ticket_fn
 
         db = get_db()
-        is_admin = current_user.ruolo in ['admin', 'superuser']
+        # Gestione di tutti i ticket: can_edit su 'crm' (matrice permessi)
+        is_admin = puo_modificare_sezione(current_user.ruolo, 'crm')
 
         result = update_ticket_fn(
             db,
@@ -300,7 +303,8 @@ async def list_messages(
     """
     try:
         db = get_db()
-        is_admin = current_user.ruolo in ['admin', 'superuser']
+        # Gestione di tutti i ticket: can_edit su 'crm' (matrice permessi)
+        is_admin = puo_modificare_sezione(current_user.ruolo, 'crm')
 
         messages = get_messages(
             db,
@@ -327,7 +331,8 @@ async def create_message(
     """
     try:
         db = get_db()
-        is_admin = current_user.ruolo in ['admin', 'superuser']
+        # Gestione di tutti i ticket: can_edit su 'crm' (matrice permessi)
+        is_admin = puo_modificare_sezione(current_user.ruolo, 'crm')
 
         result = add_message(
             db,
@@ -367,7 +372,8 @@ async def get_crm_stats(
     """
     try:
         db = get_db()
-        is_admin = current_user.ruolo in ['admin', 'superuser']
+        # Gestione di tutti i ticket: can_edit su 'crm' (matrice permessi)
+        is_admin = puo_modificare_sezione(current_user.ruolo, 'crm')
 
         stats = get_ticket_stats(
             db,
@@ -505,7 +511,8 @@ async def remove_attachment(
     """
     try:
         db = get_db()
-        is_admin = current_user.ruolo in ['admin', 'superuser']
+        # Gestione di tutti i ticket: can_edit su 'crm' (matrice permessi)
+        is_admin = puo_modificare_sezione(current_user.ruolo, 'crm')
 
         result = delete_attachment(
             db,

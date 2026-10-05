@@ -18,6 +18,7 @@ import RigaEditModal from './RigaEditModal';
 import AnomalieTab from './AnomalieTab';
 import EspositoreTab from './EspositoreTab';
 import PdfModal from './PdfModal';
+import { puoPropagareGlobale } from '../../utils/permessi';
 
 // Custom hook
 import { useOrdineDetail } from './hooks/useOrdineDetail';
@@ -289,7 +290,7 @@ export default function OrdineDetailPage({ ordineId, currentUser, onBack, onNavi
         supervisione={correzioneListinoModal.supervisione}
         operatore={currentUser?.username || 'operatore'}
         onSuccess={handleCorrezioneListinoSuccess}
-        scope={['admin', 'supervisore', 'supervisor'].includes(currentUser?.ruolo?.toLowerCase()) ? 'supervisore' : 'operatore'}
+        scope={puoPropagareGlobale() ? 'supervisore' : 'operatore'}
       />
 
       {/* Modal Modifica Header (v11.3) */}

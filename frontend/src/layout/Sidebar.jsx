@@ -204,31 +204,5 @@ const Sidebar = ({
   );
 };
 
-// Utility per generare menu predefinito
-Sidebar.getDefaultMenu = (userRole) => {
-  // v6.2.1: Permessi per ruolo (sincronizzati con UtentiPage)
-  const PERMESSI_RUOLO = {
-    admin: ['dashboard', 'upload', 'database', 'supervisione', 'tracciati', 'settings', 'logs'],
-    superuser: ['dashboard', 'upload', 'database', 'supervisione', 'tracciati', 'settings'],
-    supervisore: ['dashboard', 'upload', 'database', 'supervisione', 'tracciati', 'settings'],
-    operatore: ['dashboard', 'upload', 'database', 'tracciati', 'settings'],  // settings: solo cambio password
-    readonly: ['dashboard', 'database']
-  };
-
-  const allMenuItems = [
-    { id: 'dashboard', label: 'Dashboard', icon: '📊' },
-    { id: 'upload', label: 'Upload PDF', icon: '📁' },
-    { id: 'database', label: 'Gestione Ordini', icon: '🗄️' },
-    { id: 'supervisione', label: 'Supervisione', icon: '👁️' },
-    { id: 'tracciati', label: 'Tracciati', icon: '📋' },
-    { id: 'settings', label: 'Impostazioni', icon: '⚙️' },
-    { id: 'logs', label: 'Log Sistema', icon: '📝' },
-  ];
-
-  // Filtra menu in base ai permessi del ruolo
-  const allowedIds = PERMESSI_RUOLO[userRole] || PERMESSI_RUOLO.readonly;
-  return allMenuItems.filter(item => allowedIds.includes(item.id));
-};
-
 export { Sidebar };
 export default Sidebar;
