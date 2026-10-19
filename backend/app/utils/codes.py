@@ -134,3 +134,57 @@ def is_valid_aic(aic: str) -> bool:
         return False
     aic_clean = str(aic).strip().upper()
     return bool(re.match(r'^[A-Z0-9][0-9]{8}$', aic_clean))
+
+
+# =============================================================================
+# CODICE MINISTERIALE: FARMACIA vs PARAFARMACIA
+# =============================================================================
+# Tolti gli zeri iniziali, il codice di una farmacia e quello di una
+# parafarmacia possono coincidere (farmacia 14706 / parafarmacia 014706): sono
+# due clienti diversi, con P.IVA e deposito diversi. Il tipo si riconosce dalla
+# lunghezza del codice: la parafarmacia ha sempre 6 cifre (codice_sito), la
+# farmacia ne ha 9 nell'anagrafica ministeriale e fino a 5 in anagrafica_clienti.
+
+LUNGHEZZA_CODICE_PARAFARMACIA = 6
+
+
+def is_codice_parafarmacia(codice: str) -> bool:
+    """True se il codice e' di una parafarmacia (6 caratteri)."""
+    return len(str(codice or '').strip()) == LUNGHEZZA_CODICE_PARAFARMACIA
+
+
+def codice_cliente_canonico(codice: str, is_parafarmacia: bool = None) -> str:
+    """
+    Codice nella forma in cui lo salva anagrafica_clienti, senza perdere il tipo:
+    farmacia senza zeri iniziali, parafarmacia a 6 cifre.
+
+    Es: "000014706" -> "14706", "014706" -> "014706", "14706" -> "14706".
+    Se il tipo e' noto dal chiamante (lookup su farmacia o parafarmacia),
+    passarlo: vince sulla lunghezza.
+    """
+    raw = str(codice or '').strip()
+    if not raw:
+        return ''
+    if is_parafarmacia is None:
+        is_parafarmacia = is_codice_parafarmacia(raw)
+    chiave = raw.lstrip('0') or '0'
+    return chiave.zfill(LUNGHEZZA_CODICE_PARAFARMACIA) if is_parafarmacia else chiave
+
+
+def filtro_min_id_cliente(codice: str, is_parafarmacia: bool = None,
+                          colonna: str = 'min_id') -> Tuple[str, list]:
+    """
+    Condizione SQL che trova in anagrafica_clienti i soli clienti del tipo giusto.
+
+    Sostituisce `LTRIM(min_id, '0') = %s`, che metteva insieme farmacia e
+    parafarmacia omonime e ne restituiva una a caso.
+
+    Returns:
+        (frammento SQL con un placeholder %s, lista parametri)
+    """
+    canonico = codice_cliente_canonico(codice, is_parafarmacia)
+    lunghezza = ("= %d" % LUNGHEZZA_CODICE_PARAFARMACIA
+                 if is_codice_parafarmacia(canonico) else "<= 5")
+    sql = (f"(length(trim({colonna})) {lunghezza} "
+           f"AND LTRIM(trim({colonna}), '0') = %s)")
+    return sql, [canonico.lstrip('0') or '0']

@@ -130,6 +130,16 @@ class FTPSender:
                 'error': f"Esportazione già completata (stato: {export['stato_ftp']}). Reinvio non consentito."
             }
 
+        # Ricontrolla l'ordine: tra generazione e invio (batch ogni 10 minuti)
+        # puo' essere stato archiviato o bloccato da un'anomalia. Prima il
+        # tracciato partiva comunque e poi spariva dalla ricerca tracciati.
+        motivo_blocco = self._motivo_blocco_ordini(id_esportazione)
+        if motivo_blocco:
+            self._update_export_status(id_esportazione, 'BLOCCATO', motivo_blocco)
+            log_operation('FTP_BLOCCATO', 'esportazioni', id_esportazione,
+                          motivo_blocco, operatore='SCHEDULER')
+            return {'success': False, 'blocked': True, 'error': motivo_blocco}
+
         vendor = export['vendor']
         file_to_t = export['nome_file_to_t']
         file_to_d = export['nome_file_to_d']
@@ -191,6 +201,35 @@ class FTPSender:
             error_msg = '; '.join(errors)
             self._increment_retry(id_esportazione, error_msg)
             return {'success': False, 'error': error_msg, 'files_sent': files_sent}
+
+    def _motivo_blocco_ordini(self, id_esportazione: int) -> Optional[str]:
+        """
+        Motivo per cui gli ordini dell'esportazione non vanno trasmessi, o None.
+
+        Blocca se l'ordine e' ARCHIVIATO, in ANOMALIA, o ha anomalie
+        bloccanti / supervisioni pending (stessa regola della generazione).
+        """
+        from ..orders.fulfillment import _ordine_ha_blocchi_aperti
+
+        ordini = self.db.execute("""
+            SELECT ot.id_testata, ot.numero_ordine_vendor, ot.stato
+            FROM esportazioni_dettaglio ed
+            JOIN ordini_testata ot ON ed.id_testata = ot.id_testata
+            WHERE ed.id_esportazione = %s
+        """, (id_esportazione,)).fetchall()
+
+        motivi = []
+        for o in ordini:
+            numero = o['numero_ordine_vendor'] or o['id_testata']
+            if o['stato'] == 'ARCHIVIATO':
+                motivi.append(f"ordine {numero} archiviato dopo la generazione del tracciato")
+            elif o['stato'] == 'ANOMALIA' or _ordine_ha_blocchi_aperti(o['id_testata']):
+                motivi.append(f"ordine {numero} con anomalie bloccanti o supervisioni aperte")
+
+        if not motivi:
+            return None
+        return ("Invio FTP bloccato: " + "; ".join(motivi) +
+                ". Risolvere il blocco (o ripristinare l'ordine), poi usare Invia dalla pagina Tracciati.")
 
     def _update_export_status(
         self,
@@ -366,6 +405,7 @@ def invia_tracciati_batch() -> Dict[str, Any]:
         'sent': 0,
         'failed': 0,
         'skipped': 0,
+        'blocked': 0,
         'errors': []
     }
 
@@ -385,6 +425,12 @@ def invia_tracciati_batch() -> Dict[str, Any]:
 
                 if result.get('skipped'):
                     results['skipped'] += 1
+                elif result.get('blocked'):
+                    results['blocked'] += 1
+                    results['errors'].append({
+                        'id_esportazione': id_exp,
+                        'error': result.get('error')
+                    })
                 elif result['success']:
                     results['sent'] += 1
                 else:
@@ -405,7 +451,8 @@ def invia_tracciati_batch() -> Dict[str, Any]:
 
     # Log operazione batch
     log_operation('FTP_BATCH', 'esportazioni', 0,
-                 f"Batch FTP: {results['sent']} inviati, {results['failed']} falliti, {results['skipped']} skippati",
+                 f"Batch FTP: {results['sent']} inviati, {results['failed']} falliti, "
+                 f"{results['skipped']} skippati, {results['blocked']} bloccati",
                  operatore='SCHEDULER')
 
     results['success'] = results['failed'] == 0

@@ -9,6 +9,7 @@ from typing import Dict, Any, List
 
 from ...database_pg import get_db
 from ...utils import normalize_piva
+from ...utils.codes import filtro_min_id_cliente
 
 from .matching import lookup_farmacia
 from .scoring import fuzzy_match_full
@@ -116,17 +117,19 @@ def popola_header_da_anagrafica(id_testata: int, operatore: str = None) -> bool:
 
     min_id = farm_data['min_id'] or ''
 
-    # v11.4: Lookup anagrafica_clienti per deposito_riferimento usando MIN_ID
-    # Normalizza MIN_ID rimuovendo zeri iniziali per matching
+    # v11.4: Lookup anagrafica_clienti per deposito_riferimento usando MIN_ID.
+    # Solo clienti del tipo giusto: farmacia 14706 e parafarmacia 014706 sono
+    # clienti diversi con depositi diversi (vedi utils/codes.py).
     deposito_riferimento = None
     if min_id:
-        min_id_norm = min_id.lstrip('0')
-        cliente = db.execute("""
+        filtro, params = filtro_min_id_cliente(min_id, is_parafarmacia=not id_farmacia)
+        cliente = db.execute(f"""
             SELECT deposito_riferimento
             FROM anagrafica_clienti
-            WHERE LTRIM(min_id, '0') = %s
+            WHERE {filtro}
+            ORDER BY (partita_iva = %s) DESC, id_cliente
             LIMIT 1
-        """, (min_id_norm,)).fetchone()
+        """, params + [farm_data.get('partita_iva') or '']).fetchone()
         if cliente and cliente['deposito_riferimento']:
             deposito_riferimento = cliente['deposito_riferimento']
 

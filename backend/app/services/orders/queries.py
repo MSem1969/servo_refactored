@@ -11,6 +11,7 @@ from datetime import datetime
 
 from ...config import config
 from ...database_pg import get_db
+from ...utils.codes import filtro_min_id_cliente
 
 
 # =============================================================================
@@ -222,12 +223,12 @@ def get_ordine_detail(id_testata: int) -> Optional[Dict[str, Any]]:
         if piva:
             # Prova prima con multipunto (P.IVA + min_id normalizzato)
             if min_id:
-                min_id_norm = min_id.lstrip('0')
-                cliente = db.execute("""
+                filtro, params = filtro_min_id_cliente(min_id)
+                cliente = db.execute(f"""
                     SELECT deposito_riferimento FROM anagrafica_clienti
-                    WHERE partita_iva = %s AND LTRIM(min_id, '0') = %s
+                    WHERE partita_iva = %s AND {filtro}
                     LIMIT 1
-                """, (piva, min_id_norm)).fetchone()
+                """, [piva] + params).fetchone()
                 if cliente:
                     deposito = cliente['deposito_riferimento']
 

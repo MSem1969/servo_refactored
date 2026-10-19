@@ -10,22 +10,38 @@ import hashlib
 from typing import Dict, Any, Optional
 
 from ...database_pg import get_db, log_operation
+from ...utils.codes import (
+    codice_cliente_canonico, filtro_min_id_cliente, is_codice_parafarmacia,
+)
 from .constants import SOGLIA_PROMOZIONE
 
 
 def calcola_pattern_signature_erp(min_id: str) -> str:
     """
     Calcola signature univoca per pattern ERP.
-    Basata sul MIN_ID normalizzato (senza zeri iniziali).
+
+    Farmacia: "ERP|14706" (forma storica, invariata per non perdere i pattern
+    gia' appresi). Parafarmacia: "ERP|P|014706", distinta dalla farmacia
+    omonima: con la stessa firma, le correzioni approvate su una venivano
+    applicate in automatico agli ordini dell'altra.
     """
-    min_id_norm = (min_id or '').strip().lstrip('0') or '0'
-    raw = f"ERP|{min_id_norm}"
+    canonico = codice_cliente_canonico(min_id) or '0'
+    if is_codice_parafarmacia(canonico):
+        raw = f"ERP|P|{canonico}"
+    else:
+        raw = f"ERP|{canonico}"
     return hashlib.md5(raw.encode()).hexdigest()[:16]
 
 
 def valida_coerenza_erp(min_id: str, partita_iva: str) -> Dict[str, Any]:
     """
     Valida la coppia MIN_ID + P.IVA contro anagrafica_clienti.
+
+    Confronta solo i clienti del tipo giusto (farmacia o parafarmacia, vedi
+    utils/codes.py): farmacia 14706 e parafarmacia 014706 sono clienti diversi.
+    Lo stesso codice puo' comparire su piu' righe dello stesso tipo (subentri,
+    codici cliente multipli): la coppia e' valida se ALMENO UNA ha la P.IVA
+    dell'ordine.
 
     Returns:
         {
@@ -41,28 +57,35 @@ def valida_coerenza_erp(min_id: str, partita_iva: str) -> Dict[str, Any]:
                 'piva_erp': None, 'min_id_norm': ''}
 
     db = get_db()
-    min_id_norm = min_id.strip().lstrip('0') or '0'
+    min_id_norm = codice_cliente_canonico(min_id)
     piva_norm = (partita_iva or '').strip()
+    tipo = 'parafarmacia' if is_codice_parafarmacia(min_id_norm) else 'farmacia'
 
-    # Cerca in anagrafica_clienti per MIN_ID
-    cliente = db.execute("""
+    filtro, params = filtro_min_id_cliente(min_id)
+    clienti = db.execute(f"""
         SELECT partita_iva, min_id, ragione_sociale_1, codice_cliente
         FROM anagrafica_clienti
-        WHERE LTRIM(min_id, '0') = %s
-        LIMIT 1
-    """, (min_id_norm,)).fetchone()
+        WHERE {filtro}
+        ORDER BY id_cliente
+    """, params).fetchall()
 
-    if not cliente:
+    if not clienti:
         return {
             'valido': False,
             'codice_anomalia': 'ERP-A02',
-            'messaggio': f"MIN_ID {min_id_norm} non trovato in anagrafica clienti ERP. "
+            'messaggio': f"MIN_ID {min_id_norm} ({tipo}) non trovato in anagrafica clienti ERP. "
                          "Il tracciato potrebbe essere scartato dal gestionale.",
             'piva_erp': None,
             'min_id_norm': min_id_norm,
         }
 
-    piva_erp = (cliente['partita_iva'] or '').strip()
+    def _piva(c):
+        return (c['partita_iva'] or '').strip()
+
+    # Preferisci il cliente con la P.IVA dell'ordine, poi uno con P.IVA valorizzata
+    cliente = (next((c for c in clienti if piva_norm and _piva(c) == piva_norm), None)
+               or next((c for c in clienti if _piva(c)), clienti[0]))
+    piva_erp = _piva(cliente)
 
     # Confronta P.IVA normalizzate
     if piva_norm and piva_erp and piva_norm != piva_erp:
@@ -70,7 +93,7 @@ def valida_coerenza_erp(min_id: str, partita_iva: str) -> Dict[str, Any]:
             'valido': False,
             'codice_anomalia': 'ERP-A01',
             'messaggio': (
-                f"MIN_ID {min_id_norm}: P.IVA tracciato={piva_norm}, "
+                f"MIN_ID {min_id_norm} ({tipo}): P.IVA tracciato={piva_norm}, "
                 f"P.IVA ERP={piva_erp} ({cliente.get('ragione_sociale_1', '')}). "
                 "Il tracciato verrebbe scartato dal gestionale."
             ),
@@ -103,7 +126,8 @@ def crea_supervisione_erp(
     db = get_db()
 
     pattern_sig = calcola_pattern_signature_erp(min_id)
-    min_id_norm = (min_id or '').strip().lstrip('0') or '0'
+    # Forma canonica: la parafarmacia resta a 6 cifre, altrimenti il tipo si perde
+    min_id_norm = codice_cliente_canonico(min_id) or '0'
 
     # Inserisci richiesta supervisione
     cursor = db.execute("""
@@ -190,8 +214,17 @@ def approva_supervisione_erp(
 
     id_testata = sup['id_testata']
     pattern_sig = sup['pattern_signature']
-    min_id = min_id_corretto or sup['min_id']
     piva_corretta = partita_iva_corretta.strip()
+
+    # Le supervisioni create prima del 2026-10 salvano il MIN_ID senza zeri,
+    # perdendo il tipo (parafarmacia 014706 -> 14706): il codice dell'ordine
+    # lo conserva.
+    ordine = db.execute("""
+        SELECT codice_ministeriale_estratto FROM ordini_testata WHERE id_testata = %s
+    """, (id_testata,)).fetchone()
+    min_id = (min_id_corretto
+              or (ordine['codice_ministeriale_estratto'] if ordine else None)
+              or sup['min_id'])
 
     # 1. Aggiorna supervisione
     db.execute("""
@@ -329,15 +362,19 @@ def _rettifica_anagrafica_clienti(
         True se rettifica eseguita
     """
     db = get_db()
-    min_id_norm = min_id.strip().lstrip('0') or '0'
+    min_id_norm = codice_cliente_canonico(min_id) or '0'
+    # Solo i clienti del tipo giusto: con LTRIM(min_id) la rettifica riscriveva
+    # anche la P.IVA della farmacia/parafarmacia omonima.
+    filtro, params = filtro_min_id_cliente(min_id)
 
     # Verifica che la rettifica non sia già stata fatta
-    cliente = db.execute("""
+    cliente = db.execute(f"""
         SELECT id_cliente, partita_iva, ragione_sociale_1
         FROM anagrafica_clienti
-        WHERE LTRIM(min_id, '0') = %s
+        WHERE {filtro}
+        ORDER BY (partita_iva = %s) DESC, id_cliente
         LIMIT 1
-    """, (min_id_norm,)).fetchone()
+    """, params + [partita_iva_corretta]).fetchone()
 
     if not cliente:
         # MIN_ID non in anagrafica - non possiamo rettificare (ERP-A02)
@@ -357,12 +394,12 @@ def _rettifica_anagrafica_clienti(
         return False
 
     # Esegui rettifica
-    db.execute("""
+    db.execute(f"""
         UPDATE anagrafica_clienti
         SET partita_iva = %s,
             data_aggiornamento = CURRENT_TIMESTAMP
-        WHERE LTRIM(min_id, '0') = %s
-    """, (partita_iva_corretta, min_id_norm))
+        WHERE {filtro}
+    """, [partita_iva_corretta] + params)
 
     log_operation(
         'RETTIFICA_ERP_ANAGRAFICA',

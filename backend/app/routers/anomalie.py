@@ -12,6 +12,7 @@ from enum import Enum
 
 from ..auth.dependencies import get_current_user
 from ..auth.models import UtenteResponse
+from ..utils.codes import filtro_min_id_cliente
 
 from ..services.orders import (
     get_anomalie,
@@ -578,12 +579,14 @@ async def dettaglio_anomalia(id_anomalia: int) -> Dict[str, Any]:
 
                 # Dati anagrafica_clienti per contesto
                 if ordine_data and ordine_data.get('codice_ministeriale'):
-                    min_id_norm = ordine_data['codice_ministeriale'].strip().lstrip('0') or '0'
-                    cliente = db.execute("""
+                    filtro, params = filtro_min_id_cliente(ordine_data['codice_ministeriale'])
+                    cliente = db.execute(f"""
                         SELECT partita_iva, ragione_sociale_1, codice_cliente, deposito_riferimento
                         FROM anagrafica_clienti
-                        WHERE LTRIM(min_id, '0') = %s LIMIT 1
-                    """, (min_id_norm,)).fetchone()
+                        WHERE {filtro}
+                        ORDER BY (partita_iva = %s) DESC, id_cliente
+                        LIMIT 1
+                    """, params + [(ordine_data.get('partita_iva') or '').strip()]).fetchone()
                     if cliente:
                         erp_data['cliente_erp'] = dict(cliente)
 

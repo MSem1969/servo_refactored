@@ -156,6 +156,7 @@ async def ricerca_tracciati(
                 e.num_testate,
                 e.num_dettagli,
                 e.stato_ftp,
+                e.ultimo_errore_ftp,
                 e.is_riemissione,
                 e.riemessa_da_id,
                 COALESCE(e.data_generazione, t.data_validazione) AS sort_date,
@@ -167,7 +168,11 @@ async def ricerca_tracciati(
             LEFT JOIN anagrafica_parafarmacie p ON t.id_parafarmacia_lookup = p.id_parafarmacia
             LEFT JOIN esportazioni_dettaglio ed ON t.id_testata = ed.id_testata
             LEFT JOIN esportazioni e ON ed.id_esportazione = e.id_esportazione
-            WHERE t.stato IN ('VALIDATO', 'EVASO', 'PARZ_EVASO', 'ESPORTATO', 'PARZ_ESPORTATO')
+            WHERE (t.stato IN ('VALIDATO', 'EVASO', 'PARZ_EVASO', 'ESPORTATO', 'PARZ_ESPORTATO')
+                   -- Un tracciato generato resta in elenco anche se l'ordine e'
+                   -- poi finito in ANOMALIA o ARCHIVIATO: puo' essere gia'
+                   -- arrivato all'ERP.
+                   OR e.id_esportazione IS NOT NULL)
         """
         params = []
 
@@ -223,6 +228,7 @@ async def ricerca_tracciati(
                     "file_to_t": r["nome_file_to_t"],
                     "file_to_d": r["nome_file_to_d"],
                     "stato_ftp": r["stato_ftp"],
+                    "ultimo_errore_ftp": r["ultimo_errore_ftp"],
                     "is_riemissione": r["is_riemissione"],
                     "riemessa_da_id": r["riemessa_da_id"]
                 },
@@ -527,7 +533,10 @@ async def ftp_send_now(
             return {
                 "success": result['success'],
                 "data": result,
-                "message": f"Esportazione {id_esportazione}: {'inviata' if result['success'] else 'fallita'}"
+                "message": (f"Esportazione {id_esportazione}: " +
+                            ('inviata' if result['success']
+                             else result.get('error') if result.get('blocked')
+                             else 'fallita'))
             }
         else:
             # Batch completo
@@ -535,7 +544,8 @@ async def ftp_send_now(
             return {
                 "success": result['success'],
                 "data": result,
-                "message": f"Batch: {result['sent']} inviati, {result['failed']} falliti"
+                "message": (f"Batch: {result['sent']} inviati, {result['failed']} falliti"
+                            + (f", {result['blocked']} bloccati" if result.get('blocked') else ''))
             }
 
     except Exception as e:
@@ -556,7 +566,7 @@ async def ftp_pending() -> Dict[str, Any]:
             FROM esportazioni e
             JOIN esportazioni_dettaglio ed ON e.id_esportazione = ed.id_esportazione
             JOIN ordini_testata ot ON ed.id_testata = ot.id_testata
-            WHERE e.stato_ftp IN ('PENDING', 'RETRY', 'FAILED')
+            WHERE e.stato_ftp IN ('PENDING', 'RETRY', 'FAILED', 'BLOCCATO')
             ORDER BY e.data_generazione ASC
         """).fetchall()
 
