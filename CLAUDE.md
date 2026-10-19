@@ -103,14 +103,14 @@ con `psql -f`. Alembic è stato rimosso (mai applicato).
 | 429-448 | CodOffertaCliente | 20 | N | String | Codice offerta cliente |
 | 449-468 | CodOffertaVendor | 20 | N | String | **Default: `1000` zfill** (zeri anteposti: `00000000000000001000`) |
 | 469 | ForceCheck | 1 | N | Char | **Default ` ` (spazio)**, oppure S/N |
-| 470-669 | OrderAnnotation | 200 | N | String | **Default: `STANDARD`** |
+| 470-669 | OrderAnnotation | 200 | N | String | **Default: spazi** (fino al 2026-10 era `STANDARD`: l'ERP lo segnalava come "Presenza note ordine") |
 | 670-869 | BOT_Annotation | 200 | N | String | Note DDT |
 
 **FORMATO FLOAT 7.2:** 10 caratteri totali = 7 interi + "." + 2 decimali → `0000000.00`
 
 **ESEMPIO TRACCIATO VALIDO:**
 ```
-HAL_FARVI 271952954                      10905              00407890672     PATRONI DR. PIERLUIGI                                                                               CORSO S. GIORGIO 83                               64100     TERAMO                                            TE 20/01/202623/01/2026GRILLO FABIO                                                          0000000.00090          0000000.00000          0000000.00000                                        00000000000000001099 STANDARD
+HAL_FARVI 271952954                      10905              00407890672     PATRONI DR. PIERLUIGI                                                                               CORSO S. GIORGIO 83                               64100     TERAMO                                            TE 20/01/202623/01/2026GRILLO FABIO                                                          0000000.00090          0000000.00000          0000000.00000                                        00000000000000001099
 ```
 
 ### TO_D - DETTAGLIO
