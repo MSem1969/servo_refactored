@@ -6,7 +6,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { ordiniApi, getApiBaseUrl } from '../../api';
-import { Button } from '../../common';
+import { Button, MotivoArchiviazioneModal } from '../../common';
 import { AnomaliaDetailModal } from '../../components';
 
 // Sub-components
@@ -193,24 +193,30 @@ export default function DatabasePage({ currentUser, onOpenOrdine, restoreScrollY
     onOpenOrdine?.(idTestata);
   };
 
-  // Handle archivia ordine singolo
-  const handleArchiviaOrdine = async (ordine) => {
-    const conferma = window.confirm(
-      `ARCHIVIAZIONE DEFINITIVA\n\n` +
-      `Vuoi archiviare definitivamente l'ordine?\n\n` +
-      `Ordine: ${ordine.numero_ordine_vendor || '-'}\n` +
-      `Cliente: ${ordine.ragione_sociale?.toUpperCase() || '-'}\n` +
-      `Vendor: ${ordine.vendor || '-'}\n\n` +
-      `Lo stato diventera EVASO e non sara piu modificabile.`
-    );
-    if (!conferma) return;
+  // Archiviazione con motivazione obbligatoria: singola (ordine) o massiva (selezionati)
+  const [archiviazione, setArchiviazione] = useState(null);
+  const [archiviando, setArchiviando] = useState(false);
 
+  const handleArchiviaOrdine = (ordine) => setArchiviazione({ ordine });
+  const handleArchiviaSelezionati = () => setArchiviazione({ batch: true });
+
+  const confermaArchiviazione = async (motivo) => {
+    if (archiviazione?.batch) {
+      setArchiviazione(null);
+      await handleBatchArchivia(motivo);
+      return;
+    }
+    const { ordine } = archiviazione;
+    setArchiviando(true);
     try {
-      await ordiniApi.archiviaOrdine(ordine.id_testata);
-      alert(`Ordine ${ordine.numero_ordine_vendor} archiviato con successo!`);
+      await ordiniApi.archiviaOrdine(ordine.id_testata, motivo);
+      setArchiviazione(null);
+      alert(`Ordine ${ordine.numero_ordine_vendor} archiviato.`);
       loadOrdini();
     } catch (err) {
       alert('Errore: ' + (err.response?.data?.detail || err.message));
+    } finally {
+      setArchiviando(false);
     }
   };
 
@@ -332,7 +338,7 @@ export default function DatabasePage({ currentUser, onOpenOrdine, restoreScrollY
                 <Button
                   variant="warning"
                   size="sm"
-                  onClick={handleBatchArchivia}
+                  onClick={handleArchiviaSelezionati}
                   disabled={validatingBatch}
                 >
                   🔒 Archivia ({selected.length})
@@ -458,6 +464,22 @@ export default function DatabasePage({ currentUser, onOpenOrdine, restoreScrollY
           </div>
         </div>
       )}
+
+      {/* Modal motivazione archiviazione */}
+      <MotivoArchiviazioneModal
+        isOpen={!!archiviazione}
+        onClose={() => !archiviando && setArchiviazione(null)}
+        onConfirm={confermaArchiviazione}
+        loading={archiviando}
+        title={archiviazione?.batch ? `Archiviazione di ${selected.length} ordini` : 'Archiviazione ordine'}
+        descrizione={archiviazione?.batch
+          ? `La stessa motivazione verrà registrata su tutti i ${selected.length} ordini selezionati.`
+          : archiviazione?.ordine && (
+            `Ordine: ${archiviazione.ordine.numero_ordine_vendor || '-'}\n` +
+            `Cliente: ${archiviazione.ordine.ragione_sociale?.toUpperCase() || '-'}\n` +
+            `Vendor: ${archiviazione.ordine.vendor || '-'}`
+          )}
+      />
 
       {/* Modal Evasione */}
       <EvasioneModal

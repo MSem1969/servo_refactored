@@ -253,13 +253,15 @@ export function useDatabasePage(currentUser, onOpenOrdine, { savedFilters = null
   // BATCH ACTIONS
   // =============================================================================
 
-  const handleBatchArchivia = useCallback(async () => {
+  // motivo: raccolto da MotivoArchiviazioneModal, uguale per tutti i selezionati
+  const handleBatchArchivia = useCallback(async (motivo) => {
     if (selected.length === 0) return;
 
     if (!richiestaConferma(
       'Archiviazione massiva ordini',
-      `Vuoi archiviare definitivamente ${selected.length} ordini?\n` +
-      `Lo stato diventerà EVASO e non saranno più modificabili.`
+      `Vuoi archiviare ${selected.length} ordini?\n` +
+      `Lo stato diventerà ARCHIVIATO (non verranno esportati; si possono ripristinare).\n` +
+      `Motivazione: ${motivo}`
     )) return;
 
     // Helper per ottenere numero_ordine dall'id_testata
@@ -275,7 +277,7 @@ export function useDatabasePage(currentUser, onOpenOrdine, { savedFilters = null
       for (const id_testata of selected) {
         const numeroOrdine = getNumeroOrdine(id_testata);
         try {
-          await ordiniApi.archiviaOrdine(id_testata, currentUser?.username || 'admin');
+          await ordiniApi.archiviaOrdine(id_testata, motivo);
           successi++;
         } catch (err) {
           const errorMsg = err.response?.data?.detail || err.message || 'Errore sconosciuto';

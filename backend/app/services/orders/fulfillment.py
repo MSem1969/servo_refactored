@@ -1128,6 +1128,11 @@ def _aggiorna_contatori_ordine(id_testata: int):
             id_testata, 'SISTEMA', 'Archiviata: ordine senza righe attive'
         )
 
+    # Motivo/autore/data dell'archiviazione valgono finche' l'ordine resta
+    # chiuso: se il ricalcolo lo riapre (ripristino) tornano NULL. Lo storico
+    # resta nell'audit.
+    ordine_chiuso = nuovo_stato in ('ARCHIVIATO', 'EVASO')
+
     db.execute("""
         UPDATE ORDINI_TESTATA
         SET righe_totali = ?,
@@ -1135,6 +1140,9 @@ def _aggiorna_contatori_ordine(id_testata: int):
             righe_in_supervisione = ?,
             stato = ?,
             valore_totale_netto = ?,
+            motivo_archiviazione = CASE WHEN ? THEN motivo_archiviazione END,
+            data_archiviazione = CASE WHEN ? THEN data_archiviazione END,
+            archiviato_da = CASE WHEN ? THEN archiviato_da END,
             data_ultimo_aggiornamento = CURRENT_TIMESTAMP
         WHERE id_testata = ?
     """, (
@@ -1143,6 +1151,7 @@ def _aggiorna_contatori_ordine(id_testata: int):
         stats['in_supervisione'],
         nuovo_stato,
         valore_totale_netto,
+        ordine_chiuso, ordine_chiuso, ordine_chiuso,
         id_testata
     ))
 

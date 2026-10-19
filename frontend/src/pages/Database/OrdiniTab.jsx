@@ -251,7 +251,12 @@ export default function OrdiniTab({
                     <span className="text-slate-400 text-xs">-</span>
                   )}
                 </td>
-                <td className="p-2 text-center align-middle">
+                <td
+                  className="p-2 text-center align-middle"
+                  title={ordine.motivo_archiviazione
+                    ? `Motivo archiviazione: ${ordine.motivo_archiviazione}${ordine.archiviato_da ? ` (${ordine.archiviato_da})` : ''}`
+                    : undefined}
+                >
                   <StatusBadge status={ordine.stato} size="xs" />
                 </td>
                 <td className="p-2 text-center align-middle" onClick={(e) => e.stopPropagation()}>

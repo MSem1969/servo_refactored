@@ -298,6 +298,28 @@ perché `_calcola_stato_ordine` ritorna `ARCHIVIATO` quando non restano righe
 attive. Quel percorso non archiviava nulla → 74 supervisioni LOOKUP rimaste
 `PENDING` in produzione su ordini archiviati (bonifica: migration `v17`).
 
+### Archiviazione con motivazione obbligatoria (2026-10)
+
+Archiviare un ordine richiede una **motivazione** (min. 3 caratteri), salvata in
+`ordini_testata.motivo_archiviazione` con `archiviato_da` e `data_archiviazione`
+(migration `v21`). **Non** in `note_ordine`: quella finisce nel TO_T.
+
+| Percorso | Motivazione |
+|---|---|
+| Archiviazione ordine (singola o massiva, Database) | obbligatoria |
+| Archiviazione dell'**ultima riga attiva** (Dettaglio) | obbligatoria: archivia l'ordine |
+| Archiviazione di una riga qualsiasi | non richiesta |
+
+- L'ultima riga attiva porta l'ordine in `ARCHIVIATO` con la regola centrale
+  (`_calcola_stato_ordine`: `EVASO` solo con bolla). Prima `archivia_riga` lo
+  forzava a `EVASO` anche senza alcuna bolla.
+- L'operatore e' **sempre** `current_user`: prima l'endpoint lo riceveva dal client
+  con default `admin`, e l'archiviazione singola non lo passava mai.
+- Al ripristino (`_aggiorna_contatori_ordine`, stato diverso da `ARCHIVIATO`/`EVASO`)
+  i tre campi tornano `NULL`; lo storico resta nell'audit.
+- Le tre colonne **non sono in `v_ordini_completi`**: dettaglio e lista le leggono da
+  `ordini_testata` con una query a parte (evita di ricreare la vista in produzione).
+
 ### `ANOMALIA` sopravvive al ricalcolo (2026-08)
 
 `_calcola_stato_ordine` non conosceva lo stato `ANOMALIA` e ogni ricalcolo dei

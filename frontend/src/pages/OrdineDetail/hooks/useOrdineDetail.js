@@ -240,8 +240,35 @@ export function useOrdineDetail(ordineId, currentUser) {
     }
   }, [ordineId, currentUser, loadOrdine]);
 
+  // Riga la cui archiviazione chiude l'ordine: serve la motivazione (modale)
+  const [rigaUltimaDaArchiviare, setRigaUltimaDaArchiviare] = useState(null);
+
+  const eseguiArchiviazioneRiga = useCallback(async (riga, motivo = null) => {
+    const idRiga = riga.id_dettaglio || riga.id;
+    try {
+      const res = await ordiniApi.archiviaRiga(ordineId, idRiga, motivo);
+      alert(res?.ordine_completato
+        ? `Riga #${riga.n_riga} archiviata. Era l'ultima riga attiva: l'ordine è stato chiuso.`
+        : `Riga #${riga.n_riga} archiviata (frozen)`);
+      await loadOrdine();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Errore nell\'archiviazione della riga');
+    }
+  }, [ordineId, loadOrdine]);
+
   const archiviaRiga = useCallback(async (riga) => {
     const idRiga = riga.id_dettaglio || riga.id;
+
+    // Ultima riga attiva (stessa regola del backend): archiviarla archivia
+    // l'ordine, quindi si chiede la motivazione invece della semplice conferma
+    const altreAttive = righe.filter(r =>
+      (r.id_dettaglio || r.id) !== idRiga && r.stato_riga !== 'ARCHIVIATO' && !r.is_child
+    );
+    if (!riga.is_child && altreAttive.length === 0) {
+      setRigaUltimaDaArchiviare(riga);
+      return;
+    }
+
     const conferma = window.confirm(
       `ARCHIVIAZIONE RIGA\n\n` +
       `Vuoi archiviare la riga #${riga.n_riga}?\n` +
@@ -254,14 +281,16 @@ export function useOrdineDetail(ordineId, currentUser) {
     );
     if (!conferma) return;
 
-    try {
-      await ordiniApi.archiviaRiga(ordineId, idRiga, currentUser?.username || 'admin');
-      alert(`Riga #${riga.n_riga} archiviata (frozen)`);
-      await loadOrdine();
-    } catch (err) {
-      setError(err.response?.data?.detail || 'Errore nell\'archiviazione della riga');
-    }
-  }, [ordineId, currentUser, loadOrdine]);
+    await eseguiArchiviazioneRiga(riga);
+  }, [righe, eseguiArchiviazioneRiga]);
+
+  const confermaArchiviazioneUltimaRiga = useCallback(async (motivo) => {
+    const riga = rigaUltimaDaArchiviare;
+    setRigaUltimaDaArchiviare(null);
+    if (riga) await eseguiArchiviazioneRiga(riga, motivo);
+  }, [rigaUltimaDaArchiviare, eseguiArchiviazioneRiga]);
+
+  const annullaArchiviazioneUltimaRiga = useCallback(() => setRigaUltimaDaArchiviare(null), []);
 
   const ripristinaArchiviata = useCallback(async (riga) => {
     const idRiga = riga.id_dettaglio || riga.id;
@@ -624,6 +653,9 @@ export function useOrdineDetail(ordineId, currentUser) {
     confermaRigaCompleta,
     ripristinaRiga,
     archiviaRiga,
+    rigaUltimaDaArchiviare,
+    confermaArchiviazioneUltimaRiga,
+    annullaArchiviazioneUltimaRiga,
     ripristinaArchiviata,
     confermaTutto,
     ripristinaTutto,
