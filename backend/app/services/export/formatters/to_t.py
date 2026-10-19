@@ -91,7 +91,7 @@ def generate_to_t_line(data: Dict[str, Any]) -> str:
     429-448   CodOffertaCliente        20     String
     449-468   CodOffertaVendor         20     String (1000 rjust)
     469       ForceCheck               1      Spazio o S/N
-    470-669   OrderAnnotation          200    String (STANDARD)
+    470-669   OrderAnnotation          200    String (spazi se nessuna nota)
     670-869   BOT_Annotation           200    String
     """
     # Estrai dati
@@ -214,8 +214,10 @@ def generate_to_t_line(data: Dict[str, Any]) -> str:
     else:
         line += ' '
 
-    # Pos 470-669: OrderAnnotation (200) - "STANDARD"
-    note_ordine = data.get('note_ordine') or 'STANDARD'
+    # Pos 470-669: OrderAnnotation (200) - spazi se l'ordine non ha note.
+    # Fino al 2026-10 il default era "STANDARD": l'ERP lo legge come nota
+    # presente e segnala ogni ordine con l'avviso "Presenza note ordine".
+    note_ordine = data.get('note_ordine') or ''
     line += str(note_ordine).upper().ljust(200)[:200]
 
     # Pos 670-869: BOT_Annotation (200)

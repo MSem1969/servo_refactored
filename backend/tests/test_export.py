@@ -80,6 +80,24 @@ class TestFormatoTracciati:
         assert "123456" in line  # numero_ordine
         assert "TST001" in line  # min_id
 
+    def test_to_t_senza_note_ordine_scrive_spazi(self):
+        """OrderAnnotation (470-669) vuota se l'ordine non ha note: con il vecchio
+        default "STANDARD" l'ERP segnalava ogni ordine come "Presenza note ordine"."""
+        from app.services.export.formatters.to_t import generate_to_t_line
+
+        line = generate_to_t_line({"vendor": "RECKITT", "numero_ordine": "SO1"})
+
+        assert line[469:669] == " " * 200
+        assert "STANDARD" not in line
+
+    def test_to_t_note_ordine_presenti_in_maiuscolo(self):
+        from app.services.export.formatters.to_t import generate_to_t_line
+
+        line = generate_to_t_line({"vendor": "RECKITT", "numero_ordine": "SO1",
+                                   "note_ordine": "consegna mattina"})
+
+        assert line[469:669].rstrip() == "CONSEGNA MATTINA"
+
     def test_tracciato_to_d_format(self):
         """Verifica formato TO_D (344 caratteri)."""
         from app.services.export.formatters.to_d import generate_to_d_line
