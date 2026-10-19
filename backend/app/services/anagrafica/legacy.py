@@ -18,6 +18,7 @@ except ImportError:
     print("⚠️ pandas non disponibile - import CSV disabilitato")
 
 from ...database_pg import get_db, log_operation
+from ...utils.codes import filtro_min_id_cliente
 
 
 # =============================================================================
@@ -823,32 +824,33 @@ def revisiona_ordini_deposito_mancante() -> Dict[str, Any]:
             cliente = None
             score = 0
 
-            # v11.4: Normalizzazione MIN_ID per matching (rimuovi zeri iniziali)
-            min_id_norm = min_id.lstrip('0') if min_id else ''
+            # Match su MIN_ID solo fra clienti del tipo giusto (farmacia 14706
+            # e parafarmacia 014706 sono clienti diversi, vedi utils/codes.py)
+            filtro, params = filtro_min_id_cliente(min_id) if min_id else ('', [])
 
             # 1. Match esatto su entrambi (P.IVA + MIN_ID normalizzato)
-            if piva and min_id_norm:
-                cliente = db.execute("""
+            if piva and min_id:
+                cliente = db.execute(f"""
                     SELECT deposito_riferimento, partita_iva, min_id, ragione_sociale_1
                     FROM anagrafica_clienti
-                    WHERE partita_iva = %s AND LTRIM(min_id, '0') = %s
+                    WHERE partita_iva = %s AND {filtro}
                       AND deposito_riferimento IS NOT NULL
                       AND deposito_riferimento != ''
                     LIMIT 1
-                """, (piva, min_id_norm)).fetchone()
+                """, [piva] + params).fetchone()
                 if cliente:
                     score = 100
 
             # 2. Match su MIN_ID normalizzato
-            if not cliente and min_id_norm:
-                cliente = db.execute("""
+            if not cliente and min_id:
+                cliente = db.execute(f"""
                     SELECT deposito_riferimento, partita_iva, min_id, ragione_sociale_1
                     FROM anagrafica_clienti
-                    WHERE LTRIM(min_id, '0') = %s
+                    WHERE {filtro}
                       AND deposito_riferimento IS NOT NULL
                       AND deposito_riferimento != ''
                     LIMIT 1
-                """, (min_id_norm,)).fetchone()
+                """, params).fetchone()
                 if cliente:
                     score = 90
 

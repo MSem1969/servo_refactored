@@ -169,7 +169,9 @@ const TracciatiPage = ({ currentUser, canEdit = false }) => {
     try {
       const res = await tracciatiApi.ritrasmetti(idEsportazione);
       const ok = res.data?.ftp_result?.success;
-      alert(ok ? '✅ Tracciato ritrasmesso via FTP.' : '⚠️ Invio FTP non confermato. Controlla i log.');
+      alert(ok
+        ? '✅ Tracciato ritrasmesso via FTP.'
+        : '⚠️ ' + (res.data?.ftp_result?.error || 'Invio FTP non confermato. Controlla i log.'));
       await loadInitialData();
     } catch (err) {
       alert('Errore ritrasmissione: ' + (err.response?.data?.detail || err.message));
@@ -452,15 +454,28 @@ const TracciatiPage = ({ currentUser, canEdit = false }) => {
                     <td className="p-3">
                       {item.esportazione?.stato_ftp ? (
                         <div className="flex flex-col gap-0.5">
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium w-fit ${
+                          <span
+                            title={item.esportazione.ultimo_errore_ftp || undefined}
+                            className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium w-fit ${
                             item.esportazione.stato_ftp === 'SENT' ? 'bg-emerald-100 text-emerald-800' :
                             item.esportazione.stato_ftp === 'FAILED' ? 'bg-rose-100 text-rose-800' :
+                            item.esportazione.stato_ftp === 'BLOCCATO' ? 'bg-orange-100 text-orange-800' :
                             item.esportazione.stato_ftp === 'RETRY' ? 'bg-amber-100 text-amber-800' :
                             item.esportazione.stato_ftp === 'SUPERSEDED' ? 'bg-slate-200 text-slate-600 line-through' :
                             'bg-slate-100 text-slate-700'
                           }`}>
                             {item.esportazione.stato_ftp}
                           </span>
+                          {item.esportazione.stato_ftp === 'BLOCCATO' && item.esportazione.ultimo_errore_ftp && (
+                            <span className="text-xs text-orange-700 max-w-[14rem] truncate" title={item.esportazione.ultimo_errore_ftp}>
+                              {item.esportazione.ultimo_errore_ftp}
+                            </span>
+                          )}
+                          {item.esportazione.stato_ftp === 'SENT' && ['ANOMALIA', 'ARCHIVIATO'].includes(item.stato) && (
+                            <span className="text-xs text-rose-700" title="Il tracciato e' gia' stato trasmesso all'ERP, ma l'ordine risulta ora in questo stato">
+                              ⚠ inviato, ordine {item.stato.toLowerCase()}
+                            </span>
+                          )}
                           {item.esportazione.is_riemissione && (
                             <span className="text-xs text-amber-700" title={`Riemissione di #${item.esportazione.riemessa_da_id}`}>
                               ↻ riemissione
@@ -514,7 +529,7 @@ const TracciatiPage = ({ currentUser, canEdit = false }) => {
                             </Button>
                           )}
                           {item.esportazione?.id &&
-                           ['PENDING', 'RETRY', 'FAILED'].includes(item.esportazione?.stato_ftp) && (
+                           ['PENDING', 'RETRY', 'FAILED', 'BLOCCATO'].includes(item.esportazione?.stato_ftp) && (
                             <Button
                               variant="ghost"
                               size="xs"

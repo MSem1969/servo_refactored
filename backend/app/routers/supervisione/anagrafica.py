@@ -13,6 +13,7 @@ from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 from ...database_pg import get_db, log_operation
+from ...utils.codes import is_codice_parafarmacia
 
 router = APIRouter(prefix="/anagrafica", tags=["Supervisione Anagrafica"])
 
@@ -186,7 +187,8 @@ async def get_dettaglio(id_supervisione: int) -> Dict[str, Any]:
             """, (piva,)).fetchall()
             suggerimenti.extend([{**dict(f), 'match_type': 'PIVA'} for f in farmacie])
 
-        if min_id and len(suggerimenti) < 5:
+        # Un codice parafarmacia (014706) non va proposto come la farmacia omonima (14706)
+        if min_id and not is_codice_parafarmacia(min_id) and len(suggerimenti) < 5:
             farmacie = db.execute("""
                 SELECT id_farmacia, min_id, partita_iva, ragione_sociale, citta, provincia
                 FROM anagrafica_farmacie

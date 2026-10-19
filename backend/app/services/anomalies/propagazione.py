@@ -19,6 +19,7 @@ from typing import Dict, List, Optional, Tuple
 from enum import Enum
 
 from ...database_pg import get_db, log_operation
+from ...utils.codes import codice_cliente_canonico
 
 
 class LivelloPropagazione(str, Enum):
@@ -81,10 +82,10 @@ def calcola_chiave_anomalia(anomalia: Dict) -> str:
         return f"AIC:{codice}:{desc}"
 
     elif codice.startswith('ERP-'):
-        # v12.0: Per ERP: MIN_ID normalizzato
+        # v12.0: Per ERP: MIN_ID in forma canonica, che distingue la
+        # parafarmacia 014706 dalla farmacia omonima 14706
         min_id = anomalia.get('codice_ministeriale') or anomalia.get('min_id', '')
-        min_id_norm = min_id.strip().lstrip('0') or '0' if min_id else ''
-        return f"ERP:{codice}:{min_id_norm}"
+        return f"ERP:{codice}:{codice_cliente_canonico(min_id)}"
 
     elif tipo == 'ESTRAZIONE' or codice.startswith('EXT-'):
         # Per ESTRAZIONE: vendor

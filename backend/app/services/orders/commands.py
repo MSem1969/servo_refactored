@@ -377,15 +377,16 @@ def archivia_ordine(id_testata: int, operatore: str) -> ArchiviazioneResult:
         WHERE id_testata = %s AND stato_riga NOT IN ('EVASO', 'ARCHIVIATO')
     """, (id_testata,)).fetchone()[0]
 
-    # Aggiorna stato ordine a ARCHIVIATO
+    # Aggiorna stato ordine a ARCHIVIATO.
+    # data_validazione/validato_da restano quelli della generazione tracciato:
+    # sovrascriverli faceva passare l'archiviazione per una validazione.
+    # Chi e quando ha archiviato e' nell'audit (log_modifica).
     stato_precedente = ordine['stato']
     db.execute("""
         UPDATE ORDINI_TESTATA
-        SET stato = 'ARCHIVIATO',
-            data_validazione = %s,
-            validato_da = %s
+        SET stato = 'ARCHIVIATO'
         WHERE id_testata = %s
-    """, (now, operatore, id_testata))
+    """, (id_testata,))
 
     # Audit trail ordine
     log_modifica(
@@ -517,11 +518,9 @@ def archivia_riga(id_testata: int, id_dettaglio: int, operatore: str) -> Archivi
             stato_ordine_precedente = ordine_row['stato']
             db.execute("""
                 UPDATE ORDINI_TESTATA
-                SET stato = 'EVASO',
-                    data_validazione = %s,
-                    validato_da = %s
+                SET stato = 'EVASO'
                 WHERE id_testata = %s
-            """, (now, operatore, id_testata))
+            """, (id_testata,))
 
             log_modifica(
                 entita='ORDINI_TESTATA',

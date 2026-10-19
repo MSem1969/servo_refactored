@@ -638,6 +638,13 @@ POST /api/v1/tracciati/ftp/reset/{id} # Reset per retry
 | SKIPPED | Vendor non mappato |
 | ALERT_SENT | Alert email inviato |
 | SUPERSEDED | Sostituita da una riemissione (vedi sezione Riemissione) |
+| BLOCCATO | Ordine archiviato o bloccato dopo la generazione: non trasmesso (motivo in `ultimo_errore_ftp`) |
+
+> **Il sender ricontrolla l'ordine prima di trasmettere (2026-10).** Fra generazione e
+> batch FTP l'ordine puo' finire in `ANOMALIA` o `ARCHIVIATO`: prima partiva comunque e
+> poi spariva da `/tracciati/ricerca`, che filtrava sullo stato ordine. Ora l'esportazione
+> va in `BLOCCATO` (migration `v20`) e si ritrasmette con **Invia** dopo aver risolto; la
+> ricerca elenca ogni ordine **con un'esportazione**, qualunque sia il suo stato.
 
 ### Tabelle Database
 
@@ -741,6 +748,20 @@ colonne DB sono **`sconto_N`**. `_insert_detail_row` accetta entrambe le grafie 
 > (`_crea_riga_output`, `_insert_detail_row`) e non solo dove viene scritto.
 > Una query di controllo per vendor (`count(*) FILTER (WHERE campo <> 0)`) rivela
 > in un secondo se un campo non arriva mai in fondo.
+
+### ⚠️ Trappola: farmacia 14706 e parafarmacia 014706 sono clienti diversi (2026-10)
+
+Tolti gli zeri iniziali i due codici coincidono, ma sono **due clienti** con P.IVA e
+deposito diversi (479 coppie in produzione). Le query `LTRIM(min_id,'0') = ... LIMIT 1`
+ne prendevano uno a caso: 188 dei 231 ERP-A01 erano falsi positivi, ordini bloccati e poi
+archiviati senza motivo (caso `0746002040`), e la rettifica automatica ERP avrebbe
+riscritto la P.IVA di entrambi.
+
+Il tipo si riconosce dalla **lunghezza**: parafarmacia = 6 caratteri (`codice_sito`),
+farmacia = 9 nell'anagrafica ministero e fino a 5 in `anagrafica_clienti` (0 eccezioni in
+prod). Per cercare un cliente usare **sempre** `utils/codes.py::filtro_min_id_cliente`,
+mai `LTRIM(min_id,'0')` nudo. Il TO_T resta **senza zeri** (`014706` → ` 14706`): e' il
+formato che l'ERP gestisce.
 
 ### ⚠️ Trappola: `modulo.py` e `modulo/` nella stessa directory
 

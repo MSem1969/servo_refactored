@@ -10,6 +10,7 @@ from typing import Dict, Any, List, Tuple, Optional
 from ...config import config
 from ...database_pg import get_db
 from ...utils import normalize_piva
+from ...utils.codes import filtro_min_id_cliente, is_codice_parafarmacia
 
 from .scoring import (
     FUZZY_AVAILABLE,
@@ -51,12 +52,12 @@ def lookup_cliente_by_piva(piva: str, min_id: str = None) -> Optional[Dict[str, 
 
     # Se abbiamo il MIN_ID (dal matching ministeriale), cerchiamo il record esatto
     if min_id:
-        min_id_norm = min_id.lstrip('0')
-        cliente = db.execute("""
+        filtro, params = filtro_min_id_cliente(min_id)
+        cliente = db.execute(f"""
             SELECT min_id, deposito_riferimento, ragione_sociale_1, codice_cliente
             FROM anagrafica_clienti
-            WHERE partita_iva = %s AND LTRIM(min_id, '0') = %s
-        """, (piva, min_id_norm)).fetchone()
+            WHERE partita_iva = %s AND {filtro}
+        """, [piva] + params).fetchone()
         if cliente and cliente.get('min_id'):
             return {
                 'min_id': cliente['min_id'],
@@ -191,40 +192,42 @@ def lookup_farmacia(data: Dict[str, Any]) -> Tuple[Optional[int], Optional[int],
     if min_id and len(min_id) >= 4:
         min_id_norm = min_id.lstrip('0')
 
-        farmacia = db.execute("""
-            SELECT id_farmacia, min_id, partita_iva, ragione_sociale
-            FROM ANAGRAFICA_FARMACIE
-            WHERE LTRIM(min_id, '0') = %s
-            AND attiva = TRUE
-        """, (min_id_norm,)).fetchone()
+        # Tolti gli zeri, farmacia 000014706 e parafarmacia 014706 coincidono:
+        # si cerca prima nell'elenco del tipo indicato dalla lunghezza del codice.
+        ricerche = [
+            ('FARMACIA', """
+                SELECT id_farmacia AS id, partita_iva
+                FROM ANAGRAFICA_FARMACIE
+                WHERE LTRIM(min_id, '0') = %s
+                AND attiva = TRUE
+            """),
+            ('PARAFARMACIA', """
+                SELECT id_parafarmacia AS id, partita_iva
+                FROM ANAGRAFICA_PARAFARMACIE
+                WHERE LTRIM(codice_sito, '0') = %s
+                AND attiva = TRUE
+            """),
+        ]
+        if is_codice_parafarmacia(min_id):
+            ricerche.reverse()
 
-        if farmacia:
+        for tipo, query in ricerche:
+            trovato = db.execute(query, (min_id_norm,)).fetchone()
+            if not trovato:
+                continue
+
+            id_farm = trovato['id'] if tipo == 'FARMACIA' else None
+            id_parafarm = trovato['id'] if tipo == 'PARAFARMACIA' else None
+
             # v8.2: Verifica coerenza P.IVA tra PDF e anagrafica
-            piva_anagrafica = normalize_piva(farmacia.get('partita_iva') or '')
+            piva_anagrafica = normalize_piva(trovato.get('partita_iva') or '')
 
             if piva and piva_anagrafica and piva != piva_anagrafica:
                 # P.IVA MISMATCH! Probabile subentro/cambio proprietà
                 # Score 50 per triggerare anomalia LKP-A04
-                return farmacia['id_farmacia'], None, 'MIN_ID_PIVA_MISMATCH', 'FARMACIA', 50
+                return id_farm, id_parafarm, 'MIN_ID_PIVA_MISMATCH', tipo, 50
 
-            return farmacia['id_farmacia'], None, 'MIN_ID', 'FARMACIA', 100
-
-        # Prova anche nelle parafarmacie (codice_sito)
-        parafarmacia = db.execute("""
-            SELECT id_parafarmacia, codice_sito, partita_iva
-            FROM ANAGRAFICA_PARAFARMACIE
-            WHERE LTRIM(codice_sito, '0') = %s
-            AND attiva = TRUE
-        """, (min_id_norm,)).fetchone()
-
-        if parafarmacia:
-            # v8.2: Verifica coerenza P.IVA anche per parafarmacie
-            piva_anagrafica = normalize_piva(parafarmacia.get('partita_iva') or '')
-
-            if piva and piva_anagrafica and piva != piva_anagrafica:
-                return None, parafarmacia['id_parafarmacia'], 'MIN_ID_PIVA_MISMATCH', 'PARAFARMACIA', 50
-
-            return None, parafarmacia['id_parafarmacia'], 'MIN_ID', 'PARAFARMACIA', 100
+            return id_farm, id_parafarm, 'MIN_ID', tipo, 100
 
     # =========================================================================
     # 1. LOOKUP PER P.IVA
