@@ -294,6 +294,19 @@ class ArchiviazioneResult:
         }
 
 
+# Motivazione obbligatoria per archiviare un ordine (2026-10)
+MOTIVO_ARCHIVIAZIONE_MIN = 3
+ERRORE_MOTIVO_ARCHIVIAZIONE = (
+    f"Indicare la motivazione dell'archiviazione (almeno {MOTIVO_ARCHIVIAZIONE_MIN} caratteri)."
+)
+
+
+def _motivo_archiviazione_valido(motivo: Optional[str]) -> Optional[str]:
+    """Motivazione ripulita dagli spazi superflui, o None se mancante o troppo corta."""
+    testo = ' '.join((motivo or '').split())
+    return testo if len(testo) >= MOTIVO_ARCHIVIAZIONE_MIN else None
+
+
 def archivia_anomalie_e_supervisioni(id_testata: int, operatore: str, motivo: str) -> int:
     """
     Archivia anomalie aperte e supervisioni pending di un ordine archiviato.
@@ -334,7 +347,7 @@ def archivia_anomalie_e_supervisioni(id_testata: int, operatore: str, motivo: st
     return len(anomalie) if anomalie else 0
 
 
-def archivia_ordine(id_testata: int, operatore: str) -> ArchiviazioneResult:
+def archivia_ordine(id_testata: int, operatore: str, motivo: str) -> ArchiviazioneResult:
     """
     Archivia un ordine impostando stato ARCHIVIATO.
 
@@ -349,7 +362,8 @@ def archivia_ordine(id_testata: int, operatore: str) -> ArchiviazioneResult:
 
     Args:
         id_testata: ID ordine
-        operatore: Nome operatore che archivia
+        operatore: Nome operatore che archivia (dall'utente autenticato)
+        motivo: Motivazione dell'archiviazione, obbligatoria (min. 3 caratteri)
 
     Returns:
         ArchiviazioneResult con dettagli operazione
@@ -371,22 +385,28 @@ def archivia_ordine(id_testata: int, operatore: str) -> ArchiviazioneResult:
     if ordine['stato'] == 'EVASO':
         return ArchiviazioneResult(success=False, error="Ordine già evaso, non archiviabile")
 
+    motivo = _motivo_archiviazione_valido(motivo)
+    if not motivo:
+        return ArchiviazioneResult(success=False, error=ERRORE_MOTIVO_ARCHIVIAZIONE)
+
     # Conta righe da archiviare
     righe_da_archiviare = db.execute("""
         SELECT COUNT(*) FROM ORDINI_DETTAGLIO
         WHERE id_testata = %s AND stato_riga NOT IN ('EVASO', 'ARCHIVIATO')
     """, (id_testata,)).fetchone()[0]
 
-    # Aggiorna stato ordine a ARCHIVIATO.
+    # Aggiorna stato ordine a ARCHIVIATO, con motivazione, autore e data.
     # data_validazione/validato_da restano quelli della generazione tracciato:
     # sovrascriverli faceva passare l'archiviazione per una validazione.
-    # Chi e quando ha archiviato e' nell'audit (log_modifica).
     stato_precedente = ordine['stato']
     db.execute("""
         UPDATE ORDINI_TESTATA
-        SET stato = 'ARCHIVIATO'
+        SET stato = 'ARCHIVIATO',
+            motivo_archiviazione = %s,
+            data_archiviazione = %s,
+            archiviato_da = %s
         WHERE id_testata = %s
-    """, (id_testata,))
+    """, (motivo, now, operatore, id_testata))
 
     # Audit trail ordine
     log_modifica(
@@ -413,7 +433,7 @@ def archivia_ordine(id_testata: int, operatore: str) -> ArchiviazioneResult:
 
     # v11.0: Archivia anomalie aperte e supervisioni pending dell'ordine
     num_anomalie = archivia_anomalie_e_supervisioni(
-        id_testata, operatore, 'Archiviata con ordine'
+        id_testata, operatore, f'Archiviata con ordine: {motivo}'
     )
 
     db.commit()
@@ -423,7 +443,8 @@ def archivia_ordine(id_testata: int, operatore: str) -> ArchiviazioneResult:
         'ARCHIVIA_ORDINE',
         'ORDINI_TESTATA',
         id_testata,
-        f"Ordine archiviato. Righe: {righe_da_archiviare}, Anomalie: {num_anomalie}. Operatore: {operatore}"
+        f"Ordine archiviato. Righe: {righe_da_archiviare}, Anomalie: {num_anomalie}. "
+        f"Operatore: {operatore}. Motivo: {motivo}"
     )
 
     return ArchiviazioneResult(
@@ -435,7 +456,8 @@ def archivia_ordine(id_testata: int, operatore: str) -> ArchiviazioneResult:
     )
 
 
-def archivia_riga(id_testata: int, id_dettaglio: int, operatore: str) -> ArchiviazioneResult:
+def archivia_riga(id_testata: int, id_dettaglio: int, operatore: str,
+                  motivo: Optional[str] = None) -> ArchiviazioneResult:
     """
     Archivia una singola riga impostando stato ARCHIVIATO.
 
@@ -449,12 +471,15 @@ def archivia_riga(id_testata: int, id_dettaglio: int, operatore: str) -> Archivi
     - EVASO: già processata completamente
     - ARCHIVIATO: già freezata
 
-    NOTA: Quando tutte le righe sono EVASO/ARCHIVIATO, l'ordine diventa EVASO.
+    ULTIMA RIGA ATTIVA: archiviarla archivia l'ordine (regola centrale di
+    _calcola_stato_ordine: ARCHIVIATO, o EVASO solo con bolla registrata).
+    In quel caso serve la motivazione, come per archivia_ordine.
 
     Args:
         id_testata: ID ordine
         id_dettaglio: ID riga
-        operatore: Nome operatore che archivia
+        operatore: Nome operatore che archivia (dall'utente autenticato)
+        motivo: Motivazione, obbligatoria solo se la riga e' l'ultima attiva
 
     Returns:
         ArchiviazioneResult con dettagli operazione
@@ -476,6 +501,34 @@ def archivia_riga(id_testata: int, id_dettaglio: int, operatore: str) -> Archivi
 
     if riga['stato_riga'] == 'EVASO':
         return ArchiviazioneResult(success=False, error="Riga già evasa, non archiviabile")
+
+    # Righe attive = righe non child non archiviate, come in _calcola_stato_ordine
+    altre_attive = db.execute("""
+        SELECT COUNT(*) FROM ORDINI_DETTAGLIO
+        WHERE id_testata = %s AND id_dettaglio <> %s
+          AND stato_riga <> 'ARCHIVIATO'
+          AND (is_child = FALSE OR is_child IS NULL)
+    """, (id_testata, id_dettaglio)).fetchone()[0]
+    is_child = db.execute("""
+        SELECT COALESCE(is_child, FALSE) AS is_child FROM ORDINI_DETTAGLIO WHERE id_dettaglio = %s
+    """, (id_dettaglio,)).fetchone()['is_child']
+    chiude_ordine = altre_attive == 0 and not is_child
+
+    ha_evasione = chiude_ordine and db.execute("""
+        SELECT EXISTS(SELECT 1 FROM esportazioni_dettaglio
+                      WHERE id_testata = %s AND data_evasione IS NOT NULL)
+    """, (id_testata,)).fetchone()[0]
+
+    # Senza bolla l'ordine diventa ARCHIVIATO: serve la motivazione
+    archivia_testata = chiude_ordine and not ha_evasione
+    if archivia_testata:
+        motivo = _motivo_archiviazione_valido(motivo)
+        if not motivo:
+            return ArchiviazioneResult(
+                success=False,
+                error="Questa e' l'ultima riga attiva: archiviandola si archivia "
+                      "l'ordine. " + ERRORE_MOTIVO_ARCHIVIAZIONE
+            )
 
     stato_precedente = riga['stato_riga']
 
@@ -501,44 +554,49 @@ def archivia_riga(id_testata: int, id_dettaglio: int, operatore: str) -> Archivi
         username_operatore=operatore
     )
 
-    # Verifica se tutte le righe sono EVASO o ARCHIVIATO -> ordine diventa EVASO
-    righe_attive = db.execute("""
-        SELECT COUNT(*) FROM ORDINI_DETTAGLIO
-        WHERE id_testata = %s AND stato_riga NOT IN ('EVASO', 'ARCHIVIATO')
-    """, (id_testata,)).fetchone()[0]
-
     ordine_completato = False
-    if righe_attive == 0:
-        # Tutte le righe sono EVASO o ARCHIVIATO → ordine EVASO (completato)
-        ordine_row = db.execute("""
+    if chiude_ordine:
+        stato_ordine_precedente = db.execute("""
             SELECT stato FROM ORDINI_TESTATA WHERE id_testata = %s
-        """, (id_testata,)).fetchone()
+        """, (id_testata,)).fetchone()['stato']
 
-        if ordine_row and ordine_row['stato'] != 'EVASO':
-            stato_ordine_precedente = ordine_row['stato']
+        if archivia_testata:
             db.execute("""
                 UPDATE ORDINI_TESTATA
-                SET stato = 'EVASO'
+                SET motivo_archiviazione = %s,
+                    data_archiviazione = %s,
+                    archiviato_da = %s
                 WHERE id_testata = %s
-            """, (id_testata,))
+            """, (motivo, now, operatore, id_testata))
 
+        # L'ordine non ha piu' righe attive: le sue anomalie e supervisioni non
+        # verranno mai piu' lavorate, vanno archiviate come in archivia_ordine.
+        archivia_anomalie_e_supervisioni(
+            id_testata, operatore,
+            f'Archiviata con ordine: {motivo}' if archivia_testata
+            else 'Archiviata: ordine senza righe attive'
+        )
+
+        # Stato dalla regola centrale: ARCHIVIATO, o EVASO solo con bolla.
+        # Prima qui si forzava sempre EVASO, anche per ordini mai evasi.
+        from .fulfillment import _aggiorna_contatori_ordine
+        _aggiorna_contatori_ordine(id_testata)
+
+        stato_ordine_nuovo = db.execute("""
+            SELECT stato FROM ORDINI_TESTATA WHERE id_testata = %s
+        """, (id_testata,)).fetchone()['stato']
+        if stato_ordine_nuovo != stato_ordine_precedente:
             log_modifica(
                 entita='ORDINI_TESTATA',
                 id_entita=id_testata,
                 campo_modificato='stato',
                 valore_precedente=stato_ordine_precedente,
-                valore_nuovo='EVASO',
-                fonte_modifica='AUTO_COMPLETAMENTO',
+                valore_nuovo=stato_ordine_nuovo,
+                fonte_modifica='ARCHIVIAZIONE_RIGA',
                 id_testata=id_testata,
                 username_operatore=operatore
             )
             ordine_completato = True
-
-        # L'ordine non ha piu' righe attive: le sue anomalie e supervisioni non
-        # verranno mai piu' lavorate, vanno archiviate come in archivia_ordine.
-        archivia_anomalie_e_supervisioni(
-            id_testata, operatore, 'Archiviata: ordine senza righe attive'
-        )
 
     db.commit()
 
@@ -548,6 +606,7 @@ def archivia_riga(id_testata: int, id_dettaglio: int, operatore: str) -> Archivi
         'ORDINI_DETTAGLIO',
         id_dettaglio,
         f"Riga archiviata. Ordine: {id_testata}. Operatore: {operatore}"
+        + (f". Ordine archiviato, motivo: {motivo}" if archivia_testata else "")
     )
 
     return ArchiviazioneResult(

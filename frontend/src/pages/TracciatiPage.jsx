@@ -476,6 +476,14 @@ const TracciatiPage = ({ currentUser, canEdit = false }) => {
                               ⚠ inviato, ordine {item.stato.toLowerCase()}
                             </span>
                           )}
+                          {item.stato === 'ARCHIVIATO' && item.motivo_archiviazione && (
+                            <span
+                              className="text-xs text-slate-500 max-w-[14rem] truncate"
+                              title={`Motivo archiviazione: ${item.motivo_archiviazione}${item.archiviato_da ? ` (${item.archiviato_da})` : ''}`}
+                            >
+                              Motivo: {item.motivo_archiviazione}
+                            </span>
+                          )}
                           {item.esportazione.is_riemissione && (
                             <span className="text-xs text-amber-700" title={`Riemissione di #${item.esportazione.riemessa_da_id}`}>
                               ↻ riemissione

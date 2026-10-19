@@ -6,7 +6,7 @@
 // =============================================================================
 
 import React, { useState } from 'react';
-import { Loading, ErrorBox, Button } from '../../common';
+import { Loading, ErrorBox, Button, MotivoArchiviazioneModal } from '../../common';
 import { AnomaliaDetailModal } from '../../components';
 import ModificaHeaderModal from '../../components/ModificaHeaderModal';
 import CorrezioneLisinoModal from '../Supervisione/CorrezioneLisinoModal';
@@ -72,6 +72,9 @@ export default function OrdineDetailPage({ ordineId, currentUser, onBack, onNavi
     confermaRigaCompleta,
     ripristinaRiga,
     archiviaRiga,
+    rigaUltimaDaArchiviare,
+    confermaArchiviazioneUltimaRiga,
+    annullaArchiviazioneUltimaRiga,
     ripristinaArchiviata,
     confermaTutto,
     ripristinaTutto,
@@ -262,6 +265,20 @@ export default function OrdineDetailPage({ ordineId, currentUser, onBack, onNavi
         setFormModifica={setFormModifica}
         onSave={salvaModificaRiga}
         onClose={chiudiModificaRiga}
+      />
+
+      {/* Ultima riga attiva: archiviarla archivia l'ordine, serve la motivazione */}
+      <MotivoArchiviazioneModal
+        isOpen={!!rigaUltimaDaArchiviare}
+        onClose={annullaArchiviazioneUltimaRiga}
+        onConfirm={confermaArchiviazioneUltimaRiga}
+        title="Archiviazione dell'ultima riga attiva"
+        confirmText="Archivia riga e ordine"
+        descrizione={rigaUltimaDaArchiviare && (
+          `La riga #${rigaUltimaDaArchiviare.n_riga} è l'ultima riga attiva: ` +
+          `archiviandola si archivia anche l'ordine.\n` +
+          `Prodotto: ${rigaUltimaDaArchiviare.descrizione || rigaUltimaDaArchiviare.descrizione_prodotto || '-'}`
+        )}
       />
 
       {showPdfModal && ordine?.pdf_file && (

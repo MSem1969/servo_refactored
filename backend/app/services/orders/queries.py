@@ -102,6 +102,19 @@ def get_ordini(
     rows = db.execute(query, params).fetchall()
     ordini = [dict(row) for row in rows]
 
+    # Motivazione dell'archiviazione: non e' nella vista V_ORDINI_COMPLETI,
+    # una sola query per gli archiviati della pagina
+    ids_archiviati = [o['id_testata'] for o in ordini if o.get('stato') == 'ARCHIVIATO']
+    if ids_archiviati:
+        archiviazioni = {r['id_testata']: dict(r) for r in db.execute("""
+            SELECT id_testata, motivo_archiviazione, data_archiviazione, archiviato_da
+            FROM ordini_testata WHERE id_testata = ANY(%s)
+        """, (ids_archiviati,)).fetchall()}
+        for o in ordini:
+            arch = archiviazioni.get(o['id_testata'], {})
+            for campo in ('motivo_archiviazione', 'data_archiviazione', 'archiviato_da'):
+                o[campo] = arch.get(campo)
+
     # Aggiungi deposito per ogni ordine
     # Priorità: 1) deposito manuale in testata, 2) anagrafica_clienti
     for ordine in ordini:
@@ -205,10 +218,14 @@ def get_ordine_detail(id_testata: int) -> Optional[Dict[str, Any]]:
 
     # Recupera deposito_riferimento raw da ordini_testata (per modal Modifica Header)
     testata_extra = db.execute("""
-        SELECT deposito_riferimento FROM ordini_testata WHERE id_testata = %s
+        SELECT deposito_riferimento, motivo_archiviazione, data_archiviazione, archiviato_da
+        FROM ordini_testata WHERE id_testata = %s
     """, (id_testata,)).fetchone()
     raw_deposito = testata_extra['deposito_riferimento'] if testata_extra else None
     result['deposito_riferimento'] = raw_deposito or ''
+    # Non sono nella vista V_ORDINI_COMPLETI: letti da ordini_testata
+    for campo in ('motivo_archiviazione', 'data_archiviazione', 'archiviato_da'):
+        result[campo] = testata_extra[campo] if testata_extra else None
 
     # Recupera deposito: priorità al valore manuale, poi anagrafica_clienti
     # 1. Prima controlla deposito_riferimento assegnato manualmente

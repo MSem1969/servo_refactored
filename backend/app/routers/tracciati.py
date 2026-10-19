@@ -159,6 +159,8 @@ async def ricerca_tracciati(
                 e.ultimo_errore_ftp,
                 e.is_riemissione,
                 e.riemessa_da_id,
+                t.motivo_archiviazione,
+                t.archiviato_da,
                 COALESCE(e.data_generazione, t.data_validazione) AS sort_date,
                 (SELECT COUNT(*) FROM ordini_dettaglio d WHERE d.id_testata = t.id_testata AND (d.is_child = FALSE OR d.is_child IS NULL)) as num_righe,
                 t.difarm
@@ -234,6 +236,8 @@ async def ricerca_tracciati(
                 },
                 "num_righe": r["num_righe"],
                 "validato_da": r["validato_da"],
+                "motivo_archiviazione": r["motivo_archiviazione"],
+                "archiviato_da": r["archiviato_da"],
                 "difarm": r["difarm"] or False
             })
 

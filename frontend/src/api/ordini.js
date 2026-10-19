@@ -72,11 +72,13 @@ export const ordiniApi = {
     }).then(r => r.data),
 
   // Archiviazione
-  archiviaOrdine: (idTestata, operatore = "admin") =>
-    api.post(`/ordini/${idTestata}/archivia?operatore=${encodeURIComponent(operatore)}`).then(r => r.data),
+  // L'operatore e' l'utente autenticato (lato server). La motivazione e'
+  // obbligatoria per l'ordine e per l'ultima riga attiva (che archivia l'ordine).
+  archiviaOrdine: (idTestata, motivo) =>
+    api.post(`/ordini/${idTestata}/archivia`, { motivo }).then(r => r.data),
 
-  archiviaRiga: (idTestata, idDettaglio, operatore = "admin") =>
-    api.post(`/ordini/${idTestata}/righe/${idDettaglio}/archivia?operatore=${encodeURIComponent(operatore)}`).then(r => r.data),
+  archiviaRiga: (idTestata, idDettaglio, motivo = null) =>
+    api.post(`/ordini/${idTestata}/righe/${idDettaglio}/archivia`, { motivo }).then(r => r.data),
 
   // Ripristino
   ripristinaRiga: (idTestata, idDettaglio, operatore) =>

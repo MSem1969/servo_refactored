@@ -14,6 +14,7 @@ export { default as PdfViewerButton } from './PdfViewerButton'; // v11.4
 
 // Modal (v11.0: both named and default export)
 export { default as ModalBase, ModalBase as Modal } from './ModalBase';
+export { default as MotivoArchiviazioneModal } from './MotivoArchiviazioneModal';
 
 // Table
 export { default as Table, TableCell } from './Table';

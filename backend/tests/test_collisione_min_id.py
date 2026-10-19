@@ -324,7 +324,7 @@ class TestArchiviazioneConservaValidazione:
         from app.services.orders.commands import archivia_ordine
         id_t = _crea_ordine(db_tx, 'TEST_ARCH_VAL', 'ESPORTATO')
 
-        assert archivia_ordine(id_t, 'chi_archivia').success
+        assert archivia_ordine(id_t, 'chi_archivia', 'cliente chiuso').success
 
         o = db_tx.execute("SELECT stato, data_validazione, validato_da FROM ordini_testata "
                           "WHERE id_testata = %s", (id_t,)).fetchone()

@@ -102,6 +102,16 @@ export default function OrdineHeader({ ordine, onBack, onShowPdf, onEditHeader, 
         </div>
       </div>
 
+      {ordine.stato === 'ARCHIVIATO' && ordine.motivo_archiviazione && (
+        <div className="mb-4 px-3 py-2 bg-slate-100 border border-slate-200 rounded-lg text-sm text-slate-700">
+          <span className="font-medium">Motivo archiviazione:</span> {ordine.motivo_archiviazione}
+          <span className="text-slate-500">
+            {ordine.archiviato_da && ` — ${ordine.archiviato_da}`}
+            {ordine.data_archiviazione && `, ${formatDataItaliana(ordine.data_archiviazione)}`}
+          </span>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm mb-3">
         <div>
           <span className="text-slate-500">Vendor:</span>

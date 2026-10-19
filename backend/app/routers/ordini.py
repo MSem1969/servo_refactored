@@ -1406,10 +1406,16 @@ async def registra_evasione_riga(
 # - EVASO = ordine completato (tutte righe EVASO o ARCHIVIATO)
 # =============================================================================
 
+class ArchiviazioneRequest(BaseModel):
+    """Motivazione dell'archiviazione (obbligatoria per l'ordine, min. 3 caratteri)."""
+    motivo: Optional[str] = None
+
+
 @router.post("/{id_testata}/archivia")
 async def archivia_ordine(
     id_testata: int,
-    operatore: str = Query(default="admin")
+    request: ArchiviazioneRequest,
+    current_user: UtenteResponse = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """
     Archivia un ordine impostando stato ARCHIVIATO.
@@ -1421,13 +1427,12 @@ async def archivia_ordine(
 
     NOTA: Diverso da EVASO che indica completamento naturale del flusso.
 
-    Args:
-        id_testata: ID ordine
-        operatore: Nome operatore che archivia
+    L'operatore e' sempre l'utente autenticato: prima arrivava dal client con
+    default "admin", e quasi tutte le archiviazioni risultavano di admin.
     """
     try:
         # v11.0: Usa service layer invece di logica diretta
-        result = service_archivia_ordine(id_testata, operatore)
+        result = service_archivia_ordine(id_testata, current_user.username, request.motivo)
 
         if not result.success:
             status_code = 404 if 'non trovato' in result.error.lower() else 400
@@ -1449,7 +1454,8 @@ async def archivia_ordine(
 async def archivia_riga(
     id_testata: int,
     id_dettaglio: int,
-    operatore: str = Query(default="admin")
+    request: ArchiviazioneRequest = ArchiviazioneRequest(),
+    current_user: UtenteResponse = Depends(get_current_user)
 ) -> Dict[str, Any]:
     """
     Archivia una singola riga impostando stato ARCHIVIATO.
@@ -1464,16 +1470,14 @@ async def archivia_riga(
     - EVASO: già processata completamente
     - ARCHIVIATO: già freezata
 
-    NOTA: Quando tutte le righe sono EVASO/ARCHIVIATO, l'ordine diventa EVASO.
-
-    Args:
-        id_testata: ID ordine
-        id_dettaglio: ID riga
-        operatore: Nome operatore che archivia
+    NOTA: archiviare l'ultima riga attiva archivia l'ordine (ARCHIVIATO, o
+    EVASO solo con bolla registrata) e richiede la motivazione.
     """
     try:
         # v11.0: Usa service layer invece di logica diretta
-        result = service_archivia_riga(id_testata, id_dettaglio, operatore)
+        result = service_archivia_riga(
+            id_testata, id_dettaglio, current_user.username, request.motivo
+        )
 
         if not result.success:
             status_code = 404 if 'non trovata' in result.error.lower() else 400
