@@ -296,15 +296,19 @@ def _valida_coerenza_erp_post_lookup(id_testata: int, operatore: str = None):
         return  # Senza MIN_ID non possiamo validare
 
     # Importa qui per evitare circular imports
-    from ..supervision.erp import valida_coerenza_erp, valuta_anomalia_erp
+    from ..supervision.erp import (
+        tipo_cliente_ordine, valida_coerenza_erp, valuta_anomalia_erp,
+    )
 
-    validazione = valida_coerenza_erp(min_id, partita_iva)
+    # Tipo dal collegamento al Ministero, non dalla lunghezza del codice estratto
+    is_parafarmacia = tipo_cliente_ordine(id_testata)
+    validazione = valida_coerenza_erp(min_id, partita_iva, is_parafarmacia)
 
     if validazione['valido']:
         return  # Tutto OK
 
     # Verifica se esiste pattern ordinario per auto-correzione
-    ml_result = valuta_anomalia_erp(id_testata, min_id, partita_iva)
+    ml_result = valuta_anomalia_erp(id_testata, min_id, partita_iva, is_parafarmacia)
     if ml_result['auto_risolto']:
         return  # Auto-corretto da ML
 
@@ -343,6 +347,7 @@ def _valida_coerenza_erp_post_lookup(id_testata: int, operatore: str = None):
             min_id=min_id,
             partita_iva_tracciato=partita_iva,
             partita_iva_erp=validazione.get('piva_erp'),
+            is_parafarmacia=is_parafarmacia,
         )
 
         # Blocca ordine

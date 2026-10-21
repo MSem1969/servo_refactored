@@ -62,7 +62,15 @@ def valida_campi_tracciato(ordine: Dict[str, Any], dettagli: List[Dict]) -> Dict
 
     # v12.0: Validazione coerenza ERP - MIN_ID + P.IVA vs anagrafica_clienti
     if min_id.strip() and partita_iva.strip():
-        erp_validation = _valida_coerenza_erp_export(min_id.strip(), partita_iva.strip())
+        # Tipo dal collegamento al Ministero: il codice puo' non dirlo
+        if ordine.get('id_farmacia_lookup'):
+            is_parafarmacia = False
+        elif ordine.get('id_parafarmacia_lookup'):
+            is_parafarmacia = True
+        else:
+            is_parafarmacia = None
+        erp_validation = _valida_coerenza_erp_export(
+            min_id.strip(), partita_iva.strip(), is_parafarmacia)
         if erp_validation:
             errors.append(erp_validation)
 
@@ -128,7 +136,8 @@ def valida_campi_tracciato(ordine: Dict[str, Any], dettagli: List[Dict]) -> Dict
     }
 
 
-def _valida_coerenza_erp_export(min_id: str, partita_iva: str) -> str:
+def _valida_coerenza_erp_export(min_id: str, partita_iva: str,
+                                is_parafarmacia: bool = None) -> str:
     """
     v12.0: Validazione pre-export - verifica che MIN_ID + P.IVA corrispondano
     in anagrafica_clienti.
@@ -139,7 +148,7 @@ def _valida_coerenza_erp_export(min_id: str, partita_iva: str) -> str:
     try:
         from ..supervision.erp import valida_coerenza_erp
 
-        result = valida_coerenza_erp(min_id, partita_iva)
+        result = valida_coerenza_erp(min_id, partita_iva, is_parafarmacia)
 
         if not result['valido']:
             codice = result['codice_anomalia']

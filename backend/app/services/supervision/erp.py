@@ -7,7 +7,7 @@
 # =============================================================================
 
 import hashlib
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 
 from ...database_pg import get_db, log_operation
 from ...utils.codes import (
@@ -16,16 +16,17 @@ from ...utils.codes import (
 from .constants import SOGLIA_PROMOZIONE
 
 
-def calcola_pattern_signature_erp(min_id: str) -> str:
+def calcola_pattern_signature_erp(min_id: str, is_parafarmacia: bool = None) -> str:
     """
     Calcola signature univoca per pattern ERP.
 
     Farmacia: "ERP|14706" (forma storica, invariata per non perdere i pattern
     gia' appresi). Parafarmacia: "ERP|P|014706", distinta dalla farmacia
     omonima: con la stessa firma, le correzioni approvate su una venivano
-    applicate in automatico agli ordini dell'altra.
+    applicate in automatico agli ordini dell'altra. Il tipo, se noto
+    dall'ordine, vince sulla lunghezza del codice.
     """
-    canonico = codice_cliente_canonico(min_id) or '0'
+    canonico = codice_cliente_canonico(min_id, is_parafarmacia) or '0'
     if is_codice_parafarmacia(canonico):
         raw = f"ERP|P|{canonico}"
     else:
@@ -33,12 +34,84 @@ def calcola_pattern_signature_erp(min_id: str) -> str:
     return hashlib.md5(raw.encode()).hexdigest()[:16]
 
 
-def valida_coerenza_erp(min_id: str, partita_iva: str) -> Dict[str, Any]:
+def tipo_cliente_ordine(id_testata: int) -> Optional[bool]:
+    """
+    True se l'ordine e' collegato a una parafarmacia del Ministero, False se a
+    una farmacia, None se non e' collegato.
+
+    E' il tipo affidabile dell'ordine: il codice estratto dal PDF puo' arrivare
+    senza zeri (parafarmacia 015280 scritta 15280) e la lunghezza mentirebbe.
+    """
+    if not id_testata:
+        return None
+    ordine = get_db().execute("""
+        SELECT id_farmacia_lookup, id_parafarmacia_lookup
+        FROM ordini_testata WHERE id_testata = %s
+    """, (id_testata,)).fetchone()
+    if not ordine:
+        return None
+    if ordine['id_farmacia_lookup']:
+        return False
+    if ordine['id_parafarmacia_lookup']:
+        return True
+    return None
+
+
+def _clienti_erp(min_id: str, is_parafarmacia: bool = None) -> List[Dict[str, Any]]:
+    """Clienti di anagrafica_clienti con quel codice e del tipo indicato."""
+    filtro, params = filtro_min_id_cliente(min_id, is_parafarmacia)
+    return get_db().execute(f"""
+        SELECT partita_iva, min_id, ragione_sociale_1, codice_cliente, farmacia_categoria
+        FROM anagrafica_clienti
+        WHERE {filtro}
+        ORDER BY id_cliente
+    """, params).fetchall()
+
+
+def verifica_piva_del_tipo(min_id: str, partita_iva: str,
+                           is_parafarmacia: bool = None) -> Optional[str]:
+    """
+    Controlla che una P.IVA "corretta" appartenga, nell'anagrafica ERP, a un
+    cliente con lo stesso codice e dello stesso tipo dell'ordine.
+
+    E' il blocco che impedisce di imparare la P.IVA sbagliata: prima del
+    2026-10 gli ERP-A01 delle farmacie proponevano la P.IVA della parafarmacia
+    omonima, gli operatori la approvavano e dopo 5 approvazioni il pattern la
+    applicava da solo ai nuovi ordini e la scriveva sull'anagrafica (caso
+    farmacia 15280 / parafarmacia 015280).
+
+    Returns:
+        None se la P.IVA e' accettabile, altrimenti il motivo del rifiuto.
+    """
+    piva = (partita_iva or '').strip()
+    if is_parafarmacia is None:
+        is_parafarmacia = is_codice_parafarmacia(codice_cliente_canonico(min_id))
+    if any((c['partita_iva'] or '').strip() == piva
+           for c in _clienti_erp(min_id, is_parafarmacia)):
+        return None
+
+    tipo = 'parafarmacia' if is_parafarmacia else 'farmacia'
+    codice = codice_cliente_canonico(min_id, is_parafarmacia)
+    altro = next((c for c in _clienti_erp(min_id, not is_parafarmacia)
+                  if (c['partita_iva'] or '').strip() == piva), None)
+    if altro:
+        return (f"La P.IVA {piva} e' della {'farmacia' if is_parafarmacia else 'parafarmacia'} "
+                f"{(altro['min_id'] or '').strip()} ({altro['ragione_sociale_1'] or ''}), "
+                f"non della {tipo} {codice} dell'ordine.")
+    return (f"La P.IVA {piva} non appartiene a nessuna {tipo} {codice} "
+            "nell'anagrafica clienti ERP: il tracciato verrebbe comunque scartato. "
+            "Verificare il cliente nel gestionale e reimportare l'anagrafica.")
+
+
+def valida_coerenza_erp(min_id: str, partita_iva: str,
+                        is_parafarmacia: bool = None) -> Dict[str, Any]:
     """
     Valida la coppia MIN_ID + P.IVA contro anagrafica_clienti.
 
     Confronta solo i clienti del tipo giusto (farmacia o parafarmacia, vedi
     utils/codes.py): farmacia 14706 e parafarmacia 014706 sono clienti diversi.
+    Il tipo e' `is_parafarmacia` se noto dall'ordine (tipo_cliente_ordine),
+    altrimenti la lunghezza del codice.
     Lo stesso codice puo' comparire su piu' righe dello stesso tipo (subentri,
     codici cliente multipli): la coppia e' valida se ALMENO UNA ha la P.IVA
     dell'ordine.
@@ -56,18 +129,11 @@ def valida_coerenza_erp(min_id: str, partita_iva: str) -> Dict[str, Any]:
         return {'valido': True, 'codice_anomalia': None, 'messaggio': 'MIN_ID vuoto, skip validazione',
                 'piva_erp': None, 'min_id_norm': ''}
 
-    db = get_db()
-    min_id_norm = codice_cliente_canonico(min_id)
+    min_id_norm = codice_cliente_canonico(min_id, is_parafarmacia)
     piva_norm = (partita_iva or '').strip()
     tipo = 'parafarmacia' if is_codice_parafarmacia(min_id_norm) else 'farmacia'
 
-    filtro, params = filtro_min_id_cliente(min_id)
-    clienti = db.execute(f"""
-        SELECT partita_iva, min_id, ragione_sociale_1, codice_cliente
-        FROM anagrafica_clienti
-        WHERE {filtro}
-        ORDER BY id_cliente
-    """, params).fetchall()
+    clienti = _clienti_erp(min_id, is_parafarmacia)
 
     if not clienti:
         return {
@@ -116,6 +182,7 @@ def crea_supervisione_erp(
     min_id: str,
     partita_iva_tracciato: str,
     partita_iva_erp: str = None,
+    is_parafarmacia: bool = None,
 ) -> int:
     """
     Crea richiesta supervisione ERP per mismatch P.IVA.
@@ -125,9 +192,11 @@ def crea_supervisione_erp(
     """
     db = get_db()
 
-    pattern_sig = calcola_pattern_signature_erp(min_id)
+    if is_parafarmacia is None:
+        is_parafarmacia = tipo_cliente_ordine(id_testata)
+    pattern_sig = calcola_pattern_signature_erp(min_id, is_parafarmacia)
     # Forma canonica: la parafarmacia resta a 6 cifre, altrimenti il tipo si perde
-    min_id_norm = codice_cliente_canonico(min_id) or '0'
+    min_id_norm = codice_cliente_canonico(min_id, is_parafarmacia) or '0'
 
     # Inserisci richiesta supervisione
     cursor = db.execute("""
@@ -213,7 +282,6 @@ def approva_supervisione_erp(
         return {'success': False, 'error': f'Supervisione già in stato {sup["stato"]}'}
 
     id_testata = sup['id_testata']
-    pattern_sig = sup['pattern_signature']
     piva_corretta = partita_iva_corretta.strip()
 
     # Le supervisioni create prima del 2026-10 salvano il MIN_ID senza zeri,
@@ -225,6 +293,19 @@ def approva_supervisione_erp(
     min_id = (min_id_corretto
               or (ordine['codice_ministeriale_estratto'] if ordine else None)
               or sup['min_id'])
+
+    # La P.IVA approvata diventa il pattern che corregge da solo gli ordini
+    # successivi: deve essere quella di un cliente ERP dello stesso tipo.
+    is_parafarmacia = tipo_cliente_ordine(id_testata)
+    rifiuto = verifica_piva_del_tipo(min_id, piva_corretta, is_parafarmacia)
+    if rifiuto:
+        return {'success': False, 'error': rifiuto}
+
+    # Firma ricalcolata col tipo dell'ordine: quelle salvate prima del 2026-10
+    # mettevano la parafarmacia nel pattern della farmacia omonima.
+    pattern_sig = calcola_pattern_signature_erp(min_id, is_parafarmacia)
+    _assicura_pattern_erp_esistente(
+        pattern_sig, codice_cliente_canonico(min_id, is_parafarmacia) or '0')
 
     # 1. Aggiorna supervisione
     db.execute("""
@@ -268,7 +349,7 @@ def approva_supervisione_erp(
 
     # 4. Incrementa pattern ML e verifica soglia
     rettifica = _registra_approvazione_pattern_erp(
-        pattern_sig, operatore, piva_corretta, min_id
+        pattern_sig, operatore, piva_corretta, min_id, is_parafarmacia
     )
 
     # 5. Sblocca ordine
@@ -291,6 +372,7 @@ def _registra_approvazione_pattern_erp(
     operatore: str,
     partita_iva_corretta: str,
     min_id: str,
+    is_parafarmacia: bool = None,
 ) -> Dict[str, Any]:
     """
     Registra approvazione pattern ERP e verifica soglia per rettifica anagrafica.
@@ -331,7 +413,7 @@ def _registra_approvazione_pattern_erp(
 
         # Rettifica anagrafica_clienti
         rettifica_eseguita = _rettifica_anagrafica_clienti(
-            min_id, partita_iva_corretta, operatore, count
+            min_id, partita_iva_corretta, operatore, count, is_parafarmacia
         )
 
         if rettifica_eseguita:
@@ -353,6 +435,7 @@ def _rettifica_anagrafica_clienti(
     partita_iva_corretta: str,
     operatore: str,
     count_approvazioni: int,
+    is_parafarmacia: bool = None,
 ) -> bool:
     """
     Rettifica P.IVA in anagrafica_clienti per un MIN_ID.
@@ -362,10 +445,10 @@ def _rettifica_anagrafica_clienti(
         True se rettifica eseguita
     """
     db = get_db()
-    min_id_norm = codice_cliente_canonico(min_id) or '0'
+    min_id_norm = codice_cliente_canonico(min_id, is_parafarmacia) or '0'
     # Solo i clienti del tipo giusto: con LTRIM(min_id) la rettifica riscriveva
     # anche la P.IVA della farmacia/parafarmacia omonima.
-    filtro, params = filtro_min_id_cliente(min_id)
+    filtro, params = filtro_min_id_cliente(min_id, is_parafarmacia)
 
     # Verifica che la rettifica non sia già stata fatta
     cliente = db.execute(f"""
@@ -415,7 +498,8 @@ def _rettifica_anagrafica_clienti(
     return True
 
 
-def valuta_anomalia_erp(id_testata: int, min_id: str, partita_iva: str) -> Dict[str, Any]:
+def valuta_anomalia_erp(id_testata: int, min_id: str, partita_iva: str,
+                        is_parafarmacia: bool = None) -> Dict[str, Any]:
     """
     Valuta se un'anomalia ERP può essere risolta automaticamente
     (pattern già promosso a ordinario).
@@ -428,7 +512,9 @@ def valuta_anomalia_erp(id_testata: int, min_id: str, partita_iva: str) -> Dict[
         }
     """
     db = get_db()
-    pattern_sig = calcola_pattern_signature_erp(min_id)
+    if is_parafarmacia is None:
+        is_parafarmacia = tipo_cliente_ordine(id_testata)
+    pattern_sig = calcola_pattern_signature_erp(min_id, is_parafarmacia)
 
     # Cerca pattern ordinario
     criterio = db.execute("""
@@ -445,6 +531,20 @@ def valuta_anomalia_erp(id_testata: int, min_id: str, partita_iva: str) -> Dict[
         }
 
     piva_corretta = criterio['partita_iva_corretta']
+
+    # Mai applicare una P.IVA che non e' di un cliente ERP dello stesso tipo
+    # (pattern appreso da approvazioni sbagliate, o anagrafica cambiata).
+    rifiuto = verifica_piva_del_tipo(min_id, piva_corretta, is_parafarmacia)
+    if rifiuto:
+        log_operation(
+            'AUTO_CORREZIONE_ERP_SKIP', 'ORDINI_TESTATA', id_testata,
+            f"Pattern {pattern_sig} non applicato: {rifiuto}"
+        )
+        return {
+            'auto_risolto': False,
+            'partita_iva_corretta': None,
+            'pattern_sig': pattern_sig,
+        }
 
     # Auto-correggi P.IVA sull'ordine
     db.execute("""

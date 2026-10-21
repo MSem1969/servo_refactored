@@ -66,7 +66,8 @@ class TestCodiciFarmaciaParafarmacia:
         sql_f, par_f = filtro_min_id_cliente('000014706')
         sql_p, par_p = filtro_min_id_cliente('014706')
         assert par_f == par_p == ['14706']          # stessa chiave...
-        assert '<= 5' in sql_f and '= 6' in sql_p   # ...ma tipi diversi
+        assert "NOT IN ('', '17')" in sql_f         # ...ma tipi diversi (categoria ERP)
+        assert "= '17'" in sql_p
         assert sql_f != sql_p
 
 

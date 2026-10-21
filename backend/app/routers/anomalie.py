@@ -577,26 +577,41 @@ async def dettaglio_anomalia(id_anomalia: int) -> Dict[str, Any]:
 
                 erp_data = dict(sup_erp) if sup_erp else {}
 
-                # Dati anagrafica_clienti per contesto
+                # Dati anagrafica_clienti ricalcolati ora, col tipo dell'ordine:
+                # la P.IVA ERP salvata alla creazione della supervisione puo'
+                # essere quella della parafarmacia omonima (codice pre 2026-10),
+                # e la UI la proponeva come "P.IVA corretta".
+                pattern_sig = sup_erp['pattern_signature'] if sup_erp else None
                 if ordine_data and ordine_data.get('codice_ministeriale'):
-                    filtro, params = filtro_min_id_cliente(ordine_data['codice_ministeriale'])
+                    from ..services.supervision.erp import (
+                        calcola_pattern_signature_erp, tipo_cliente_ordine, valida_coerenza_erp,
+                    )
+                    codice = ordine_data['codice_ministeriale']
+                    is_parafarmacia = tipo_cliente_ordine(anomalia_dict['id_testata'])
+                    attuale = valida_coerenza_erp(
+                        codice, ordine_data.get('partita_iva') or '', is_parafarmacia)
+                    erp_data['partita_iva_erp'] = attuale['piva_erp']
+                    erp_data['ora_coerente'] = attuale['valido']
+                    pattern_sig = calcola_pattern_signature_erp(codice, is_parafarmacia)
+
+                    filtro, params = filtro_min_id_cliente(codice, is_parafarmacia)
                     cliente = db.execute(f"""
                         SELECT partita_iva, ragione_sociale_1, codice_cliente, deposito_riferimento
                         FROM anagrafica_clienti
                         WHERE {filtro}
                         ORDER BY (partita_iva = %s) DESC, id_cliente
                         LIMIT 1
-                    """, params + [(ordine_data.get('partita_iva') or '').strip()]).fetchone()
+                    """, params + [attuale['piva_erp'] or '']).fetchone()
                     if cliente:
                         erp_data['cliente_erp'] = dict(cliente)
 
                 # Contatore pattern per mostrare progresso verso rettifica
-                if sup_erp and sup_erp['pattern_signature']:
+                if pattern_sig:
                     criterio = db.execute("""
                         SELECT count_approvazioni, is_ordinario, data_rettifica_anagrafica
                         FROM criteri_ordinari_erp
                         WHERE pattern_signature = %s
-                    """, (sup_erp['pattern_signature'],)).fetchone()
+                    """, (pattern_sig,)).fetchone()
                     if criterio:
                         erp_data['pattern_info'] = dict(criterio)
             except Exception:

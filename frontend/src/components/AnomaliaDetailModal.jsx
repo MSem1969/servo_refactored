@@ -1673,14 +1673,17 @@ function ErpSection({ anomalia, ordineData, erpData, operatore, onSuccess }) {
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
 
-  // Pre-fill con P.IVA ERP (suggerimento)
+  // Pre-fill con P.IVA ERP (suggerimento), ricalcolata dal backend col tipo
+  // dell'ordine. Se la coppia e' ora coerente, la P.IVA giusta e' quella del tracciato.
   useEffect(() => {
-    if (erpData?.partita_iva_erp) {
+    if (erpData?.ora_coerente && (erpData?.partita_iva_tracciato || ordineData?.partita_iva)) {
+      setPivaCorretta(erpData.partita_iva_tracciato || ordineData.partita_iva);
+    } else if (erpData?.partita_iva_erp) {
       setPivaCorretta(erpData.partita_iva_erp);
     } else if (erpData?.cliente_erp?.partita_iva) {
       setPivaCorretta(erpData.cliente_erp.partita_iva);
     }
-  }, [erpData]);
+  }, [erpData, ordineData]);
 
   const handleCorreggi = async () => {
     if (!pivaCorretta || pivaCorretta.length < 11) {
@@ -1758,6 +1761,13 @@ function ErpSection({ anomalia, ordineData, erpData, operatore, onSuccess }) {
           </div>
         )}
       </div>
+
+      {erpData?.ora_coerente && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-2 mb-4 text-xs text-green-800">
+          Con l'anagrafica clienti attuale la P.IVA del tracciato è corretta per questo cliente:
+          confermarla, senza sostituirla.
+        </div>
+      )}
 
       {/* Progresso verso rettifica automatica */}
       {patternInfo && (

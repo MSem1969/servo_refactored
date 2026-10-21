@@ -110,10 +110,16 @@ def valida_e_genera_tracciato(
     ordine_dict['numero_ordine'] = ordine_dict.get('numero_ordine') or ordine_dict.get('numero_ordine_vendor') or ''
 
     # v11.2: Recupera deposito_riferimento per codice vendor nel tracciato
+    # 2026-10: con il collegamento al Ministero, che dice se il cliente e'
+    # farmacia o parafarmacia per il controllo ERP (non sono nella vista)
     deposito_row = db.execute("""
-        SELECT deposito_riferimento FROM ordini_testata WHERE id_testata = %s
+        SELECT deposito_riferimento, id_farmacia_lookup, id_parafarmacia_lookup
+        FROM ordini_testata WHERE id_testata = %s
     """, (id_testata,)).fetchone()
     ordine_dict['deposito_riferimento'] = deposito_row['deposito_riferimento'] if deposito_row else None
+    if deposito_row:
+        ordine_dict['id_farmacia_lookup'] = deposito_row['id_farmacia_lookup']
+        ordine_dict['id_parafarmacia_lookup'] = deposito_row['id_parafarmacia_lookup']
 
     # 1a. Verifica stato ordine - blocca generazione per stati ANOMALIA
     stato_ordine = ordine_dict.get('stato', 'ESTRATTO')
