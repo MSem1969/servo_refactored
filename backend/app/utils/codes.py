@@ -141,11 +141,18 @@ def is_valid_aic(aic: str) -> bool:
 # =============================================================================
 # Tolti gli zeri iniziali, il codice di una farmacia e quello di una
 # parafarmacia possono coincidere (farmacia 14706 / parafarmacia 014706): sono
-# due clienti diversi, con P.IVA e deposito diversi. Il tipo si riconosce dalla
-# lunghezza del codice: la parafarmacia ha sempre 6 cifre (codice_sito), la
-# farmacia ne ha 9 nell'anagrafica ministeriale e fino a 5 in anagrafica_clienti.
+# due clienti diversi, con P.IVA e deposito diversi.
+#
+# Nell'anagrafica ministeriale il tipo si riconosce dalla lunghezza: la
+# parafarmacia ha sempre 6 cifre (codice_sito), la farmacia 9 (min_id).
+# In anagrafica_clienti (copia dell'ERP) la lunghezza NON e' affidabile: in
+# produzione 312 parafarmacie hanno il codice senza zero iniziale (015280 ->
+# 15280), identico a quello della farmacia omonima. Li' il tipo lo dice la
+# categoria ERP (AGCATE -> farmacia_categoria): 17 = parafarmacia, ogni altra
+# = farmacia; la lunghezza vale solo per i clienti senza categoria.
 
 LUNGHEZZA_CODICE_PARAFARMACIA = 6
+CATEGORIA_PARAFARMACIA = '17'
 
 
 def is_codice_parafarmacia(codice: str) -> bool:
@@ -179,12 +186,23 @@ def filtro_min_id_cliente(codice: str, is_parafarmacia: bool = None,
     Sostituisce `LTRIM(min_id, '0') = %s`, che metteva insieme farmacia e
     parafarmacia omonime e ne restituiva una a caso.
 
+    Il tipo cercato e' `is_parafarmacia` quando il chiamante lo conosce (ordine
+    collegato a una farmacia o parafarmacia del Ministero), altrimenti la
+    lunghezza del codice passato. Il tipo del cliente e' la sua categoria ERP
+    (farmacia_categoria); la lunghezza solo se la categoria manca. `colonna`
+    puo' avere l'alias della tabella (`c.min_id`), riusato per la categoria.
+
     Returns:
         (frammento SQL con un placeholder %s, lista parametri)
     """
     canonico = codice_cliente_canonico(codice, is_parafarmacia)
-    lunghezza = ("= %d" % LUNGHEZZA_CODICE_PARAFARMACIA
-                 if is_codice_parafarmacia(canonico) else "<= 5")
-    sql = (f"(length(trim({colonna})) {lunghezza} "
-           f"AND LTRIM(trim({colonna}), '0') = %s)")
+    alias = colonna.rsplit('.', 1)[0] + '.' if '.' in colonna else ''
+    categoria = f"LTRIM(COALESCE(trim({alias}farmacia_categoria), ''), '0')"
+    if is_codice_parafarmacia(canonico):
+        tipo = (f"({categoria} = '{CATEGORIA_PARAFARMACIA}' OR ({categoria} = '' "
+                f"AND length(trim({colonna})) = {LUNGHEZZA_CODICE_PARAFARMACIA}))")
+    else:
+        tipo = (f"({categoria} NOT IN ('', '{CATEGORIA_PARAFARMACIA}') OR ({categoria} = '' "
+                f"AND length(trim({colonna})) < {LUNGHEZZA_CODICE_PARAFARMACIA}))")
+    sql = f"(LTRIM(trim({colonna}), '0') = %s AND {tipo})"
     return sql, [canonico.lstrip('0') or '0']

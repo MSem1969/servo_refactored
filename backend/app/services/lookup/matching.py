@@ -211,6 +211,11 @@ def lookup_farmacia(data: Dict[str, Any]) -> Tuple[Optional[int], Optional[int],
         if is_codice_parafarmacia(min_id):
             ricerche.reverse()
 
+        # Se la P.IVA non corrisponde si prova anche l'altro elenco prima di
+        # segnalare il subentro (LKP-A04): il codice puo' essere della
+        # farmacia/parafarmacia omonima con la P.IVA del PDF (015280 scritto
+        # 15280 nel PDF: la lunghezza indica l'elenco sbagliato).
+        mismatch = None
         for tipo, query in ricerche:
             trovato = db.execute(query, (min_id_norm,)).fetchone()
             if not trovato:
@@ -225,9 +230,13 @@ def lookup_farmacia(data: Dict[str, Any]) -> Tuple[Optional[int], Optional[int],
             if piva and piva_anagrafica and piva != piva_anagrafica:
                 # P.IVA MISMATCH! Probabile subentro/cambio proprietà
                 # Score 50 per triggerare anomalia LKP-A04
-                return id_farm, id_parafarm, 'MIN_ID_PIVA_MISMATCH', tipo, 50
+                mismatch = mismatch or (id_farm, id_parafarm, 'MIN_ID_PIVA_MISMATCH', tipo, 50)
+                continue
 
             return id_farm, id_parafarm, 'MIN_ID', tipo, 100
+
+        if mismatch:
+            return mismatch
 
     # =========================================================================
     # 1. LOOKUP PER P.IVA

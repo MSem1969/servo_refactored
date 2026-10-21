@@ -147,7 +147,7 @@ class TestExportValidation:
         # sempre. Qui si verificano i CAMPI OBBLIGATORI, non l'aggancio ERP
         # (coperto a parte), quindi il controllo viene neutralizzato.
         monkeypatch.setattr(
-            validators, '_valida_coerenza_erp_export', lambda min_id, piva: None
+            validators, '_valida_coerenza_erp_export', lambda min_id, piva, is_parafarmacia=None: None
         )
 
         ordine = {

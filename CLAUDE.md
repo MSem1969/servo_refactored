@@ -779,11 +779,26 @@ ne prendevano uno a caso: 188 dei 231 ERP-A01 erano falsi positivi, ordini blocc
 archiviati senza motivo (caso `0746002040`), e la rettifica automatica ERP avrebbe
 riscritto la P.IVA di entrambi.
 
-Il tipo si riconosce dalla **lunghezza**: parafarmacia = 6 caratteri (`codice_sito`),
-farmacia = 9 nell'anagrafica ministero e fino a 5 in `anagrafica_clienti` (0 eccezioni in
-prod). Per cercare un cliente usare **sempre** `utils/codes.py::filtro_min_id_cliente`,
-mai `LTRIM(min_id,'0')` nudo. Il TO_T resta **senza zeri** (`014706` → ` 14706`): e' il
-formato che l'ERP gestisce.
+Come si riconosce il tipo:
+
+| Dove | Regola |
+|---|---|
+| Anagrafica ministero | **lunghezza**: parafarmacia 6 (`codice_sito`), farmacia 9 (`min_id`) — affidabile |
+| `anagrafica_clienti` (copia ERP) | **categoria ERP** `farmacia_categoria` (AGCATE): `17` = parafarmacia, ogni altra = farmacia; lunghezza solo se manca |
+| Ordine | **collegamento al Ministero** (`erp.py::tipo_cliente_ordine`), non il codice del PDF |
+
+In `anagrafica_clienti` la lunghezza **non** basta: in produzione 312 parafarmacie hanno
+il codice senza zero (`015280` salvata `15280`, identica alla farmacia). Per cercare un
+cliente usare **sempre** `utils/codes.py::filtro_min_id_cliente`, mai `LTRIM(min_id,'0')`
+nudo. Il TO_T resta **senza zeri** (`014706` → ` 14706`): e' il formato che l'ERP gestisce.
+
+> **Il pattern ERP impara dalle approvazioni (2026-10).** Caso 15280: le supervisioni
+> create prima del fix salvavano come "P.IVA ERP" quella della parafarmacia, la UI la
+> precompilava, gli operatori la approvavano; alla 5a approvazione il pattern l'ha resa
+> ordinaria (correzione automatica degli ordini nuovi) e l'ha scritta sulla farmacia in
+> anagrafica. Ora `verifica_piva_del_tipo` rifiuta approvazione e auto-correzione con una
+> P.IVA che non e' di un cliente **dello stesso codice e categoria**, e la UI ricalcola la
+> P.IVA ERP all'apertura invece di mostrare quella salvata.
 
 ### ⚠️ Trappola: `modulo.py` e `modulo/` nella stessa directory
 
