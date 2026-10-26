@@ -1674,10 +1674,12 @@ function ErpSection({ anomalia, ordineData, erpData, operatore, onSuccess }) {
   const [result, setResult] = useState(null);
 
   // Pre-fill con P.IVA ERP (suggerimento), ricalcolata dal backend col tipo
-  // dell'ordine. Se la coppia e' ora coerente, la P.IVA giusta e' quella del tracciato.
+  // dell'ordine. Se la coppia e' ora coerente, la P.IVA giusta e' quella ATTUALE
+  // dell'ordine: partita_iva_tracciato e' quella salvata alla creazione della
+  // supervisione, magari gia' corretta da allora (caso 14513).
   useEffect(() => {
-    if (erpData?.ora_coerente && (erpData?.partita_iva_tracciato || ordineData?.partita_iva)) {
-      setPivaCorretta(erpData.partita_iva_tracciato || ordineData.partita_iva);
+    if (erpData?.ora_coerente && (ordineData?.partita_iva || erpData?.partita_iva_tracciato)) {
+      setPivaCorretta(ordineData?.partita_iva || erpData.partita_iva_tracciato);
     } else if (erpData?.partita_iva_erp) {
       setPivaCorretta(erpData.partita_iva_erp);
     } else if (erpData?.cliente_erp?.partita_iva) {
@@ -1713,7 +1715,7 @@ function ErpSection({ anomalia, ordineData, erpData, operatore, onSuccess }) {
   };
 
   const codice = anomalia?.codice_anomalia || '';
-  const pivaTracciato = erpData?.partita_iva_tracciato || ordineData?.partita_iva || '';
+  const pivaTracciato = ordineData?.partita_iva || erpData?.partita_iva_tracciato || '';
   const pivaErp = erpData?.partita_iva_erp || erpData?.cliente_erp?.partita_iva || '';
   const clienteErp = erpData?.cliente_erp;
   const patternInfo = erpData?.pattern_info;
