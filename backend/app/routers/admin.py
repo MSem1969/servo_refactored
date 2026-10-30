@@ -9,6 +9,8 @@ import shutil
 import os
 from datetime import datetime, date
 
+from ..auth import require_section_edit
+
 router = APIRouter(prefix="/admin", tags=["Admin"])
 
 # Path del database
@@ -604,3 +606,35 @@ async def run_anagrafica_sync_now(background_tasks: BackgroundTasks) -> Dict[str
         }
     except Exception as e:
         raise HTTPException(500, f"Errore avvio sync: {str(e)}")
+
+
+# =============================================================================
+# SYNC ANAGRAFICA CLIENTI ERP DA FTP
+# =============================================================================
+
+@router.get("/sync/clienti/status")
+async def get_clienti_sync_status() -> Dict[str, Any]:
+    """Stato dello scheduler sync clienti ERP (Lun-Ven 09:15) e ultimo esito."""
+    from ..services.scheduler import get_clienti_scheduler_status
+    return {"success": True, "data": get_clienti_scheduler_status()}
+
+
+@router.post("/sync/clienti/run-now")
+async def run_clienti_sync_now(
+    background_tasks: BackgroundTasks,
+    forza: bool = Query(False, description="Reimporta anche un file gia' importato e ignora la soglia di calo clienti"),
+    current_user=Depends(require_section_edit("anagrafica")),
+) -> Dict[str, Any]:
+    """
+    Preleva subito ANAG_TOT_V_*.csv dall'FTP e lo importa, con report email.
+
+    `forza=true` serve al primo allineamento o a un recupero dopo un blocco
+    per calo clienti: la soglia di sicurezza viene ignorata.
+    """
+    from ..services.scheduler import run_clienti_sync_now as _run
+
+    background_tasks.add_task(_run, forza)
+    return {
+        "success": True,
+        "message": "Sincronizzazione clienti avviata in background. Riceverai email con il report.",
+    }

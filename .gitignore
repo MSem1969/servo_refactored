@@ -83,3 +83,7 @@ backend/nohup.out
 # Local documentation (planning, internal docs)
 DOCS/
 backend/uploads/*.PDF
+
+# Anagrafica clienti ERP (dati clienti: mai in repo)
+ANAG_TOT_V_*.csv
+backend/data/anagrafica_clienti/

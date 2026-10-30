@@ -551,6 +551,57 @@ def clear_anagrafica_parafarmacie() -> int:
 # IMPORT CLIENTI (v9.4)
 # =============================================================================
 
+# Estrazione ERP (ANAG_TOT_V_*.csv): nessuna intestazione, separatore ';',
+# 15 campi posizionali nell'ordine qui sotto (nomi = alias AG* di col_map).
+COLONNE_CLIENTI_ERP = [
+    'AGCANA', 'AGRSO1', 'AGRSO2', 'AGINDI', 'AGCAP', 'AGLOCA', 'AGPROV',
+    'AGPIVA', 'AGMAIL', 'AGCATE', 'AGCFAR', 'AGCSTA', 'AGCPAG', 'AGTIDD', 'AGDRIF',
+]
+_IDX_EMAIL_ERP = COLONNE_CLIENTI_ERP.index('AGMAIL')
+
+
+def _leggi_tracciato_clienti_erp(raw: bytes):
+    """
+    Legge l'estrazione ERP senza intestazione. Ritorna (DataFrame, encoding, scartate)
+    oppure None se il file non e' in quel formato (es. CSV con intestazione AG*).
+
+    Particolarita' del tracciato:
+    - encoding cp850 (AS/400: 0xF8 = '°'), utf-8 se il file lo e' gia';
+    - i campi vuoti sono byte NUL, non stringhe vuote;
+    - le virgolette non sono delimitatori ('PINNIZZOTTO DELLA "F.CIA DELLA'):
+      niente parser CSV con quoting, split semplice;
+    - l'email puo' contenere ';' (due indirizzi): i campi in eccesso sono
+      riassorbiti nell'email, che e' l'unico campo a testo libero con ';'.
+    """
+    try:
+        text, enc = raw.decode('utf-8-sig'), 'utf-8'
+    except UnicodeDecodeError:
+        text, enc = raw.decode('cp850'), 'cp850'
+    text = text.replace('\x00', '')
+
+    righe = [r for r in text.splitlines() if r.strip()]
+    if not righe:
+        return None
+    primo = righe[0].split(';')
+    if len(primo) < len(COLONNE_CLIENTI_ERP) or not primo[0].strip().isdigit():
+        return None
+
+    n = len(COLONNE_CLIENTI_ERP)
+    dati, scartate = [], []
+    for num, riga in enumerate(righe, start=1):
+        campi = riga.split(';')
+        extra = len(campi) - n
+        if extra < 0:
+            scartate.append(num)
+            continue
+        if extra > 0:
+            email = ';'.join(campi[_IDX_EMAIL_ERP:_IDX_EMAIL_ERP + extra + 1]).strip(' ;')
+            campi = campi[:_IDX_EMAIL_ERP] + [email] + campi[_IDX_EMAIL_ERP + extra + 1:]
+        dati.append(campi)
+
+    return pd.DataFrame(dati, columns=COLONNE_CLIENTI_ERP, dtype=str), enc, scartate
+
+
 def import_anagrafica_clienti(
     csv_path: str = None,
     csv_content: bytes = None,
@@ -600,18 +651,26 @@ def import_anagrafica_clienti(
                         continue
             return None, None, None
 
-        if csv_content:
-            df, enc_used, sep_used = try_read_csv(csv_content, is_content=True)
-            result['fonte'] = fonte or 'upload'
-            result['encoding'] = enc_used
-            result['separatore'] = sep_used
-        elif csv_path:
-            df, enc_used, sep_used = try_read_csv(csv_path, is_content=False)
+        if csv_path and not csv_content:
+            with open(csv_path, 'rb') as f:
+                csv_content = f.read()
             result['fonte'] = fonte or os.path.basename(csv_path)
-            result['encoding'] = enc_used
-            result['separatore'] = sep_used
-        else:
+        if not csv_content:
             return {'error': 'Specificare csv_path o csv_content', 'importate': 0}
+
+        erp = _leggi_tracciato_clienti_erp(csv_content)
+        if erp is not None:
+            df, enc_used, scartate = erp
+            sep_used = ';'
+            result['formato'] = 'ERP senza intestazione'
+            result['righe_scartate'] = len(scartate)
+            if scartate:
+                result['righe_scartate_esempi'] = scartate[:20]
+        else:
+            df, enc_used, sep_used = try_read_csv(csv_content, is_content=True)
+            result['formato'] = 'CSV con intestazione'
+        result['encoding'] = enc_used
+        result['separatore'] = sep_used
 
         if df is None:
             return {'error': 'Impossibile leggere il file CSV - encoding o formato non supportato', 'importate': 0}
@@ -647,6 +706,22 @@ def import_anagrafica_clienti(
         # Contatori debug
         result['skip_empty_codice'] = 0
 
+        # Le righe si validano PRIMA del DELETE: un file con colonne non
+        # riconosciute darebbe codice vuoto ovunque e svuoterebbe l'anagrafica.
+        righe_valide = []
+        for _, row in df.iterrows():
+            if get_col(row, 'codice_cliente'):
+                righe_valide.append(row)
+            else:
+                result['skip_empty_codice'] += 1
+
+        if not righe_valide:
+            result['error'] = (
+                'Nessun cliente con codice valido nel file: anagrafica NON modificata. '
+                f"Colonne lette: {result['colonne_csv'][:15]}"
+            )
+            return result
+
         # v12: REPLACE completo - il CSV contiene solo clienti validi,
         # quindi elimina tutti i record esistenti e reinserisce
         result['eliminati_precedenti'] = db.execute(
@@ -655,12 +730,9 @@ def import_anagrafica_clienti(
         db.execute("DELETE FROM anagrafica_clienti")
 
         # Import righe
-        for _, row in df.iterrows():
+        for row in righe_valide:
             try:
                 codice = get_col(row, 'codice_cliente')
-                if not codice:
-                    result['skip_empty_codice'] += 1
-                    continue
 
                 db.execute("""
                     INSERT INTO anagrafica_clienti
@@ -713,6 +785,7 @@ def import_anagrafica_clienti(
             }
 
     except Exception as e:
+        db.rollback()
         result['error'] = str(e)
 
     return result
