@@ -380,7 +380,7 @@ const SettingsPage = ({ currentUser }) => {
         throw new Error(res.error || "Import fallito");
       }
     } catch (err) {
-      alert("❌ Errore import farmacie:\n" + err.message);
+      alert("❌ Errore import farmacie:\n" + (err.response?.data?.detail || err.message));
     } finally {
       setImportProgress(null);
     }
@@ -425,7 +425,7 @@ const SettingsPage = ({ currentUser }) => {
         throw new Error(res.error || "Import fallito");
       }
     } catch (err) {
-      alert("❌ Errore import parafarmacie:\n" + err.message);
+      alert("❌ Errore import parafarmacie:\n" + (err.response?.data?.detail || err.message));
     } finally {
       setImportProgress(null);
     }
@@ -454,8 +454,10 @@ const SettingsPage = ({ currentUser }) => {
         let msg = `IMPORT CLIENTI COMPLETATO!\n\n` +
           `Righe nel CSV: ${d.totale_righe_csv ?? 'N/A'}\n` +
           `Clienti importati: ${d.importate || 0}\n` +
-          `Clienti aggiornati: ${d.aggiornati || 0}\n` +
+          `Clienti sostituiti (precedenti): ${d.eliminati_precedenti || 0}\n` +
           `Totale in DB: ${d.totale_db || 0}`;
+        if (d.formato) msg += `\nFormato: ${d.formato} (${d.encoding}, separatore "${d.separatore}")`;
+        if (d.righe_scartate) msg += `\nRighe scartate (campi mancanti): ${d.righe_scartate}`;
 
         // Debug info
         if (d.colonne_csv) msg += `\n\nColonne CSV: ${d.colonne_csv.join(', ')}`;
@@ -469,7 +471,7 @@ const SettingsPage = ({ currentUser }) => {
         throw new Error(res.error || "Import fallito");
       }
     } catch (err) {
-      alert("Errore import clienti:\n" + err.message);
+      alert("Errore import clienti:\n" + (err.response?.data?.detail || err.message));
     } finally {
       setImportProgress(null);
     }

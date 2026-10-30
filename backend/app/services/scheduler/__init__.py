@@ -17,6 +17,13 @@ from .anagrafica_scheduler import (
     run_sync_now as run_anagrafica_sync_now
 )
 
+from .clienti_scheduler import (
+    init_clienti_scheduler,
+    shutdown_clienti_scheduler,
+    get_clienti_scheduler_status,
+    run_clienti_sync_now,
+)
+
 from .ftp_scheduler import (
     start_ftp_scheduler as init_ftp_scheduler,
     stop_ftp_scheduler as shutdown_ftp_scheduler,
@@ -36,6 +43,7 @@ def shutdown_all_schedulers():
     """Arresta tutti gli scheduler attivi."""
     shutdown_mail_scheduler()
     shutdown_anagrafica_scheduler()
+    shutdown_clienti_scheduler()
     shutdown_ftp_scheduler()
     shutdown_backup_scheduler()
 
@@ -54,6 +62,11 @@ __all__ = [
     'shutdown_anagrafica_scheduler',
     'get_anagrafica_scheduler_status',
     'run_anagrafica_sync_now',
+    # Clienti ERP Scheduler
+    'init_clienti_scheduler',
+    'shutdown_clienti_scheduler',
+    'get_clienti_scheduler_status',
+    'run_clienti_sync_now',
     # FTP Scheduler (v11.5)
     'init_ftp_scheduler',
     'shutdown_ftp_scheduler',

@@ -537,7 +537,7 @@ sarebbe una perdita irreversibile, ma **non va considerato funzionante**.
 
 ## Endpoint di sola manutenzione (nessun consumatore frontend)
 
-Questi 13 endpoint non sono chiamati da nessuna pagina: sono **strumenti admin
+Questi 15 endpoint non sono chiamati da nessuna pagina: sono **strumenti admin
 legittimi**, da invocare a mano. Sono elencati qui perché ogni audit del codice
 li ri-segnala come "morti" — non lo sono.
 
@@ -546,6 +546,7 @@ li ri-segnala come "morti" — non lo sono.
 | `GET dashboard/upload-stats` | Statistiche upload |
 | `POST listini/calcola-prezzi` | Ricalcolo prezzi da listino |
 | `POST admin/sync/scheduler/run-now` | Forza sync anagrafica ministero |
+| `GET admin/sync/clienti/status`, `POST admin/sync/clienti/run-now` | Stato e sync forzata anagrafica clienti ERP (vedi sezione Sync Clienti) |
 | `POST anagrafica/clienti/revisiona-depositi` | Revisione massiva depositi |
 | `POST ordini/{id}/sblocca-supervisioni` | Sblocco manuale supervisioni |
 | `POST ordini/{id}/fix-stati`, `POST ordini/fix-stati-tutti` | Ricalcolo stati righe/ordine |
@@ -605,6 +606,40 @@ POST /api/v10/admin/sync/all
 - Download condizionale (ETag)
 - Sync incrementale (INSERT/UPDATE)
 - Traccia subentri → genera LKP-A04
+
+## Sync Anagrafica Clienti ERP (2026-10)
+
+Ogni **Lun-Ven alle 09:15** (`scheduler/clienti_scheduler.py`) SERV.O preleva via FTP
+(`RETR`) l'estrazione ERP dalla cartella `transfer` (env `CLIENTI_SYNC_FTP_DIR`) e
+sostituisce `anagrafica_clienti` (`anagrafica/sync_clienti.py`). La mail di report va agli
+stessi destinatari della sync ministeriale e contiene **nuovi/eliminati/modificati** rispetto
+all'anagrafica precedente, con l'elenco completo in allegato CSV.
+
+| Regola | Comportamento |
+|---|---|
+| File | `ANAG_TOT_V_AAAA_MM_GG.csv`, quello di oggi; se manca **il più recente** (segnalato in mail) |
+| Già importato | non si reimporta (stato in `sync_state`, chiave `clienti_erp`) |
+| Calo clienti > 10% (env `CLIENTI_SYNC_SOGLIA_CALO`) | **BLOCCATO**, anagrafica intatta, mail di allarme |
+| Credenziali | host/utente da `ftp_config`, password cifrata da `ftp_endpoints` dello stesso utente |
+| Archivio | `data/anagrafica_clienti/` (env `CLIENTI_SYNC_ARCHIVE_DIR`) — **non** in `outputs/`, che è pubblico su `/files` |
+
+```
+GET  /api/v1/admin/sync/clienti/status
+POST /api/v1/admin/sync/clienti/run-now?forza=true   # can_edit su 'anagrafica'
+```
+
+`forza=true` ignora soglia e "già importato": serve al primo allineamento e al recupero
+dopo un blocco. Disattivabile con `CLIENTI_SYNC_ENABLED=false`.
+
+**Tracciato** (query DB2 su `CENTRALE.ANCGSC`, `AGSANA='V'`, `AGDRIF<>''`, `AGCATE IN
+('001','002','004','017')`): 15 campi AG* posizionali, **senza intestazione**, separatore
+`;`, encoding **cp850**, campi vuoti = byte **NUL**, virgolette non bilanciate, e
+l'email può contenere `;` (riassorbito nel campo). Parser:
+`legacy.py::_leggi_tracciato_clienti_erp`; i CSV con intestazione seguono il vecchio percorso.
+Il MIN_ID è **AGTIDD**, non AGCFAR (il commento "codice ministeriale" nella query ERP è errato).
+
+> L'import valida le righe **prima** del `DELETE`: un file non riconosciuto non svuota più
+> l'anagrafica.
 
 ---
 

@@ -3,7 +3,9 @@
 # SERV.O v9.4 - IMPORT ANAGRAFICA CLIENTI
 # =============================================================================
 # Script per importare anagrafiche clienti da file CSV
-# Formato atteso: AGCANA,AGRSO1,AGRSO2,AGINDI,AGCAP,AGLOCA,AGPROV,AGPIVA,AGMAIL,AGCATE,AGCFAR,AGCSTA,AGCPAG,AGTIDD,AGDRIF
+# Formati accettati:
+# - CSV con intestazione: AGCANA,AGRSO1,AGRSO2,AGINDI,AGCAP,AGLOCA,AGPROV,AGPIVA,AGMAIL,AGCATE,AGCFAR,AGCSTA,AGCPAG,AGTIDD,AGDRIF
+# - estrazione ERP ANAG_TOT_V_*.csv: senza intestazione, separatore ';', stesso ordine
 # =============================================================================
 
 import csv
@@ -15,6 +17,7 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from app.database_pg import get_db
+from app.services.anagrafica.legacy import _leggi_tracciato_clienti_erp
 
 
 def import_clienti(csv_path: str, truncate: bool = False) -> dict:
@@ -64,10 +67,16 @@ def import_clienti(csv_path: str, truncate: bool = False) -> dict:
 
     print(f"Lettura file: {csv_path}")
 
-    with open(csv_path, 'r', encoding='utf-8-sig') as f:
-        reader = csv.DictReader(f)
+    with open(csv_path, 'rb') as f:
+        erp = _leggi_tracciato_clienti_erp(f.read())
 
-        for row_num, row in enumerate(reader, start=2):  # Start 2 per header
+    with open(csv_path, 'r', encoding='utf-8-sig') as f:
+        if erp is not None:
+            reader, prima_riga = erp[0].to_dict('records'), 1
+        else:
+            reader, prima_riga = csv.DictReader(f), 2  # Start 2 per header
+
+        for row_num, row in enumerate(reader, start=prima_riga):
             stats['totale'] += 1
 
             try:
