@@ -592,6 +592,10 @@ async def dettaglio_anomalia(id_anomalia: int) -> Dict[str, Any]:
                         codice, ordine_data.get('partita_iva') or '', is_parafarmacia)
                     erp_data['partita_iva_erp'] = attuale['piva_erp']
                     erp_data['ora_coerente'] = attuale['valido']
+                    # Piu' clienti ERP per lo stesso codice: la UI li elenca
+                    # tutti e non ne preseleziona nessuno (caso 14330)
+                    erp_data['clienti_erp'] = attuale.get('clienti_erp', [])
+                    erp_data['ambiguo'] = attuale.get('ambiguo', False)
                     pattern_sig = calcola_pattern_signature_erp(codice, is_parafarmacia)
 
                     filtro, params = filtro_min_id_cliente(codice, is_parafarmacia)
@@ -1086,9 +1090,13 @@ async def correggi_erp_anomalia(
             if not result.get('success'):
                 raise HTTPException(status_code=400, detail=result.get('error', 'Errore'))
 
+            from ..services.supervision.erp import descrivi_esito_pattern_erp
             msg = f"P.IVA corretta a {piva}"
             if result.get('rettifica_eseguita'):
                 msg += " - RETTIFICA ANAGRAFICA CLIENTI ESEGUITA AUTOMATICAMENTE"
+            nota_pattern = descrivi_esito_pattern_erp(result)
+            if nota_pattern:
+                msg += f". {nota_pattern}"
 
             return {
                 "success": True,
@@ -1100,6 +1108,10 @@ async def correggi_erp_anomalia(
                     "rettifica_eseguita": result.get('rettifica_eseguita', False),
                     "count_approvazioni": result.get('count_approvazioni', 0),
                     "soglia_rettifica": result.get('soglia', 5),
+                    "pattern_azzerato": result.get('pattern_azzerato', False),
+                    "piva_precedente": result.get('piva_precedente'),
+                    "promozione_bloccata": result.get('promozione_bloccata'),
+                    "nota_pattern": nota_pattern,
                 }
             }
         else:

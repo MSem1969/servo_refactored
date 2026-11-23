@@ -764,6 +764,10 @@ class AnomaliaResolver:
                     msg += " - RETTIFICA ANAGRAFICA ESEGUITA"
                 elif result.get('count_approvazioni'):
                     msg += f" ({result['count_approvazioni']}/{result['soglia']} verso rettifica anagrafica)"
+                from ..supervision.erp import descrivi_esito_pattern_erp
+                nota_pattern = descrivi_esito_pattern_erp(result)
+                if nota_pattern:
+                    msg += f". {nota_pattern}"
 
                 return ResolutionResult(
                     success=True,
@@ -776,6 +780,8 @@ class AnomaliaResolver:
                         'rettifica_eseguita': result.get('rettifica_eseguita', False),
                         'count_approvazioni': result.get('count_approvazioni', 0),
                         'soglia': result.get('soglia', 5),
+                        'pattern_azzerato': result.get('pattern_azzerato', False),
+                        'promozione_bloccata': result.get('promozione_bloccata'),
                     }
                 )
             else:

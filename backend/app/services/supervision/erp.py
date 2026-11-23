@@ -61,11 +61,48 @@ def _clienti_erp(min_id: str, is_parafarmacia: bool = None) -> List[Dict[str, An
     """Clienti di anagrafica_clienti con quel codice e del tipo indicato."""
     filtro, params = filtro_min_id_cliente(min_id, is_parafarmacia)
     return get_db().execute(f"""
-        SELECT partita_iva, min_id, ragione_sociale_1, codice_cliente, farmacia_categoria
+        SELECT partita_iva, min_id, ragione_sociale_1, ragione_sociale_2, codice_cliente,
+               farmacia_categoria, farma_status, deposito_riferimento, codice_pagamento
         FROM anagrafica_clienti
         WHERE {filtro}
         ORDER BY id_cliente
     """, params).fetchall()
+
+
+def clienti_erp_candidati(min_id: str, is_parafarmacia: bool = None) -> List[Dict[str, Any]]:
+    """
+    Clienti ERP dello stesso codice e tipo, uno per P.IVA distinta.
+
+    Piu' di uno = codice AMBIGUO: il gestionale ha due anagrafiche attive per lo
+    stesso cliente, tipicamente un subentro mai chiuso (caso 14330, 2026-11:
+    COVELLI 01532460803 e SAN GIROLAMO SNC 02904990807, entrambe categoria 001).
+    Il controllo di tipo le accetta tutte e due: quale sia quella giusta lo sa
+    solo l'operatore, e un pattern non deve impararlo.
+    """
+    visti, candidati = set(), []
+    for c in _clienti_erp(min_id, is_parafarmacia):
+        piva = (c['partita_iva'] or '').strip()
+        if piva and piva not in visti:
+            visti.add(piva)
+            candidati.append({**dict(c), 'partita_iva': piva})
+    return candidati
+
+
+def _descrivi_cliente_erp(c: Dict[str, Any]) -> str:
+    nome = ' '.join(x.strip() for x in (c.get('ragione_sociale_1'), c.get('ragione_sociale_2'))
+                    if x and x.strip())
+    codice = (c.get('codice_cliente') or '').strip() or '?'
+    return f"{c['partita_iva']} ({nome or 'N/D'}, cod. cliente {codice})"
+
+
+def motivo_codice_ambiguo(min_id: str, is_parafarmacia: bool = None) -> Optional[str]:
+    """None se il codice ha un solo cliente ERP, altrimenti il perche' non si apprende."""
+    candidati = clienti_erp_candidati(min_id, is_parafarmacia)
+    if len(candidati) < 2:
+        return None
+    return (f"l'anagrafica ERP ha {len(candidati)} clienti con il codice "
+            f"{codice_cliente_canonico(min_id, is_parafarmacia)}: "
+            + '; '.join(_descrivi_cliente_erp(c) for c in candidati))
 
 
 def verifica_piva_del_tipo(min_id: str, partita_iva: str,
@@ -143,7 +180,12 @@ def valida_coerenza_erp(min_id: str, partita_iva: str,
                          "Il tracciato potrebbe essere scartato dal gestionale.",
             'piva_erp': None,
             'min_id_norm': min_id_norm,
+            'clienti_erp': [],
+            'ambiguo': False,
         }
+
+    candidati = clienti_erp_candidati(min_id, is_parafarmacia)
+    ambiguo = len(candidati) > 1
 
     def _piva(c):
         return (c['partita_iva'] or '').strip()
@@ -155,16 +197,28 @@ def valida_coerenza_erp(min_id: str, partita_iva: str,
 
     # Confronta P.IVA normalizzate
     if piva_norm and piva_erp and piva_norm != piva_erp:
-        return {
-            'valido': False,
-            'codice_anomalia': 'ERP-A01',
-            'messaggio': (
+        if ambiguo:
+            messaggio = (
+                f"MIN_ID {min_id_norm} ({tipo}): P.IVA tracciato={piva_norm}, ma l'anagrafica "
+                f"ERP ha {len(candidati)} clienti con questo codice: "
+                + '; '.join(_descrivi_cliente_erp(c) for c in candidati)
+                + ". Scegliere quello attivo: la correzione non diventera' automatica "
+                "finche' il gestionale non ne avra' uno solo."
+            )
+        else:
+            messaggio = (
                 f"MIN_ID {min_id_norm} ({tipo}): P.IVA tracciato={piva_norm}, "
                 f"P.IVA ERP={piva_erp} ({cliente.get('ragione_sociale_1', '')}). "
                 "Il tracciato verrebbe scartato dal gestionale."
-            ),
+            )
+        return {
+            'valido': False,
+            'codice_anomalia': 'ERP-A01',
+            'messaggio': messaggio,
             'piva_erp': piva_erp,
             'min_id_norm': min_id_norm,
+            'clienti_erp': candidati,
+            'ambiguo': ambiguo,
         }
 
     return {
@@ -173,6 +227,8 @@ def valida_coerenza_erp(min_id: str, partita_iva: str,
         'messaggio': 'OK',
         'piva_erp': piva_erp,
         'min_id_norm': min_id_norm,
+        'clienti_erp': candidati,
+        'ambiguo': ambiguo,
     }
 
 
@@ -377,30 +433,81 @@ def _registra_approvazione_pattern_erp(
     """
     Registra approvazione pattern ERP e verifica soglia per rettifica anagrafica.
 
+    Contano solo le approvazioni CONCORDANTI: una P.IVA diversa da quella del
+    pattern lo riporta a 1 con la nuova P.IVA, e lo toglie dall'automatico se
+    lo era. Prima ogni approvazione incrementava il contatore qualunque P.IVA
+    portasse, e il pattern prendeva l'ultima: caso 14330 (2026-11), 4/5 con le
+    P.IVA di due clienti ERP diversi alternate.
+
+    Raggiunta la soglia, il pattern NON viene promosso se il codice ha piu'
+    clienti ERP dello stesso tipo (motivo_codice_ambiguo).
+
     Returns:
         Dict con info su rettifica:
         - rettifica_eseguita: bool
         - count_approvazioni: int
         - soglia: int
+        - pattern_azzerato: bool, con piva_precedente
+        - promozione_bloccata: motivo, se la soglia e' raggiunta ma il codice e' ambiguo
     """
     db = get_db()
+    esito = {'rettifica_eseguita': False, 'count_approvazioni': 0, 'soglia': SOGLIA_PROMOZIONE,
+             'pattern_azzerato': False, 'piva_precedente': None, 'promozione_bloccata': None}
 
-    # Aggiorna pattern: incrementa counter, salva P.IVA corretta
-    result = db.execute("""
-        UPDATE criteri_ordinari_erp
-        SET count_approvazioni = count_approvazioni + 1,
-            operatori_approvatori = COALESCE(operatori_approvatori || ', ', '') || %s,
-            partita_iva_corretta = %s
-        WHERE pattern_signature = %s
-        RETURNING count_approvazioni
-    """, (operatore, partita_iva_corretta, pattern_sig)).fetchone()
+    attuale = db.execute("""
+        SELECT partita_iva_corretta, count_approvazioni, is_ordinario
+        FROM criteri_ordinari_erp WHERE pattern_signature = %s
+        FOR UPDATE
+    """, (pattern_sig,)).fetchone()
+    if not attuale:
+        return esito
 
-    if not result:
-        return {'rettifica_eseguita': False, 'count_approvazioni': 0, 'soglia': SOGLIA_PROMOZIONE}
+    piva_precedente = (attuale['partita_iva_corretta'] or '').strip()
+    if piva_precedente and piva_precedente != partita_iva_corretta:
+        # Approvazione discordante: si riparte da questa
+        count = db.execute("""
+            UPDATE criteri_ordinari_erp
+            SET count_approvazioni = 1,
+                operatori_approvatori = %s,
+                partita_iva_corretta = %s,
+                is_ordinario = FALSE,
+                data_promozione = NULL
+            WHERE pattern_signature = %s
+            RETURNING count_approvazioni
+        """, (operatore, partita_iva_corretta, pattern_sig)).fetchone()[0]
+        esito.update(pattern_azzerato=True, piva_precedente=piva_precedente)
+        log_operation(
+            'PATTERN_ERP_AZZERATO', 'CRITERI_ORDINARI_ERP', 0,
+            f"Pattern {pattern_sig} (MIN_ID {min_id}): approvata P.IVA {partita_iva_corretta} "
+            f"diversa da {piva_precedente} ({attuale['count_approvazioni']} approvazioni"
+            f"{', era automatico' if attuale['is_ordinario'] else ''}): contatore riportato a 1",
+            operatore=operatore
+        )
+    else:
+        count = db.execute("""
+            UPDATE criteri_ordinari_erp
+            SET count_approvazioni = count_approvazioni + 1,
+                operatori_approvatori = COALESCE(operatori_approvatori || ', ', '') || %s,
+                partita_iva_corretta = %s
+            WHERE pattern_signature = %s
+            RETURNING count_approvazioni
+        """, (operatore, partita_iva_corretta, pattern_sig)).fetchone()[0]
 
-    count = result[0]
+    esito['count_approvazioni'] = count
 
     # Verifica soglia per promozione + rettifica anagrafica
+    if count >= SOGLIA_PROMOZIONE:
+        ambiguo = motivo_codice_ambiguo(min_id, is_parafarmacia)
+        if ambiguo:
+            esito['promozione_bloccata'] = ambiguo
+            if attuale['is_ordinario']:
+                # Promosso prima che l'ERP avesse il secondo cliente
+                db.execute("""
+                    UPDATE criteri_ordinari_erp SET is_ordinario = FALSE, data_promozione = NULL
+                    WHERE pattern_signature = %s
+                """, (pattern_sig,))
+            return esito
+
     rettifica_eseguita = False
     if count >= SOGLIA_PROMOZIONE:
         # Promuovi pattern
@@ -423,11 +530,19 @@ def _registra_approvazione_pattern_erp(
                 WHERE pattern_signature = %s
             """, (pattern_sig,))
 
-    return {
-        'rettifica_eseguita': rettifica_eseguita,
-        'count_approvazioni': count,
-        'soglia': SOGLIA_PROMOZIONE,
-    }
+    esito['rettifica_eseguita'] = rettifica_eseguita
+    return esito
+
+
+def descrivi_esito_pattern_erp(esito: Dict[str, Any]) -> Optional[str]:
+    """Frase per l'operatore quando l'approvazione non ha fatto avanzare il pattern."""
+    if esito.get('promozione_bloccata'):
+        return ("Correzione NON resa automatica: " + esito['promozione_bloccata']
+                + ". Va scelta a mano finche' il gestionale non ne avra' uno solo.")
+    if esito.get('pattern_azzerato'):
+        return (f"Le correzioni precedenti per questo codice indicavano la P.IVA "
+                f"{esito.get('piva_precedente')}: il contatore riparte da 1.")
+    return None
 
 
 def _rettifica_anagrafica_clienti(
@@ -531,6 +646,20 @@ def valuta_anomalia_erp(id_testata: int, min_id: str, partita_iva: str,
         }
 
     piva_corretta = criterio['partita_iva_corretta']
+
+    # Con piu' clienti ERP per lo stesso codice la scelta resta all'operatore,
+    # anche per un pattern promosso prima che l'ERP avesse il secondo cliente.
+    ambiguo = motivo_codice_ambiguo(min_id, is_parafarmacia)
+    if ambiguo:
+        log_operation(
+            'AUTO_CORREZIONE_ERP_SKIP', 'ORDINI_TESTATA', id_testata,
+            f"Pattern {pattern_sig} non applicato: {ambiguo}"
+        )
+        return {
+            'auto_risolto': False,
+            'partita_iva_corretta': None,
+            'pattern_sig': pattern_sig,
+        }
 
     # Mai applicare una P.IVA che non e' di un cliente ERP dello stesso tipo
     # (pattern appreso da approvazioni sbagliate, o anagrafica cambiata).

@@ -835,6 +835,18 @@ nudo. Il TO_T resta **senza zeri** (`014706` → ` 14706`): e' il formato che l'
 > P.IVA che non e' di un cliente **dello stesso codice e categoria**, e la UI ricalcola la
 > P.IVA ERP all'apertura invece di mostrare quella salvata.
 
+> **Pattern ERP: solo approvazioni concordanti, mai su un codice ambiguo (2026-11).**
+> Caso 14330: l'ERP ha **due clienti farmacia** con lo stesso codice (vecchio titolare
+> COVELLI 01532460803 e subentrante SAN GIROLAMO SNC 02904990807, quella giusta) e il
+> Ministero una P.IVA errata di una cifra. La modale proponeva il primo cliente, gli
+> operatori approvavano ora l'uno ora l'altro, e il pattern contava **4/5** con P.IVA
+> alternate: alla quinta sarebbe diventato automatico con l'ultima. Il controllo di tipo
+> non serviva, perche' entrambe sono P.IVA di una farmacia con quel codice. Ora
+> (`supervision/erp.py`): una P.IVA diversa da quella del pattern **riporta il contatore
+> a 1**, e con piu' clienti ERP per lo stesso codice e tipo (`motivo_codice_ambiguo`) il
+> pattern **non viene promosso ne' applicato**. La modale li elenca tutti senza
+> preselezione. La soluzione vera e' nel gestionale: chiudere il cliente vecchio.
+
 ### ⚠️ Trappola: `modulo.py` e `modulo/` nella stessa directory
 
 Se in una directory coesistono `x.py` e il package `x/`, **Python carica sempre il

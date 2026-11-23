@@ -1677,9 +1677,14 @@ function ErpSection({ anomalia, ordineData, erpData, operatore, onSuccess }) {
   // dell'ordine. Se la coppia e' ora coerente, la P.IVA giusta e' quella ATTUALE
   // dell'ordine: partita_iva_tracciato e' quella salvata alla creazione della
   // supervisione, magari gia' corretta da allora (caso 14513).
+  // Con piu' clienti ERP per lo stesso codice (subentro non chiuso nel
+  // gestionale, caso 14330) nessuna preselezione: proporre il primo faceva
+  // approvare ora l'uno ora l'altro.
   useEffect(() => {
     if (erpData?.ora_coerente && (ordineData?.partita_iva || erpData?.partita_iva_tracciato)) {
       setPivaCorretta(ordineData?.partita_iva || erpData.partita_iva_tracciato);
+    } else if (erpData?.ambiguo) {
+      setPivaCorretta('');
     } else if (erpData?.partita_iva_erp) {
       setPivaCorretta(erpData.partita_iva_erp);
     } else if (erpData?.cliente_erp?.partita_iva) {
@@ -1703,7 +1708,8 @@ function ErpSection({ anomalia, ordineData, erpData, operatore, onSuccess }) {
       });
       if (res.success) {
         setResult(res.data);
-        setTimeout(() => onSuccess?.(), 1500);
+        // Con un avviso sul pattern lascia il tempo di leggerlo
+        setTimeout(() => onSuccess?.(), res.data?.nota_pattern ? 6000 : 1500);
       } else {
         setError(res.message || 'Errore');
       }
@@ -1719,6 +1725,7 @@ function ErpSection({ anomalia, ordineData, erpData, operatore, onSuccess }) {
   const pivaErp = erpData?.partita_iva_erp || erpData?.cliente_erp?.partita_iva || '';
   const clienteErp = erpData?.cliente_erp;
   const patternInfo = erpData?.pattern_info;
+  const clientiAmbigui = erpData?.ambiguo && erpData?.clienti_erp?.length > 1;
 
   return (
     <div className="bg-red-50 border border-red-200 rounded-lg p-4">
@@ -1746,7 +1753,48 @@ function ErpSection({ anomalia, ordineData, erpData, operatore, onSuccess }) {
             <span className="ml-2 font-mono font-semibold text-red-700">{pivaTracciato || 'N/D'}</span>
           </div>
         </div>
-        {codice === 'ERP-A01' && (
+        {codice === 'ERP-A01' && clientiAmbigui && (
+          <div className="border-t pt-2">
+            <p className="text-amber-800 font-medium mb-2">
+              L'anagrafica ERP ha {erpData.clienti_erp.length} clienti con questo codice.
+              Scegliere quello attivo:
+            </p>
+            <div className="space-y-1">
+              {erpData.clienti_erp.map((c) => (
+                <label
+                  key={c.partita_iva}
+                  className={`flex items-start gap-2 p-2 rounded border cursor-pointer ${
+                    pivaCorretta === c.partita_iva ? 'border-red-500 bg-red-50' : 'border-slate-200'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="cliente-erp"
+                    className="mt-1"
+                    checked={pivaCorretta === c.partita_iva}
+                    onChange={() => setPivaCorretta(c.partita_iva)}
+                  />
+                  <span>
+                    <span className="font-mono font-semibold">{c.partita_iva}</span>
+                    <span className="ml-2">
+                      {[c.ragione_sociale_1, c.ragione_sociale_2].filter(Boolean).join(' ')}
+                    </span>
+                    <span className="block text-xs text-slate-500">
+                      Cod. cliente {c.codice_cliente || '?'}
+                      {c.codice_pagamento && ` · pagamento ${c.codice_pagamento}`}
+                      {c.farma_status && ` · stato ${c.farma_status}`}
+                    </span>
+                  </span>
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-amber-700 mt-2">
+              Finché il gestionale ha più clienti per lo stesso codice, la correzione non diventa
+              automatica: va scelta a mano su ogni ordine.
+            </p>
+          </div>
+        )}
+        {codice === 'ERP-A01' && !clientiAmbigui && (
           <div className="border-t pt-2">
             <span className="text-slate-500">P.IVA anagrafica ERP:</span>
             <span className="ml-2 font-mono font-semibold text-green-700">{pivaErp}</span>
@@ -1846,6 +1894,9 @@ function ErpSection({ anomalia, ordineData, erpData, operatore, onSuccess }) {
           <p className="font-semibold">Correzione applicata</p>
           <p>P.IVA corretta: {result.partita_iva_corretta}</p>
           <p>Correzioni per questo MIN_ID: {result.count_approvazioni}/{result.soglia_rettifica}</p>
+          {result.nota_pattern && (
+            <p className="mt-1 text-amber-800">{result.nota_pattern}</p>
+          )}
           {result.rettifica_eseguita && (
             <p className="font-bold mt-1 text-green-900">
               RETTIFICA ANAGRAFICA CLIENTI ESEGUITA AUTOMATICAMENTE

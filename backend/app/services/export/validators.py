@@ -154,6 +154,9 @@ def _valida_coerenza_erp_export(min_id: str, partita_iva: str,
             codice = result['codice_anomalia']
             if codice == 'ERP-A01':
                 piva_erp = result.get('piva_erp', '?')
+                if result.get('ambiguo'):
+                    # Piu' clienti ERP: citarne uno solo suggerirebbe quello sbagliato
+                    piva_erp = ' oppure '.join(c['partita_iva'] for c in result['clienti_erp'])
                 return (
                     f"TO_T: BLOCCO ERP - P.IVA nel tracciato ({partita_iva}) non corrisponde "
                     f"a P.IVA in anagrafica clienti ({piva_erp}) per MIN_ID {min_id}. "
